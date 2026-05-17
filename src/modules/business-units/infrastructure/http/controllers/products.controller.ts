@@ -1,12 +1,17 @@
-import { Controller, DefaultValuePipe, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { GetActiveProductsUseCase } from '../../../application/use-cases/get-active-products.use-case';
 import { GetProductsByBusinessUnitUseCase } from '../../../application/use-cases/get-products-by-business-unit.use-case';
 import { GetProductByIdUseCase } from '../../../application/use-cases/get-product-by-id.use-case';
 import { ProductResponseDto } from '../dto/product-response.dto';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
-import { sanitizeLimit, DEFAULT_LIMIT } from '@shared/pagination/pagination';
+import { sanitizeLimit } from '@shared/pagination/pagination';
 import { ProductFilters } from '../../../domain/repositories/product.repository';
 import { Public } from '@shared/auth/public.decorator';
+import {
+  BusinessUnitIdParamDto,
+  ProductIdParamDto,
+  ProductsQueryDto,
+} from '../dto/product-query.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -19,11 +24,9 @@ export class ProductsController {
   @Public()
   @Get()
   async findActive(
-    @Query('limit', new DefaultValuePipe(DEFAULT_LIMIT), ParseIntPipe) rawLimit: number,
-    @Query('cursor') cursor: string | undefined,
-    @Query('search') search: string | undefined,
-    @Query('categoryId') categoryId: string | undefined,
+    @Query() query: ProductsQueryDto,
   ): Promise<PaginatedResponseDto<ProductResponseDto>> {
+    const { limit: rawLimit, categoryId, search, cursor } = query;
     const limit = sanitizeLimit(rawLimit);
     const filters = this.buildFilters(search, categoryId);
 
@@ -38,12 +41,10 @@ export class ProductsController {
   @Public()
   @Get('by-business-unit/:businessUnitId')
   async findByBusinessUnit(
-    @Param('businessUnitId') businessUnitId: string,
-    @Query('limit', new DefaultValuePipe(DEFAULT_LIMIT), ParseIntPipe) rawLimit: number,
-    @Query('cursor') cursor: string | undefined,
-    @Query('search') search: string | undefined,
-    @Query('categoryId') categoryId: string | undefined,
+    @Param() { businessUnitId }: BusinessUnitIdParamDto,
+    @Query() query: ProductsQueryDto,
   ): Promise<PaginatedResponseDto<ProductResponseDto>> {
+    const { limit: rawLimit, categoryId, search, cursor } = query;
     const limit = sanitizeLimit(rawLimit);
     const filters = this.buildFilters(search, categoryId);
 
@@ -62,7 +63,7 @@ export class ProductsController {
 
   @Public()
   @Get(':productId')
-  async findById(@Param('productId') productId: string): Promise<ProductResponseDto> {
+  async findById(@Param() { productId }: ProductIdParamDto): Promise<ProductResponseDto> {
     const product = await this.getProductById.execute(productId);
     return ProductResponseDto.fromEntity(product);
   }
