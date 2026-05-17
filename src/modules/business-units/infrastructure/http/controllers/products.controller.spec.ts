@@ -58,7 +58,7 @@ describe('ProductsController', () => {
         meta: { limit: 20, hasMore: false, nextCursor: null },
       });
 
-      const response = await controller.findActive(20, undefined, undefined, undefined);
+      const response = await controller.findActive({ limit: 20 });
 
       expect(response).toBeInstanceOf(PaginatedResponseDto);
       expect(response.data).toHaveLength(1);
@@ -72,7 +72,7 @@ describe('ProductsController', () => {
         meta: { limit: 100, hasMore: false, nextCursor: null },
       });
 
-      await controller.findActive(99999, undefined, undefined, undefined);
+      await controller.findActive({ limit: 99999 });
 
       expect(getActiveProducts.execute).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 100 }),
@@ -85,7 +85,12 @@ describe('ProductsController', () => {
         meta: { limit: 20, hasMore: false, nextCursor: null },
       });
 
-      await controller.findActive(20, 'cursor-id', 'açaí', 'cat-1');
+      await controller.findActive({
+        limit: 20,
+        cursor: 'cursor-id',
+        search: 'açaí',
+        categoryId: 'cat-1',
+      });
 
       expect(getActiveProducts.execute).toHaveBeenCalledWith({
         cursor: 'cursor-id',
@@ -100,7 +105,7 @@ describe('ProductsController', () => {
         meta: { limit: 20, hasMore: false, nextCursor: null },
       });
 
-      await controller.findActive(20, undefined, undefined, undefined);
+      await controller.findActive({ limit: 20 });
 
       expect(getActiveProducts.execute).toHaveBeenCalledWith({
         cursor: undefined,
@@ -118,11 +123,8 @@ describe('ProductsController', () => {
       });
 
       const response = await controller.findByBusinessUnit(
-        'bu-id',
-        20,
-        undefined,
-        undefined,
-        undefined,
+        { businessUnitId: 'bu-id' },
+        { limit: 20 },
       );
 
       expect(getProductsByBusinessUnit.execute).toHaveBeenCalledWith({
@@ -140,7 +142,7 @@ describe('ProductsController', () => {
     it('should return the mapped DTO when the product exists', async () => {
       getProductById.execute.mockResolvedValue(buildProduct('uuid-42'));
 
-      const response = await controller.findById('uuid-42');
+      const response = await controller.findById({ productId: 'uuid-42' });
 
       expect(getProductById.execute).toHaveBeenCalledWith('uuid-42');
       expect(response).toBeInstanceOf(ProductResponseDto);
@@ -150,7 +152,9 @@ describe('ProductsController', () => {
     it('should propagate NotFoundException raised by the use-case', async () => {
       getProductById.execute.mockRejectedValue(new NotFoundException('Product not found.'));
 
-      await expect(controller.findById('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.findById({ productId: 'missing' })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });
