@@ -11,8 +11,8 @@ import { GlobalErrorFilter } from '@shared/filter/global-error.filter';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
-    BusinessUnitsModule,
     IdentityModule,
+    BusinessUnitsModule,
   ],
   providers: [
     {
