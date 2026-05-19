@@ -1,4 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PaginatedProductResponseDto } from '../dto/paginated-product-response.dto';
 import { GetActiveProductsUseCase } from '../../../application/use-cases/get-active-products.use-case';
 import { GetProductsByBusinessUnitUseCase } from '../../../application/use-cases/get-products-by-business-unit.use-case';
 import { GetProductByIdUseCase } from '../../../application/use-cases/get-product-by-id.use-case';
@@ -13,6 +15,7 @@ import {
   ProductsQueryDto,
 } from '../dto/product-query.dto';
 
+@ApiTags('products')
 @Controller('products')
 export class ProductsController {
   constructor(
@@ -23,6 +26,8 @@ export class ProductsController {
 
   @Public()
   @Get()
+  @ApiOperation({ summary: 'List active products (cursor-paginated)' })
+  @ApiOkResponse({ type: PaginatedProductResponseDto })
   async findActive(
     @Query() query: ProductsQueryDto,
   ): Promise<PaginatedResponseDto<ProductResponseDto>> {
@@ -40,6 +45,8 @@ export class ProductsController {
 
   @Public()
   @Get('by-business-unit/:businessUnitId')
+  @ApiOperation({ summary: 'List active products for a business unit' })
+  @ApiOkResponse({ type: PaginatedProductResponseDto })
   async findByBusinessUnit(
     @Param() { businessUnitId }: BusinessUnitIdParamDto,
     @Query() query: ProductsQueryDto,
@@ -63,6 +70,20 @@ export class ProductsController {
 
   @Public()
   @Get(':productId')
+  @ApiOperation({ summary: 'Get a product by ID' })
+  @ApiOkResponse({ type: ProductResponseDto })
+  @ApiNotFoundResponse({
+    description: 'Product not found',
+    schema: {
+      example: {
+        statusCode: 404,
+        error: 'Not Found',
+        message: 'Product not found',
+        path: '/api/products/550e8400-e29b-41d4-a716-446655440000',
+        timestamp: '2026-05-18T10:30:00.000Z',
+      },
+    },
+  })
   async findById(@Param() { productId }: ProductIdParamDto): Promise<ProductResponseDto> {
     const product = await this.getProductById.execute(productId);
     return ProductResponseDto.fromEntity(product);
