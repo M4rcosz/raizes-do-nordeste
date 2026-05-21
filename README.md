@@ -6,10 +6,11 @@ REST API for a multi-unit restaurant ordering system. The platform powers menu
 browsing, order management, payment processing, inventory control and a
 customer loyalty program — across multiple business units (franchises).
 
-> **Status:** the project is being built incrementally. The product catalog
-> and identity modules are currently implemented (JWT login, global role
-> guard, argon2 hashing); orders, payments, inventory and loyalty modules
-> are planned (see [Roadmap](#roadmap)).
+> **Status:** the project is being built incrementally. The shipped surface
+> is the product catalog, identity (JWT login + argon2 hashing + global role
+> guard), and a cross-cutting audit log wired into the login flow. Orders,
+> payments, inventory, promotions and loyalty are planned (see
+> [Roadmap](#roadmap)).
 
 ---
 
@@ -135,7 +136,19 @@ pagination primitives, future `Money`/`Email` value objects, global guards
 and interceptors) lives in `src/shared/`. If something is used by only one
 context, it stays inside that context.
 
-**8. Path aliases for cross-boundary imports**
+**8. Cross-context capabilities are exposed via published ports**
+A bounded context that needs to be **consumed** by other contexts (e.g.
+`audit`) publishes a port — a TypeScript `interface` plus a `Symbol` DI
+token — in its `application/ports/` folder, and binds the token to its
+implementation in its NestJS module's `providers` / `exports`. Consumers
+inject the token and depend on the interface only; they never import
+entities or repositories from another context's `domain/`. This is the
+mechanism behind `AUDIT_LOGGER`: `SignInUseCase` (in `identity`) injects
+the port without knowing that the concrete `AuditService` lives in
+`modules/audit/`. The same shape will be reused when future order /
+payment use cases need to log audit entries.
+
+**9. Path aliases for cross-boundary imports**
 Imports that cross a context boundary use TypeScript path aliases:
 
 - `@shared/*` → `src/shared/*`
@@ -158,7 +171,7 @@ it in PRs.
 > `jsc.baseUrl` (so `shared/*` with baseUrl `./src`); jest paths use
 > jest's `<rootDir>` token.
 
-**9. Build pipeline — SWC with `tsc` type-check sidecar**
+**10. Build pipeline — SWC with `tsc` type-check sidecar**
 `nest build` uses [SWC](https://swc.rs/) (configured in `nest-cli.json`
 under `compilerOptions.builder`) instead of `tsc`. SWC compiles each file
 in parallel — roughly 10× faster on this codebase — and resolves path
@@ -217,6 +230,11 @@ src/
 │   │   └── prisma/               ← @Global() PrismaService + lifecycle
 │   └── pagination/               ← Cursor-pagination types and DTO envelope
 └── modules/                      ← One folder per bounded context
+    ├── audit/                    ← Cross-cutting audit logging
+    │   ├── audit.module.ts
+    │   ├── domain/               ← AuditAction const, IAuditLogRepository
+    │   ├── application/          ← AuditService (impl), IAuditLogger port, errors
+    │   └── infrastructure/       ← PrismaAuditLogRepository
     ├── business-units/           ← Products, Categories, Menu Items, Units
     │   ├── business-units.module.ts
     │   ├── domain/               ← Pure rules (no framework imports)
@@ -241,6 +259,8 @@ prisma/
 └── migrations/                   ← Versioned migration history
 test/
 ├── app.e2e-spec.ts               ← Product HTTP e2e
+├── auth-audit.e2e-spec.ts        ← Login + audit_logs persistence e2e
+├── validation-pipe.e2e-spec.ts   ← Global ValidationPipe e2e
 └── global-error-filter.e2e-spec.ts ← Error envelope e2e (full pipeline)
 ```
 
@@ -280,11 +300,21 @@ DATABASE_URL="postgresql://adminuser:your_password@localhost:5432/raizes_do_nord
 
 NODE_ENV=development
 PORT=3000
+
+JWT_SECRET_KEY=replace-with-a-strong-random-secret
 ```
 
-> ⚠️ `DATABASE_URL` uses `localhost` for local development. Inside Docker
-> Compose, the `app` service overrides this variable so it points at the
-> `db` service hostname.
+> ⚠️ `DATABASE_URL` uses `localhost` for local development. The full-stack
+> Docker compose (`docker-compose.prod.yml`) overrides this variable inside
+> the `app` service so it points at the `db` service hostname.
+>
+> 🔑 `JWT_SECRET_KEY` is **required** — the identity module calls
+> `cfg.getOrThrow('JWT_SECRET_KEY')` on boot and the app exits if it is
+> missing. Generate one with, for example:
+>
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+> ```
 
 ### 3. Install dependencies and generate the Prisma client
 
@@ -301,19 +331,38 @@ npm run db:migrate   # applies pending migrations
 npm run db:seed      # loads sample data
 ```
 
-### 5. Start the full stack
+### 5. Start the application
+
+You have two options.
+
+**Option A — Local watch mode (recommended for development):**
 
 ```bash
-docker compose up --build
+npm run start:dev
+```
+
+This expects the database to be already up (step 4). The API is then
+available at **http://localhost:3000/api**. Swagger UI is exposed at
+**http://localhost:3000/api/docs** (development only — disabled when
+`NODE_ENV=production`).
+
+**Option B — Full Docker stack (build the image, run migrations + seed via
+the container entrypoint):**
+
+```bash
+docker compose -f docker-compose.prod.yml up --build
 ```
 
 On startup, the application container automatically:
 
 1. Runs pending migrations (`prisma migrate deploy`)
 2. Runs the database seed (`prisma db seed`)
-3. Starts the NestJS server on port `3000`
+3. Starts the compiled NestJS server on port `3000`
 
-The API is then available at **http://localhost:3000/api**.
+> ℹ️ The default `docker-compose.yml` only contains the `db` service — it is
+> the file used by `npm run db:up`. The `app` service lives in
+> `docker-compose.prod.yml`, so the full stack requires the explicit `-f`
+> flag.
 
 ---
 
@@ -361,11 +410,17 @@ npm run devs
 | ----------------- | ---------------------------------------------------------------------- |
 | Identity & Access | `users`                                                                |
 | Business Units    | `business_units`, `categories`, `products`, `business_unit_menu_items` |
+| Audit             | `audit_logs`                                                           |
 | Inventory         | `inventory`, `inventory_transactions`                                  |
 | Orders            | `orders`, `order_items`                                                |
 | Payments          | `payments`                                                             |
 | Promotions        | `promotions`, `order_promotions`                                       |
 | Loyalty           | `loyalty_accounts`, `loyalty_transactions`                             |
+
+> Of the domains above, **Identity, Business Units and Audit** have application
+> code shipped. The remaining tables (Inventory, Orders, Payments, Promotions,
+> Loyalty) exist in the schema as forward-looking infrastructure — there are no
+> use cases, controllers or repositories for them yet.
 
 ### Design Decisions
 
@@ -396,6 +451,18 @@ npm run devs
 
 All routes are prefixed with **`/api`**.
 
+### Interactive docs (Swagger UI)
+
+When `NODE_ENV` is not `production`, an OpenAPI document and Swagger UI are
+exposed at:
+
+- UI — **http://localhost:3000/api/docs**
+- JSON — **http://localhost:3000/api/docs-json**
+
+Swagger is disabled in production to avoid leaking schema details. Bearer
+auth is wired into the document (`addBearerAuth`) so you can paste a JWT
+returned by `POST /api/auth/login` directly into the "Authorize" dialog.
+
 ### Authentication
 
 A global `AuthGuard` protects every route by default; routes opt out with
@@ -420,6 +487,13 @@ Response — `200 OK`:
 ```
 
 Invalid credentials return `401` (see [Error responses](#error-responses)).
+
+Every login attempt — successful **and** failed — is persisted to the
+`audit_logs` table by the `AuditService` (`LOGIN_SUCCESS` or `LOGIN_FAILED`
+action). Metadata is defensively sanitized: any key matching
+`password` / `token` / `cpf` / `authorization` / `secret` (case-insensitive,
+recursive) is stored as `[REDACTED]`. Audit persistence failures are
+swallowed so they cannot break the login outcome.
 
 ### Products
 
@@ -464,7 +538,7 @@ are logged server-side but never sent to the client:
 | ------ | ---------------------------------------------------------------------- |
 | `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)   |
 | `401`  | Invalid login credentials, or missing/invalid JWT on a protected route |
-| `404`  | Requested product / business unit does not exist                       |
+| `404`  | Requested product does not exist                                       |
 | `503`  | Repository / database failure (`ProductsFetchError`)                   |
 
 Application/domain errors carry a `kind` that the filter maps to a status:
@@ -498,8 +572,11 @@ npm run test:e2e
   validated without any database. Entities, DTOs and the global exception
   filter are tested in isolation.
 - **e2e tests** boot the full Nest application against the development
-  database and exercise the HTTP surface, including the global error
-  envelope via a throwing repository (`global-error-filter.e2e-spec.ts`).
+  database and exercise the HTTP surface — products
+  (`app.e2e-spec.ts`), login + audit-log persistence
+  (`auth-audit.e2e-spec.ts`), global validation rejection
+  (`validation-pipe.e2e-spec.ts`), and the global error envelope via a
+  throwing repository (`global-error-filter.e2e-spec.ts`).
 - Each test asserts both **success paths** and **failure paths** — including
   `NotFoundException` propagation and `ProductsFetchError` wrapping
   with `Error.cause`.
@@ -523,15 +600,19 @@ npm run test:e2e
 
 ## Roadmap
 
-The product catalog and identity modules are shipped. Upcoming modules —
-already designed in the database schema — are:
+The product catalog, identity and audit modules are shipped. Upcoming
+modules — already designed in the database schema — are:
 
 - [x] **Auth** — JWT login, global role guard, argon2 hashing (`CUSTOMER`,
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`). Refresh-token rotation
       and user registration still pending.
+- [x] **Audit** — `audit_logs` table, `AuditService` with metadata
+      sanitization (password/token/CPF redaction), `IAuditLogger` port
+      injected into `SignInUseCase` for `LOGIN_SUCCESS` / `LOGIN_FAILED`.
+      Ready to be injected into future order / payment use cases.
 - [ ] **Orders** — order creation, item management, status transitions
 - [ ] **Payments** — gateway integration (mocked initially), refund flow
-- [ ] **Inventory** — stock, reservations, audit log of inventory transactions
+- [ ] **Inventory** — stock, reservations, inventory transactions ledger
 - [ ] **Promotions** — percentage / fixed-amount / free-item discounts
 - [ ] **Loyalty** — points earning, redemption and consent tracking (LGPD)
 
