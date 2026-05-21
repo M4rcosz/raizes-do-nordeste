@@ -11,4 +11,4 @@ echo "Running seed..."
 npx prisma db seed
 
 echo "Initializing application..."
-exec node dist/src/main.js
+exec node dist/main.js

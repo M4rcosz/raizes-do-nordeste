@@ -7,12 +7,15 @@ import { IPasswordHasher, PASSWORD_HASHER } from '../../domain/ports/password-ha
 import { ITokenSigner, TOKEN_SIGNER } from '../../domain/ports/token-signer.port';
 import { User } from '../../domain/entities/user.entity';
 import { UsersFetchError } from '../errors/users-fetch.error';
+import { AUDIT_LOGGER, IAuditLogger } from '@modules/audit/application/ports/audit-logger.port';
+import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
 describe('SignInUseCase', () => {
   let useCase: SignInUseCase;
   let findByUsername: jest.MockedFunction<IUserRepository['findByUsername']>;
   let verify: jest.MockedFunction<IPasswordHasher['verify']>;
   let sign: jest.MockedFunction<ITokenSigner['sign']>;
+  let auditLog: jest.MockedFunction<IAuditLogger['log']>;
 
   const buildUser = (overrides?: { id?: string; passwordHash?: string }): User =>
     new User(
@@ -34,6 +37,7 @@ describe('SignInUseCase', () => {
     findByUsername = jest.fn() as jest.MockedFunction<IUserRepository['findByUsername']>;
     verify = jest.fn() as jest.MockedFunction<IPasswordHasher['verify']>;
     sign = jest.fn() as jest.MockedFunction<ITokenSigner['sign']>;
+    auditLog = jest.fn() as jest.MockedFunction<IAuditLogger['log']>;
 
     const userRepo: jest.Mocked<IUserRepository> = { findByUsername };
     const passwordHasher: jest.Mocked<IPasswordHasher> = {
@@ -41,6 +45,7 @@ describe('SignInUseCase', () => {
       verify,
     };
     const tokenSigner: jest.Mocked<ITokenSigner> = { sign };
+    const auditLogger: jest.Mocked<IAuditLogger> = { log: auditLog };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -48,6 +53,7 @@ describe('SignInUseCase', () => {
         { provide: USER_REPOSITORY, useValue: userRepo },
         { provide: PASSWORD_HASHER, useValue: passwordHasher },
         { provide: TOKEN_SIGNER, useValue: tokenSigner },
+        { provide: AUDIT_LOGGER, useValue: auditLogger },
       ],
     }).compile();
 
@@ -103,6 +109,99 @@ describe('SignInUseCase', () => {
 
       await expect(useCase.execute('panic', 'plain')).rejects.toBeInstanceOf(UsersFetchError);
       await expect(useCase.execute('panic', 'plain')).rejects.toMatchObject({ cause: dbError });
+    });
+  });
+
+  describe('audit logging', () => {
+    it('should log LOGIN_SUCCESS with userId on valid credentials', async () => {
+      findByUsername.mockResolvedValue(buildUser({ id: 'user-1' }));
+      verify.mockResolvedValue(true);
+      sign.mockResolvedValue('signed.jwt.token');
+
+      await useCase.execute('panic', 'plain-password');
+
+      expect(auditLog).toHaveBeenCalledTimes(1);
+      expect(auditLog).toHaveBeenCalledWith({
+        userId: 'user-1',
+        action: AUDIT_ACTIONS.LOGIN_SUCCESS,
+        entity: 'User',
+        entityId: 'user-1',
+        metadata: { username: 'panic' },
+      });
+    });
+
+    it('should log LOGIN_FAILED with the matched userId when password is wrong', async () => {
+      findByUsername.mockResolvedValue(buildUser({ id: 'user-7' }));
+      verify.mockResolvedValue(false);
+
+      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(auditLog).toHaveBeenCalledTimes(1);
+      expect(auditLog).toHaveBeenCalledWith({
+        userId: 'user-7',
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entity: 'User',
+        entityId: 'user-7',
+        metadata: { username: 'panic' },
+      });
+    });
+
+    it('should log LOGIN_FAILED with null userId when user does not exist', async () => {
+      findByUsername.mockResolvedValue(null);
+      verify.mockResolvedValue(false);
+
+      await expect(useCase.execute('ghost', 'whatever')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+
+      expect(auditLog).toHaveBeenCalledTimes(1);
+      expect(auditLog).toHaveBeenCalledWith({
+        userId: null,
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entity: 'User',
+        entityId: null,
+        metadata: { username: 'ghost' },
+      });
+    });
+
+    it('should never include the plain password or hash in audit metadata', async () => {
+      findByUsername.mockResolvedValue(buildUser({ id: 'user-1', passwordHash: 'real-hash' }));
+      verify.mockResolvedValue(true);
+      sign.mockResolvedValue('signed.jwt.token');
+
+      await useCase.execute('panic', 'super-secret-password');
+
+      const call = auditLog.mock.calls[0]?.[0];
+      const serialized = JSON.stringify(call);
+      expect(serialized).not.toContain('super-secret-password');
+      expect(serialized).not.toContain('real-hash');
+      expect(serialized).not.toContain('signed.jwt.token');
+    });
+
+    it('should still succeed when auditLogger.log rejects on success path', async () => {
+      findByUsername.mockResolvedValue(buildUser({ id: 'user-1' }));
+      verify.mockResolvedValue(true);
+      sign.mockResolvedValue('signed.jwt.token');
+      auditLog.mockRejectedValue(new Error('audit DB down'));
+
+      const result = await useCase.execute('panic', 'plain-password');
+
+      expect(result).toEqual({ access_token: 'signed.jwt.token' });
+    });
+
+    it('should still throw UnauthorizedException when auditLogger.log rejects on failure path', async () => {
+      findByUsername.mockResolvedValue(buildUser());
+      verify.mockResolvedValue(false);
+      auditLog.mockRejectedValue(new Error('audit DB down'));
+
+      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('should not log audit when repository fails (UsersFetchError)', async () => {
+      findByUsername.mockRejectedValue(new Error('DB down'));
+
+      await expect(useCase.execute('panic', 'plain')).rejects.toBeInstanceOf(UsersFetchError);
+      expect(auditLog).not.toHaveBeenCalled();
     });
   });
 });

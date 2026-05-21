@@ -9,6 +9,7 @@ import { PASSWORD_HASHER } from './domain/ports/password-hasher.port';
 import { Argon2PasswordHasher } from './infrastructure/security/argon2-password-hasher';
 import { ConfigService } from '@nestjs/config';
 import { TOKEN_SIGNER } from './domain/ports/token-signer.port';
+import { AuditModule } from '@modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TOKEN_SIGNER } from './domain/ports/token-signer.port';
         signOptions: { expiresIn: '15m' },
       }),
     }),
+    AuditModule,
   ],
   controllers: [AuthController],
   providers: [
