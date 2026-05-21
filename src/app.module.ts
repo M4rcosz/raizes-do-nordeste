@@ -6,11 +6,13 @@ import { IdentityModule } from '@modules/identity/identity.module';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { AuthGuard } from '@shared/auth/auth.guard';
 import { GlobalErrorFilter } from '@shared/filter/global-error.filter';
+import { AuditModule } from '@modules/audit/audit.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    AuditModule,
     IdentityModule,
     BusinessUnitsModule,
   ],
