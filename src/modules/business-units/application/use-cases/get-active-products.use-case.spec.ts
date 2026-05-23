@@ -23,6 +23,7 @@ describe('GetActiveProductsUseCase', () => {
       'category-1',
       new Date(),
       new Date(),
+      'example.com',
     );
 
   beforeAll(async () => {
@@ -32,6 +33,7 @@ describe('GetActiveProductsUseCase', () => {
       findAllActive,
       findById: jest.fn(),
       findAllByBusinessUnit: jest.fn(),
+      create: jest.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({

@@ -7,8 +7,9 @@ browsing, order management, payment processing, inventory control and a
 customer loyalty program — across multiple business units (franchises).
 
 > **Status:** the project is being built incrementally. The shipped surface
-> is the product catalog, identity (JWT login + argon2 hashing + global role
-> guard), and a cross-cutting audit log wired into the login flow. Orders,
+> is the product catalog (public browsing + role-gated creation), identity
+> (JWT login + argon2 hashing + global role guard), and a cross-cutting audit
+> log wired into the login flow. Orders,
 > payments, inventory, promotions and loyalty are planned (see
 > [Roadmap](#roadmap)).
 
@@ -114,7 +115,7 @@ ORM models never leak across layer boundaries.
 
 **5. Decimal-safe monetary values**
 Money is represented as [`big.js`](https://github.com/MikeMcl/big.js) inside
-the domain (avoiding IEEE-754 rounding errors) and as `Decimal(12, 2)` in
+the domain (avoiding IEEE-754 rounding errors) and as `Decimal(10, 2)` in
 PostgreSQL. DTOs convert to `number` only at the HTTP edge.
 
 **6. Errors model intent, not transport**
@@ -129,6 +130,12 @@ PostgreSQL. DTOs convert to `number` only at the HTTP edge.
   `Error.cause` chain server-side but never leaks internals to the client.
 - `ProductsFetchError` (application layer) wraps the underlying repository
   failure with the standard `Error.cause` option and `kind: unavailable`.
+- Repositories translate persistence-specific failures into domain errors at
+  the boundary — a Prisma `P2002` unique-constraint violation becomes
+  `ProductAlreadyExistsError` (`kind: conflict`) and a `P2003` foreign-key
+  violation becomes `CategoryNotFoundError` (`kind: not-found`), each chaining
+  the original error as `Error.cause`. Application and domain code therefore
+  never sees an ORM-specific error shape.
 
 **7. `shared/` is the cross-context kernel**
 Anything reused across two or more contexts (Prisma client lifecycle,
@@ -239,6 +246,7 @@ src/
     │   ├── business-units.module.ts
     │   ├── domain/               ← Pure rules (no framework imports)
     │   │   ├── entities/         ← Product, BusinessUnitMenuItem
+    │   │   ├── errors/           ← Domain errors (extend shared DomainError)
     │   │   └── repositories/     ← Interfaces + DI tokens
     │   ├── application/          ← Orchestration
     │   │   ├── use-cases/        ← One file per business action
@@ -247,7 +255,7 @@ src/
     │       ├── persistence/      ← Prisma repository implementations
     │       └── http/
     │           ├── controllers/  ← NestJS controllers
-    │           └── dto/          ← Response DTOs (serialization only)
+    │           └── dto/          ← Request + response DTOs
     └── identity/                 ← Users, JWT auth, login, roles
         ├── identity.module.ts
         ├── domain/               ← User entity, repo + hasher/signer ports, UserRole
@@ -466,9 +474,11 @@ returned by `POST /api/auth/login` directly into the "Authorize" dialog.
 ### Authentication
 
 A global `AuthGuard` protects every route by default; routes opt out with
-`@Public()`. **Every endpoint shipped so far is public.** Protected routes
-(none yet) will require a `Bearer` JWT in the `Authorization` header and may
-further restrict by role via `@Roles()`.
+`@Public()`. The read endpoints shipped so far are public; **writes are
+protected** — `POST /api/products` requires a `Bearer` JWT in the
+`Authorization` header and the `ADMIN` or `MANAGER` role (via `@Roles()`).
+A protected route returns `401` when the JWT is missing or invalid and `403`
+when the role is insufficient.
 
 | Method | Path              | Auth   | Description                                 |
 | ------ | ----------------- | ------ | ------------------------------------------- |
@@ -497,11 +507,28 @@ swallowed so they cannot break the login outcome.
 
 ### Products
 
-| Method | Path                                             | Description                                                                                                   |
-| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/products`                                  | List all active products with their base price.                                                               |
-| `GET`  | `/api/products/:productId`                       | Get a single product by id. Returns `404` if missing.                                                         |
-| `GET`  | `/api/products/by-business-unit/:businessUnitId` | List products available at a business unit (effective price = `customPrice` when set, otherwise `basePrice`). |
+| Method | Path                                             | Auth            | Description                                                                                                    |
+| ------ | ------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/products`                                  | Public          | List all active products with their base price.                                                               |
+| `GET`  | `/api/products/:productId`                       | Public          | Get a single product by id. Returns `404` if missing.                                                         |
+| `GET`  | `/api/products/by-business-unit/:businessUnitId` | Public          | List products available at a business unit (effective price = `customPrice` when set, otherwise `basePrice`). |
+| `POST` | `/api/products`                                  | ADMIN / MANAGER | Create a product. `201` on success, `409` if the name exists, `404` if the category does not exist.           |
+
+#### Request body — `ProductCreateDto` (`POST /api/products`)
+
+`price` is a **positive decimal string** (up to 8 integer + 2 fractional
+digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
+`description` is optional.
+
+```json
+{
+  "name": "Acarajé",
+  "description": "Bolinho de feijão-fradinho frito no azeite de dendê",
+  "price": "12.50",
+  "categoryId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "imageUrl": "https://example.com/images/acaraje.jpg"
+}
+```
 
 #### Response — `ProductResponseDto`
 
@@ -514,7 +541,8 @@ swallowed so they cannot break the login outcome.
   "isActive": true,
   "categoryId": "5b8f...",
   "createdAt": "2026-01-01T12:00:00.000Z",
-  "updatedAt": "2026-01-01T12:00:00.000Z"
+  "updatedAt": "2026-01-01T12:00:00.000Z",
+  "imageUrl": "https://example.com/images/acai-fitness.jpg"
 }
 ```
 
@@ -534,18 +562,23 @@ are logged server-side but never sent to the client:
 }
 ```
 
-| Status | When                                                                   |
-| ------ | ---------------------------------------------------------------------- |
-| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)   |
-| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route |
-| `404`  | Requested product does not exist                                       |
-| `503`  | Repository / database failure (`ProductsFetchError`)                   |
+| Status | When                                                                                 |
+| ------ | ------------------------------------------------------------------------------------ |
+| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                 |
+| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route               |
+| `403`  | Authenticated but the role is not allowed (e.g. creating a product without ADMIN/MANAGER) |
+| `404`  | Requested product does not exist, or a created product references a missing category |
+| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)            |
+| `503`  | Repository / database failure (`ProductsFetchError`)                                 |
 
-Application/domain errors carry a `kind` that the filter maps to a status:
-`not-found` → 404, `invalid` → 422, `conflict` → 409, `unauthorized` → 401,
-`forbidden` → 403, `unavailable` → 503. NestJS `HttpException`s (e.g.
-`NotFoundException`, validation `BadRequestException`) keep their own status
-and are re-wrapped into the same envelope.
+Application and domain errors carry a transport-agnostic `kind` that the filter
+maps to a status: `not-found` → 404, `invalid` → 422, `conflict` → 409,
+`unauthorized` → 401, `forbidden` → 403, `unavailable` → 503. Use cases throw
+these (e.g. `ProductNotFoundError`, `InvalidCredentialsError`) instead of HTTP
+exceptions, keeping the application layer framework-agnostic. NestJS
+`HttpException`s raised by the framework itself — the `AuthGuard` (`401`/`403`)
+and the validation pipe (`400`) — keep their own status and are re-wrapped into
+the same envelope.
 
 ---
 
@@ -578,7 +611,8 @@ npm run test:e2e
   (`validation-pipe.e2e-spec.ts`), and the global error envelope via a
   throwing repository (`global-error-filter.e2e-spec.ts`).
 - Each test asserts both **success paths** and **failure paths** — including
-  `NotFoundException` propagation and `ProductsFetchError` wrapping
+  `ProductNotFoundError` propagation, domain errors surfacing from the create
+  use case (`ProductAlreadyExistsError`), and `ProductsFetchError` wrapping
   with `Error.cause`.
 
 ---

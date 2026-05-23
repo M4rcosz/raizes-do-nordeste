@@ -1,6 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
 import Big from 'big.js';
 import { ProductsController } from './products.controller';
 import { GetActiveProductsUseCase } from '../../../application/use-cases/get-active-products.use-case';
@@ -9,12 +8,16 @@ import { GetProductByIdUseCase } from '../../../application/use-cases/get-produc
 import { Product } from '../../../domain/entities/product.entity';
 import { ProductResponseDto } from '../dto/product-response.dto';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
+import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
+import { ProductNotFoundError } from '../../../application/errors/product-not-found.error';
+import { ProductCreateDto } from '../dto/product-create.dto';
 
 describe('ProductsController', () => {
   let controller: ProductsController;
   let getActiveProducts: jest.Mocked<GetActiveProductsUseCase>;
   let getProductsByBusinessUnit: jest.Mocked<GetProductsByBusinessUnitUseCase>;
   let getProductById: jest.Mocked<GetProductByIdUseCase>;
+  let createProduct: jest.Mocked<CreateProductUseCase>;
 
   const buildProduct = (id = 'uuid-1'): Product =>
     new Product(
@@ -26,6 +29,7 @@ describe('ProductsController', () => {
       'category-uuid-1',
       new Date('2026-01-01T00:00:00Z'),
       new Date('2026-01-02T00:00:00Z'),
+      'example.com',
     );
 
   beforeAll(async () => {
@@ -34,6 +38,7 @@ describe('ProductsController', () => {
       execute: jest.fn(),
     } as unknown as jest.Mocked<GetProductsByBusinessUnitUseCase>;
     getProductById = { execute: jest.fn() } as unknown as jest.Mocked<GetProductByIdUseCase>;
+    createProduct = { execute: jest.fn() } as unknown as jest.Mocked<CreateProductUseCase>;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -41,6 +46,7 @@ describe('ProductsController', () => {
         { provide: GetActiveProductsUseCase, useValue: getActiveProducts },
         { provide: GetProductsByBusinessUnitUseCase, useValue: getProductsByBusinessUnit },
         { provide: GetProductByIdUseCase, useValue: getProductById },
+        { provide: CreateProductUseCase, useValue: createProduct },
       ],
     }).compile();
 
@@ -149,12 +155,33 @@ describe('ProductsController', () => {
       expect(response.id).toBe('uuid-42');
     });
 
-    it('should propagate NotFoundException raised by the use-case', async () => {
-      getProductById.execute.mockRejectedValue(new NotFoundException('Product not found.'));
+    it('should propagate ProductNotFoundError raised by the use-case', async () => {
+      getProductById.execute.mockRejectedValue(new ProductNotFoundError('Product not found.'));
 
       await expect(controller.findById({ productId: 'missing' })).rejects.toBeInstanceOf(
-        NotFoundException,
+        ProductNotFoundError,
       );
+    });
+  });
+
+  describe('create', () => {
+    it('should map the created product to its response DTO', async () => {
+      const product = buildProduct('uuid-43');
+      createProduct.execute.mockResolvedValue(product);
+
+      const body: ProductCreateDto = {
+        name: product.name,
+        price: product.price.toString(),
+        categoryId: product.categoryId,
+        imageUrl: product.imageUrl,
+      };
+
+      const response = await controller.create(body);
+
+      expect(createProduct.execute).toHaveBeenCalledWith(body);
+      expect(response).toBeInstanceOf(ProductResponseDto);
+      expect(response.id).toBe('uuid-43');
+      expect(response.price).toBe(12.5);
     });
   });
 });

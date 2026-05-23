@@ -19,6 +19,14 @@ export interface FindProductsByBusinessUnitInput extends FindProductsInput {
   businessUnitId: string;
 }
 
+export interface CreateProductInput {
+  name: string;
+  description?: string | null;
+  price: string;
+  categoryId: string;
+  imageUrl: string;
+}
+
 export interface IProductRepository {
   findById(id: string): Promise<Product | null>;
   /**
@@ -28,6 +36,7 @@ export interface IProductRepository {
    */
   findAllByBusinessUnit(input: FindProductsByBusinessUnitInput): Promise<Product[]>;
   findAllActive(input: FindProductsInput): Promise<Product[]>;
+  create(input: CreateProductInput): Promise<Product>;
 }
 
 export const PRODUCT_REPOSITORY = Symbol('ProductRepository');

@@ -3,8 +3,9 @@ import {
   USER_REPOSITORY,
   type IUserRepository,
 } from '@modules/identity/domain/repositories/user.repository';
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { UsersFetchError } from '../errors/users-fetch.error';
+import { InvalidCredentialsError } from '../errors/invalid-credentials.error';
 import {
   type IPasswordHasher,
   PASSWORD_HASHER,
@@ -51,7 +52,7 @@ export class SignInUseCase {
         entityId: user?.id ?? null,
         metadata: { username },
       });
-      throw new UnauthorizedException();
+      throw new InvalidCredentialsError();
     }
 
     await this.tryAudit({

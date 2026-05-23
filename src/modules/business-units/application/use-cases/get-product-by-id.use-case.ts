@@ -1,6 +1,7 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Product } from '../../domain/entities/product.entity';
 import { ProductsFetchError } from '../errors/product-fetch.error';
+import { ProductNotFoundError } from '../errors/product-not-found.error';
 import {
   PRODUCT_REPOSITORY,
   type IProductRepository,
@@ -25,7 +26,7 @@ export class GetProductByIdUseCase {
     }
 
     if (!product) {
-      throw new NotFoundException(`Product with id "${productId}" not found.`);
+      throw new ProductNotFoundError(`Product with id "${productId}" not found.`);
     }
 
     return product;

@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
 import { SignInUseCase } from './sign-in.use-case';
 import { IUserRepository, USER_REPOSITORY } from '../../domain/repositories/user.repository';
 import { IPasswordHasher, PASSWORD_HASHER } from '../../domain/ports/password-hasher.port';
 import { ITokenSigner, TOKEN_SIGNER } from '../../domain/ports/token-signer.port';
 import { User } from '../../domain/entities/user.entity';
 import { UsersFetchError } from '../errors/users-fetch.error';
+import { InvalidCredentialsError } from '../errors/invalid-credentials.error';
 import { AUDIT_LOGGER, IAuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
@@ -82,20 +82,22 @@ describe('SignInUseCase', () => {
       expect(result).toEqual({ access_token: 'signed.jwt.token' });
     });
 
-    it('should throw UnauthorizedException when password is invalid', async () => {
+    it('should throw InvalidCredentialsError when password is invalid', async () => {
       findByUsername.mockResolvedValue(buildUser());
       verify.mockResolvedValue(false);
 
-      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
       expect(sign).not.toHaveBeenCalled();
     });
 
-    it('should still call hasher when user does not exist (timing-safe) and throw UnauthorizedException', async () => {
+    it('should still call hasher when user does not exist (timing-safe) and throw InvalidCredentialsError', async () => {
       findByUsername.mockResolvedValue(null);
       verify.mockResolvedValue(false);
 
       await expect(useCase.execute('ghost', 'whatever')).rejects.toBeInstanceOf(
-        UnauthorizedException,
+        InvalidCredentialsError,
       );
 
       expect(verify).toHaveBeenCalledTimes(1);
@@ -134,7 +136,9 @@ describe('SignInUseCase', () => {
       findByUsername.mockResolvedValue(buildUser({ id: 'user-7' }));
       verify.mockResolvedValue(false);
 
-      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
 
       expect(auditLog).toHaveBeenCalledTimes(1);
       expect(auditLog).toHaveBeenCalledWith({
@@ -151,7 +155,7 @@ describe('SignInUseCase', () => {
       verify.mockResolvedValue(false);
 
       await expect(useCase.execute('ghost', 'whatever')).rejects.toBeInstanceOf(
-        UnauthorizedException,
+        InvalidCredentialsError,
       );
 
       expect(auditLog).toHaveBeenCalledTimes(1);
@@ -189,12 +193,14 @@ describe('SignInUseCase', () => {
       expect(result).toEqual({ access_token: 'signed.jwt.token' });
     });
 
-    it('should still throw UnauthorizedException when auditLogger.log rejects on failure path', async () => {
+    it('should still throw InvalidCredentialsError when auditLogger.log rejects on failure path', async () => {
       findByUsername.mockResolvedValue(buildUser());
       verify.mockResolvedValue(false);
       auditLog.mockRejectedValue(new Error('audit DB down'));
 
-      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(useCase.execute('panic', 'wrong')).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
     });
 
     it('should not log audit when repository fails (UsersFetchError)', async () => {
