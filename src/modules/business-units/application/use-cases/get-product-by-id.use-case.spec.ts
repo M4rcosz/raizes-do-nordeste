@@ -1,6 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
 import Big from 'big.js';
 import {
   IProductRepository,
@@ -9,6 +8,7 @@ import {
 import { GetProductByIdUseCase } from './get-product-by-id.use-case';
 import { Product } from '../../domain/entities/product.entity';
 import { ProductsFetchError } from '../errors/product-fetch.error';
+import { ProductNotFoundError } from '../errors/product-not-found.error';
 
 describe('GetProductByIdUseCase', () => {
   describe('execute', () => {
@@ -22,6 +22,7 @@ describe('GetProductByIdUseCase', () => {
         findAllActive: jest.fn(),
         findById,
         findAllByBusinessUnit: jest.fn(),
+        create: jest.fn(),
       };
 
       const moduleRef = await Test.createTestingModule({
@@ -51,6 +52,7 @@ describe('GetProductByIdUseCase', () => {
         'uuid-category',
         new Date(),
         new Date(),
+        'example.com',
       );
 
       findById.mockResolvedValue(mockProduct);
@@ -62,10 +64,10 @@ describe('GetProductByIdUseCase', () => {
       expect(data).toBe(mockProduct);
     });
 
-    it('should throw NotFoundException when the product does not exist', async () => {
+    it('should throw ProductNotFoundError when the product does not exist', async () => {
       findById.mockResolvedValue(null);
 
-      await expect(useCase.execute('missing-id')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(useCase.execute('missing-id')).rejects.toBeInstanceOf(ProductNotFoundError);
     });
 
     it('should throw ProductsFetchError wrapping the original error when the repository fails', async () => {

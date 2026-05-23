@@ -17,6 +17,7 @@ describe('ProductResponseDto', () => {
         'category-uuid-1',
         createdAt,
         updatedAt,
+        'https://example.com/acai.jpg',
       );
 
       const dto = ProductResponseDto.fromEntity(product);
@@ -31,6 +32,7 @@ describe('ProductResponseDto', () => {
         categoryId: 'category-uuid-1',
         createdAt,
         updatedAt,
+        imageUrl: 'https://example.com/acai.jpg',
       });
     });
 
@@ -44,6 +46,7 @@ describe('ProductResponseDto', () => {
         'category-uuid-1',
         new Date(),
         new Date(),
+        'https://example.com/acai.jpg',
       );
 
       const dto = ProductResponseDto.fromEntity(product);

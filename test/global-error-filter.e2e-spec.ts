@@ -21,6 +21,7 @@ describe('GlobalErrorFilter (e2e)', () => {
     findById: () => Promise.reject(new Error('SECRET: db credentials in stack')),
     findAllActive: () => Promise.reject(new Error('SECRET: db credentials in stack')),
     findAllByBusinessUnit: () => Promise.reject(new Error('SECRET: db credentials in stack')),
+    create: () => Promise.reject(new Error('SECRET: db credentials in stack')),
   };
 
   beforeAll(async () => {

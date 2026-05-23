@@ -1,5 +1,12 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PaginatedProductResponseDto } from '../dto/paginated-product-response.dto';
 import { GetActiveProductsUseCase } from '../../../application/use-cases/get-active-products.use-case';
 import { GetProductsByBusinessUnitUseCase } from '../../../application/use-cases/get-products-by-business-unit.use-case';
@@ -14,6 +21,9 @@ import {
   ProductIdParamDto,
   ProductsQueryDto,
 } from '../dto/product-query.dto';
+import { ProductCreateDto } from '../dto/product-create.dto';
+import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
+import { Roles } from '@shared/auth/roles.decorator';
 
 @ApiTags('products')
 @Controller('products')
@@ -22,6 +32,7 @@ export class ProductsController {
     private readonly getActiveProducts: GetActiveProductsUseCase,
     private readonly getProductsByBusinessUnit: GetProductsByBusinessUnitUseCase,
     private readonly getProductById: GetProductByIdUseCase,
+    private readonly createProduct: CreateProductUseCase,
   ) {}
 
   @Public()
@@ -86,6 +97,17 @@ export class ProductsController {
   })
   async findById(@Param() { productId }: ProductIdParamDto): Promise<ProductResponseDto> {
     const product = await this.getProductById.execute(productId);
+    return ProductResponseDto.fromEntity(product);
+  }
+
+  @Roles(['ADMIN', 'MANAGER'])
+  @Post()
+  @ApiOperation({ summary: 'Create a new product' })
+  @ApiCreatedResponse({ type: ProductResponseDto })
+  @ApiConflictResponse({ description: 'A product with the same name already exists' })
+  @ApiNotFoundResponse({ description: 'The referenced category does not exist' })
+  async create(@Body() productCreateDto: ProductCreateDto): Promise<ProductResponseDto> {
+    const product = await this.createProduct.execute(productCreateDto);
     return ProductResponseDto.fromEntity(product);
   }
 

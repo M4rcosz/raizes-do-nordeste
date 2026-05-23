@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import type { Product as PrismaProduct, Prisma } from '@prisma/client';
+import { Product as PrismaProduct, Prisma } from '@prisma/client';
 import Big from 'big.js';
-import {
+import type {
+  CreateProductInput,
   FindProductsByBusinessUnitInput,
   FindProductsInput,
   IProductRepository,
@@ -9,6 +10,8 @@ import {
 } from '../../domain/repositories/product.repository';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import { Product } from '../../domain/entities/product.entity';
+import { ProductAlreadyExistsError } from '../../domain/errors/product-already-exists.error';
+import { CategoryNotFoundError } from '../../domain/errors/category-not-found.error';
 
 @Injectable()
 export class PrismaProductRepository implements IProductRepository {
@@ -72,8 +75,40 @@ export class PrismaProductRepository implements IProductRepository {
         item.product.categoryId,
         item.product.createdAt,
         item.product.updatedAt,
+        item.product.imageUrl,
       );
     });
+  }
+
+  async create(input: CreateProductInput): Promise<Product> {
+    try {
+      const created = await this.prisma.product.create({
+        data: {
+          name: input.name,
+          description: input.description,
+          basePrice: input.price,
+          categoryId: input.categoryId,
+          imageUrl: input.imageUrl,
+        },
+      });
+
+      return this.toEntity(created);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2002') {
+          throw new ProductAlreadyExistsError(`A product named "${input.name}" already exists.`, {
+            cause: err,
+          });
+        }
+        if (err.code === 'P2003') {
+          throw new CategoryNotFoundError(`Category "${input.categoryId}" does not exist.`, {
+            cause: err,
+          });
+        }
+      }
+
+      throw err;
+    }
   }
 
   private buildProductWhere(filters?: ProductFilters): Prisma.ProductWhereInput {
@@ -100,6 +135,7 @@ export class PrismaProductRepository implements IProductRepository {
       raw.categoryId,
       raw.createdAt,
       raw.updatedAt,
+      raw.imageUrl,
     );
   }
 }

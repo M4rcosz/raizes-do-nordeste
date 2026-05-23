@@ -13,6 +13,7 @@ describe('Product', () => {
       'category-uuid-1',
       new Date('2026-01-01T00:00:00Z'),
       new Date('2026-01-02T00:00:00Z'),
+      'https://example.com/acai.jpg',
     );
 
   describe('isAvailable', () => {
@@ -39,6 +40,7 @@ describe('Product', () => {
         'category-uuid-1',
         createdAt,
         updatedAt,
+        'https://example.com/acai.jpg',
       );
 
       expect(product.id).toBe('uuid-1');
@@ -49,6 +51,7 @@ describe('Product', () => {
       expect(product.categoryId).toBe('category-uuid-1');
       expect(product.createdAt).toBe(createdAt);
       expect(product.updatedAt).toBe(updatedAt);
+      expect(product.imageUrl).toBe('https://example.com/acai.jpg');
     });
   });
 });

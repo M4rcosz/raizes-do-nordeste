@@ -36,6 +36,9 @@ export class ProductResponseDto {
   @ApiProperty({ example: '2026-05-18T10:30:00.000Z' })
   public readonly updatedAt: Date;
 
+  @ApiProperty({ example: 'https://example.com/images/acaraje.jpg' })
+  public readonly imageUrl: string;
+
   constructor(
     id: string,
     name: string,
@@ -45,6 +48,7 @@ export class ProductResponseDto {
     categoryId: string,
     createdAt: Date,
     updatedAt: Date,
+    imageUrl: string,
   ) {
     this.id = id;
     this.name = name;
@@ -54,6 +58,7 @@ export class ProductResponseDto {
     this.categoryId = categoryId;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
+    this.imageUrl = imageUrl;
   }
 
   static fromEntity(product: Product): ProductResponseDto {
@@ -66,6 +71,7 @@ export class ProductResponseDto {
       product.categoryId,
       product.createdAt,
       product.updatedAt,
+      product.imageUrl,
     );
   }
 }

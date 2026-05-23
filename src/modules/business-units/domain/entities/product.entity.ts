@@ -11,6 +11,7 @@ export class Product {
     public readonly categoryId: string,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public readonly imageUrl: string,
   ) {}
 
   isAvailable(): boolean {
