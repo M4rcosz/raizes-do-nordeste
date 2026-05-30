@@ -44,10 +44,11 @@ async function main(): Promise<void> {
   // USERS
   // =======================================================
 
-  const [kitchenHash, adminHash, managerHash] = await Promise.all([
+  const [kitchenHash, adminHash, managerHash, customerHash] = await Promise.all([
     hashPassword('password1'),
     hashPassword('password2'),
     hashPassword('password3'),
+    hashPassword('password4'),
   ]);
 
   await prisma.user.upsert({
@@ -85,6 +86,18 @@ async function main(): Promise<void> {
       email: 'chief@raizes.com',
       passwordHash: managerHash,
       role: 'MANAGER',
+      businessUnitId: unit2.id,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { username: 'customer1' },
+    update: {},
+    create: {
+      username: 'customer1',
+      name: 'Customer Number 1',
+      passwordHash: customerHash,
+      role: 'CUSTOMER',
       businessUnitId: unit2.id,
     },
   });

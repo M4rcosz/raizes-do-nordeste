@@ -7,6 +7,7 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { AuthGuard } from '@shared/auth/auth.guard';
 import { GlobalErrorFilter } from '@shared/filter/global-error.filter';
 import { AuditModule } from '@modules/audit/audit.module';
+import { OrdersModule } from '@modules/orders/orders.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuditModule } from '@modules/audit/audit.module';
     AuditModule,
     IdentityModule,
     BusinessUnitsModule,
+    OrdersModule,
   ],
   providers: [
     {

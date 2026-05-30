@@ -8,10 +8,10 @@ customer loyalty program — across multiple business units (franchises).
 
 > **Status:** the project is being built incrementally. The shipped surface
 > is the product catalog (public browsing + role-gated creation), identity
-> (JWT login + argon2 hashing + global role guard), and a cross-cutting audit
-> log wired into the login flow. Orders,
-> payments, inventory, promotions and loyalty are planned (see
-> [Roadmap](#roadmap)).
+> (JWT login + argon2 hashing + global role guard), a cross-cutting audit
+> log wired into the login flow, and a first slice of **orders**
+> (channel-aware `POST /api/orders` with server-side total). Payments,
+> inventory, promotions and loyalty are planned (see [Roadmap](#roadmap)).
 
 ---
 
@@ -116,7 +116,12 @@ ORM models never leak across layer boundaries.
 **5. Decimal-safe monetary values**
 Money is represented as [`big.js`](https://github.com/MikeMcl/big.js) inside
 the domain (avoiding IEEE-754 rounding errors) and as `Decimal(10, 2)` in
-PostgreSQL. DTOs convert to `number` only at the HTTP edge.
+PostgreSQL. Newer modules (starting with **orders**) serialize money as a
+**decimal string** at the HTTP edge (e.g. `"12.50"`) so JSON cannot
+reintroduce float rounding on the client. The legacy product response still
+emits a `number` and will be aligned over time. Inbound monetary fields are
+likewise validated as decimal strings (`@IsDecimal`) and never coerced via
+`@Type(() => Number)`.
 
 **6. Errors model intent, not transport**
 
@@ -239,8 +244,8 @@ src/
 └── modules/                      ← One folder per bounded context
     ├── audit/                    ← Cross-cutting audit logging
     │   ├── audit.module.ts
-    │   ├── domain/               ← AuditAction const, IAuditLogRepository
-    │   ├── application/          ← AuditService (impl), IAuditLogger port, errors
+    │   ├── domain/               ← AuditAction const, AuditLogRepository
+    │   ├── application/          ← AuditService (impl), AuditLogger port, errors
     │   └── infrastructure/       ← PrismaAuditLogRepository
     ├── business-units/           ← Products, Categories, Menu Items, Units
     │   ├── business-units.module.ts
@@ -256,11 +261,16 @@ src/
     │       └── http/
     │           ├── controllers/  ← NestJS controllers
     │           └── dto/          ← Request + response DTOs
-    └── identity/                 ← Users, JWT auth, login, roles
-        ├── identity.module.ts
-        ├── domain/               ← User entity, repo + hasher/signer ports, UserRole
-        ├── application/          ← SignInUseCase + app-layer errors
-        └── infrastructure/       ← Argon2 hasher, JWT signer, auth controller/DTO
+    ├── identity/                 ← Users, JWT auth, login, roles
+    │   ├── identity.module.ts
+    │   ├── domain/               ← User entity, repo + hasher/signer ports, UserRole
+    │   ├── application/          ← SignInUseCase + app-layer errors
+    │   └── infrastructure/       ← Argon2 hasher, JWT signer, auth controller/DTO
+    └── orders/                   ← Channel-aware order creation
+        ├── orders.module.ts
+        ├── domain/               ← Order/OrderItem entities, OrderChannel/Status VOs (channel policies), OrderRepository, NOT_FOUND errors
+        ├── application/          ← CreateOrderUseCase + AttendantRequiredError
+        └── infrastructure/       ← PrismaOrderRepository, OrdersController, request/response DTOs
 prisma/
 ├── schema.prisma                 ← Single source of truth for the database
 ├── seed.ts                       ← Idempotent seed for local dev
@@ -425,10 +435,11 @@ npm run devs
 | Promotions        | `promotions`, `order_promotions`                                       |
 | Loyalty           | `loyalty_accounts`, `loyalty_transactions`                             |
 
-> Of the domains above, **Identity, Business Units and Audit** have application
-> code shipped. The remaining tables (Inventory, Orders, Payments, Promotions,
-> Loyalty) exist in the schema as forward-looking infrastructure — there are no
-> use cases, controllers or repositories for them yet.
+> Of the domains above, **Identity, Business Units, Audit and Orders**
+> (creation only) have application code shipped. The remaining tables
+> (Inventory, Payments, Promotions, Loyalty) exist in the schema as
+> forward-looking infrastructure — there are no use cases, controllers or
+> repositories for them yet.
 
 ### Design Decisions
 
@@ -477,8 +488,10 @@ A global `AuthGuard` protects every route by default; routes opt out with
 `@Public()`. The read endpoints shipped so far are public; **writes are
 protected** — `POST /api/products` requires a `Bearer` JWT in the
 `Authorization` header and the `ADMIN` or `MANAGER` role (via `@Roles()`).
-A protected route returns `401` when the JWT is missing or invalid and `403`
-when the role is insufficient.
+`POST /api/orders` also requires a Bearer JWT, but the required role is not
+fixed on the route: it is enforced per request by the `orderChannel` policy
+(see [Orders](#orders)). A protected route returns `401` when the JWT is
+missing or invalid and `403` when the role is insufficient.
 
 | Method | Path              | Auth   | Description                                 |
 | ------ | ----------------- | ------ | ------------------------------------------- |
@@ -507,7 +520,7 @@ swallowed so they cannot break the login outcome.
 
 ### Products
 
-| Method | Path                                             | Auth            | Description                                                                                                    |
+| Method | Path                                             | Auth            | Description                                                                                                   |
 | ------ | ------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------- |
 | `GET`  | `/api/products`                                  | Public          | List all active products with their base price.                                                               |
 | `GET`  | `/api/products/:productId`                       | Public          | Get a single product by id. Returns `404` if missing.                                                         |
@@ -546,6 +559,83 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 }
 ```
 
+### Orders
+
+| Method | Path          | Auth   | Description                                                                                            |
+| ------ | ------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| `POST` | `/api/orders` | Bearer | Create an order. Behavior is driven by the `orderChannel` policy (customer source + role requirement). |
+
+#### Channel policies
+
+| Channel   | Requires staff actor | `customerId` source          |
+| --------- | -------------------- | ---------------------------- |
+| `APP`     | No                   | Authenticated user (`sub`)   |
+| `WEB`     | No                   | Authenticated user (`sub`)   |
+| `TOTEM`   | No                   | Anonymous (`null`)           |
+| `COUNTER` | Yes                  | From request body (optional) |
+| `PICKUP`  | Yes                  | From request body (optional) |
+
+When the channel requires a staff actor (`COUNTER` / `PICKUP`), a JWT
+belonging to a `CUSTOMER` is rejected with `403 AttendantRequiredError`.
+For these channels `attendantId` is taken from the JWT (`sub`) — never from
+the request body.
+
+#### Request body — `OrderCreateDto`
+
+`unitPrice` is a **decimal string** (`@IsDecimal`, up to 2 fractional digits) —
+money is never coerced to a `number`. `totalAmount` is **not** accepted from
+the client: it is computed server-side from each item's `quantity × unitPrice`
+via domain statics (`OrderItem.calculateSubtotal`, `Order.calculateTotalAmount`).
+
+```json
+{
+  "businessUnitId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "customerId": "f3b7c2e1-1a2b-3c4d-5e6f-7a8b9c0d1e2f",
+  "orderChannel": "COUNTER",
+  "pointsRedeemed": 0,
+  "notes": "no onions",
+  "orderItems": [{ "productId": "b2d8a3b1-...", "quantity": 2, "unitPrice": "12.50" }]
+}
+```
+
+#### Response — `OrderResponseDto`
+
+Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
+**decimal string** so JSON cannot reintroduce float rounding on the client.
+
+```json
+{
+  "id": "0b1c...",
+  "businessUnitId": "7c9e...",
+  "customerId": "f3b7...",
+  "attendantId": "9a2e...",
+  "pointsRedeemed": 0,
+  "pointsEarned": 0,
+  "totalAmount": "25.00",
+  "notes": "no onions",
+  "orderChannel": "COUNTER",
+  "orderStatus": "PENDING",
+  "createdAt": "2026-05-30T12:00:00.000Z",
+  "updatedAt": "2026-05-30T12:00:00.000Z",
+  "updatedById": null,
+  "orderItems": [
+    {
+      "id": "2f9b...",
+      "productId": "b2d8...",
+      "quantity": 2,
+      "unitPrice": "12.50",
+      "subtotal": "25.00",
+      "notes": null
+    }
+  ]
+}
+```
+
+A foreign key pointing to a missing business unit, customer or product
+surfaces as `404 OrderReferenceNotFoundError` — `PrismaOrderRepository`
+translates Prisma's `P2003` into a typed domain error so the application
+layer never sees the ORM-specific shape.
+
 ### Error responses
 
 Every error passes through the global exception filter and is returned with a
@@ -562,14 +652,14 @@ are logged server-side but never sent to the client:
 }
 ```
 
-| Status | When                                                                                 |
-| ------ | ------------------------------------------------------------------------------------ |
-| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                 |
-| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route               |
+| Status | When                                                                                      |
+| ------ | ----------------------------------------------------------------------------------------- |
+| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                      |
+| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route                    |
 | `403`  | Authenticated but the role is not allowed (e.g. creating a product without ADMIN/MANAGER) |
-| `404`  | Requested product does not exist, or a created product references a missing category |
-| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)            |
-| `503`  | Repository / database failure (`ProductsFetchError`)                                 |
+| `404`  | Requested product does not exist, or a created product references a missing category      |
+| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                 |
+| `503`  | Repository / database failure (`ProductsFetchError`)                                      |
 
 Application and domain errors carry a transport-agnostic `kind` that the filter
 maps to a status: `not-found` → 404, `invalid` → 422, `conflict` → 409,
@@ -600,10 +690,10 @@ npm run test:e2e
 
 ### Testing strategy
 
-- **Unit tests** substitute the repository interfaces (`IProductRepository`,
-  `IUserRepository`) with test doubles, so use cases and the `AuthGuard` are
-  validated without any database. Entities, DTOs and the global exception
-  filter are tested in isolation.
+- **Unit tests** substitute the repository interfaces (`ProductRepository`,
+  `UserRepository`, `OrderRepository`) with test doubles, so use cases and the
+  `AuthGuard` are validated without any database. Entities, value objects,
+  DTOs and the global exception filter are tested in isolation.
 - **e2e tests** boot the full Nest application against the development
   database and exercise the HTTP surface — products
   (`app.e2e-spec.ts`), login + audit-log persistence
@@ -641,10 +731,14 @@ modules — already designed in the database schema — are:
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`). Refresh-token rotation
       and user registration still pending.
 - [x] **Audit** — `audit_logs` table, `AuditService` with metadata
-      sanitization (password/token/CPF redaction), `IAuditLogger` port
+      sanitization (password/token/CPF redaction), `AuditLogger` port
       injected into `SignInUseCase` for `LOGIN_SUCCESS` / `LOGIN_FAILED`.
       Ready to be injected into future order / payment use cases.
-- [ ] **Orders** — order creation, item management, status transitions
+- [x] **Orders** — channel-aware `POST /api/orders` with decimal-string
+      money, server-side total, attendant role check via `OrderChannel`
+      policies, and `customerId` nullable for anonymous totem orders.
+      Item updates, status transitions, idempotent creation and order
+      reads still pending.
 - [ ] **Payments** — gateway integration (mocked initially), refund flow
 - [ ] **Inventory** — stock, reservations, inventory transactions ledger
 - [ ] **Promotions** — percentage / fixed-amount / free-item discounts
