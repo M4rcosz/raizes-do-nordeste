@@ -83,6 +83,16 @@ describe('Orders (e2e) — POST /api/orders', () => {
     });
     productId = product.id;
 
+    // The product is only orderable once it is on this unit's menu.
+    await prisma.businessUnitMenuItem.create({
+      data: {
+        businessUnitId: unit.id,
+        productId: product.id,
+        customPrice: '12.50',
+        isAvailable: true,
+      },
+    });
+
     const hasher = new Argon2PasswordHasher();
     const passwordHash = await hasher.hash(password);
     const user = await prisma.user.create({
@@ -108,7 +118,8 @@ describe('Orders (e2e) — POST /api/orders', () => {
     await prisma.order.deleteMany({ where: { businessUnitId: unitId } });
     await prisma.auditLog.deleteMany({ where: { userId: customerId } });
     await prisma.auditLog.deleteMany({ where: { entity: 'User', entityId: customerId } });
-    await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.businessUnitMenuItem.deleteMany({ where: { businessUnitId: unitId } });
+    await prisma.product.deleteMany({ where: { categoryId } });
     await prisma.category.deleteMany({ where: { id: categoryId } });
     await prisma.user.deleteMany({ where: { id: customerId } });
     await prisma.businessUnit.deleteMany({ where: { id: unitId } });
@@ -150,6 +161,109 @@ describe('Orders (e2e) — POST /api/orders', () => {
       .expect(403);
   });
 
+  it('rejects with 404 when the product is not on this unit menu', async () => {
+    const offMenuProduct = await prisma.product.create({
+      data: {
+        name: `E2E OffMenu ${randomUUID().slice(0, 8)}`,
+        description: 'off-menu',
+        basePrice: '12.50',
+        imageUrl: 'https://example.com/off-menu.jpg',
+        categoryId,
+      },
+    });
+
+    try {
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId: offMenuProduct.id, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(404);
+    } finally {
+      await prisma.product.delete({ where: { id: offMenuProduct.id } });
+    }
+  });
+
+  it('rejects with 422 when the product is inactive', async () => {
+    const inactiveProduct = await prisma.product.create({
+      data: {
+        name: `E2E Inactive ${randomUUID().slice(0, 8)}`,
+        description: 'inactive',
+        basePrice: '12.50',
+        imageUrl: 'https://example.com/inactive.jpg',
+        categoryId,
+        isActive: false,
+        menuItems: {
+          create: { businessUnitId: unitId, customPrice: '12.50', isAvailable: true },
+        },
+      },
+    });
+
+    try {
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId: inactiveProduct.id, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(422);
+    } finally {
+      await prisma.businessUnitMenuItem.deleteMany({
+        where: { productId: inactiveProduct.id },
+      });
+      await prisma.product.delete({ where: { id: inactiveProduct.id } });
+    }
+  });
+
+  it('rejects with 422 when the menu item is unavailable', async () => {
+    const unavailableProduct = await prisma.product.create({
+      data: {
+        name: `E2E Unavailable ${randomUUID().slice(0, 8)}`,
+        description: 'unavailable',
+        basePrice: '12.50',
+        imageUrl: 'https://example.com/unavailable.jpg',
+        categoryId,
+        menuItems: {
+          create: { businessUnitId: unitId, customPrice: '12.50', isAvailable: false },
+        },
+      },
+    });
+
+    try {
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId: unavailableProduct.id, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(422);
+    } finally {
+      await prisma.businessUnitMenuItem.deleteMany({
+        where: { productId: unavailableProduct.id },
+      });
+      await prisma.product.delete({ where: { id: unavailableProduct.id } });
+    }
+  });
+
+  it('rejects with 422 when unitPrice does not match the authoritative menu price', async () => {
+    await request(server)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        businessUnitId: unitId,
+        orderChannel: 'APP',
+        orderItems: [{ productId, quantity: 1, unitPrice: '0.01' }],
+      })
+      .expect(422);
+  });
+
   it('creates an order, persists items, and returns the computed totals (201)', async () => {
     const response = await request(server)
       .post('/api/orders')
@@ -159,7 +273,7 @@ describe('Orders (e2e) — POST /api/orders', () => {
         orderChannel: 'APP',
         orderItems: [
           { productId, quantity: 3, unitPrice: '12.50' },
-          { productId, quantity: 2, unitPrice: '5.00' },
+          { productId, quantity: 2, unitPrice: '12.50' },
         ],
       })
       .expect(201);
@@ -170,17 +284,18 @@ describe('Orders (e2e) — POST /api/orders', () => {
     expect(body.attendantId).toBeNull();
     expect(body.orderChannel).toBe('APP');
     expect(body.orderStatus).toBe('PENDING');
-    expect(body.totalAmount).toBe('47.50');
+    expect(body.totalAmount).toBe('62.50');
+    expect(body.pointsEarned).toBe(0);
     expect(body.orderItems).toHaveLength(2);
     expect(body.orderItems[0].subtotal).toBe('37.50');
-    expect(body.orderItems[1].subtotal).toBe('10.00');
+    expect(body.orderItems[1].subtotal).toBe('25.00');
 
     const dbOrder = await prisma.order.findUnique({
       where: { id: body.id },
       include: { orderItems: true },
     });
     expect(dbOrder).not.toBeNull();
-    expect(dbOrder?.totalAmount.toString()).toBe('47.5');
+    expect(dbOrder?.totalAmount.toString()).toBe('62.5');
     expect(dbOrder?.orderItems).toHaveLength(2);
   });
 });

@@ -1,3 +1,4 @@
+import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { Order } from '../entities/order.entity';
 import type { OrderChannel } from '../value-objects/order-channel';
 
@@ -21,7 +22,7 @@ export interface CreateOrderInput {
 }
 
 export interface OrderRepository {
-  create(input: CreateOrderInput): Promise<Order>;
+  create(input: CreateOrderInput, tx?: TransactionContext): Promise<Order>;
 }
 
 export const ORDER_REPOSITORY = Symbol('OrderRepository');

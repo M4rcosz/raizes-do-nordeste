@@ -9,14 +9,17 @@ import Big from 'big.js';
 import { Prisma } from '@prisma/client';
 import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
+import { TransactionContext } from '@shared/transaction/transaction-runner.port';
 
 @Injectable()
 export class PrismaOrderRepository implements OrderRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(input: CreateOrderInput): Promise<Order> {
+  async create(input: CreateOrderInput, tx?: TransactionContext): Promise<Order> {
+    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
+
     try {
-      const fullOrder = await this.prisma.order.create({
+      const fullOrder = await db.order.create({
         data: {
           businessUnitId: input.businessUnitId,
           customerId: input.customerId,

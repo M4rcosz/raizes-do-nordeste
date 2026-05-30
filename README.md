@@ -587,6 +587,24 @@ money is never coerced to a `number`. `totalAmount` is **not** accepted from
 the client: it is computed server-side from each item's `quantity × unitPrice`
 via domain statics (`OrderItem.calculateSubtotal`, `Order.calculateTotalAmount`).
 
+`unitPrice` is also **validated server-side** against the authoritative price
+of the product at the business unit. Resolution order is
+`BusinessUnitMenuItem.customPrice` (when a menu item exists for the pair) →
+`Product.basePrice`. A divergence surfaces as `422 PriceMismatchError`, so a
+tampered body cannot buy an item for a price different from the registered
+one. The same lookup also surfaces `Product.isActive`: an order referencing
+an inactive product is rejected with `422 ProductInactiveError` before any
+write reaches the database. The `OrderPricing` port returns `{ price, isActive }`
+per product; the Prisma implementation batches the product + menu-item
+fetches in parallel.
+
+`pointsEarned` is **not** accepted from the client either. It is reserved for
+the future loyalty module: once `LoyaltyAccount` is built, an order whose
+customer has an account with `consentGiven=true` will earn `floor(totalAmount)`
+points (1 point per real). Until then every order persists `pointsEarned = 0`
+(the schema default). A `TODO(loyalty)` marker lives in
+`CreateOrderUseCase.execute` at the point where this computation will be added.
+
 ```json
 {
   "businessUnitId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
@@ -631,10 +649,12 @@ Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
 }
 ```
 
-A foreign key pointing to a missing business unit, customer or product
-surfaces as `404 OrderReferenceNotFoundError` — `PrismaOrderRepository`
-translates Prisma's `P2003` into a typed domain error so the application
-layer never sees the ORM-specific shape.
+A foreign key pointing to a missing business unit, customer, attendant or
+product surfaces as `404 OrderReferenceNotFoundError` — `PrismaOrderRepository`
+translates Prisma's `P2003` into a typed domain error and inspects
+`err.meta.field_name` to produce a message that names the specific reference
+(`customer`, `business unit`, `product`, `attendant`) instead of grouping all
+foreign-key failures under one generic label.
 
 ### Error responses
 
@@ -652,14 +672,15 @@ are logged server-side but never sent to the client:
 }
 ```
 
-| Status | When                                                                                      |
-| ------ | ----------------------------------------------------------------------------------------- |
-| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                      |
-| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route                    |
-| `403`  | Authenticated but the role is not allowed (e.g. creating a product without ADMIN/MANAGER) |
-| `404`  | Requested product does not exist, or a created product references a missing category      |
-| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                 |
-| `503`  | Repository / database failure (`ProductsFetchError`)                                      |
+| Status | When                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------ |
+| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                       |
+| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route                     |
+| `403`  | Authenticated but the role is not allowed (e.g. a `CUSTOMER` creating a `COUNTER` order)   |
+| `404`  | Requested product does not exist, or an order references a missing business unit / product |
+| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                  |
+| `422`  | An order references an inactive product (`ProductInactiveError`) or a `unitPrice` does not match the authoritative price (`PriceMismatchError`) |
+| `503`  | Repository / database failure (`ProductsFetchError`)                                       |
 
 Application and domain errors carry a transport-agnostic `kind` that the filter
 maps to a status: `not-found` → 404, `invalid` → 422, `conflict` → 409,
@@ -735,14 +756,19 @@ modules — already designed in the database schema — are:
       injected into `SignInUseCase` for `LOGIN_SUCCESS` / `LOGIN_FAILED`.
       Ready to be injected into future order / payment use cases.
 - [x] **Orders** — channel-aware `POST /api/orders` with decimal-string
-      money, server-side total, attendant role check via `OrderChannel`
-      policies, and `customerId` nullable for anonymous totem orders.
-      Item updates, status transitions, idempotent creation and order
-      reads still pending.
+      money, server-side total, server-side `unitPrice` validation against
+      `BusinessUnitMenuItem.customPrice` / `Product.basePrice` (anti-tampering),
+      `Product.isActive` enforcement (inactive products cannot be ordered),
+      attendant role check via `OrderChannel` policies, and `customerId`
+      nullable for anonymous totem orders. Item updates, status transitions,
+      idempotent creation and order reads still pending.
 - [ ] **Payments** — gateway integration (mocked initially), refund flow
 - [ ] **Inventory** — stock, reservations, inventory transactions ledger
 - [ ] **Promotions** — percentage / fixed-amount / free-item discounts
-- [ ] **Loyalty** — points earning, redemption and consent tracking (LGPD)
+- [ ] **Loyalty** — points earning (`floor(totalAmount)` per order, conditional
+      on a `LoyaltyAccount` with `consentGiven=true`), redemption with balance
+      validation against `LoyaltyAccount.totalPoints`, and consent tracking
+      (LGPD). The `pointsEarned` hook lives in `CreateOrderUseCase` already.
 
 ---
 
