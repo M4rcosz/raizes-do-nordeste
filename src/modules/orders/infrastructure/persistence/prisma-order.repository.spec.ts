@@ -35,11 +35,11 @@ interface PersistedOrderRow {
   }[];
 }
 
-const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
+const knownError = (code: string, fieldName?: string): Prisma.PrismaClientKnownRequestError =>
   new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
     code,
     clientVersion: '7.7.0',
-    meta: { field_name: 'orders_customer_id_fkey' },
+    meta: fieldName ? { field_name: fieldName } : undefined,
   });
 
 describe('PrismaOrderRepository', () => {
@@ -138,15 +138,36 @@ describe('PrismaOrderRepository', () => {
     });
 
     it('translates a P2003 foreign-key violation into OrderReferenceNotFoundError, chaining the cause', async () => {
-      const prismaError = knownError('P2003');
+      const prismaError = knownError('P2003', 'orders_customer_id_fkey');
       create.mockRejectedValue(prismaError);
 
       await expect(repo.create(input)).rejects.toBeInstanceOf(OrderReferenceNotFoundError);
       await expect(repo.create(input)).rejects.toMatchObject({ cause: prismaError });
     });
 
+    it.each<[string, string]>([
+      ['orders_customer_id_fkey', 'customer'],
+      ['orders_business_unit_id_fkey', 'business unit'],
+      ['order_items_product_id_fkey', 'product'],
+      ['orders_attendant_id_fkey', 'attendant'],
+    ])('names %s as a %s reference in the error message', async (fieldName, expected) => {
+      create.mockRejectedValue(knownError('P2003', fieldName));
+
+      await expect(repo.create(input)).rejects.toMatchObject({
+        message: `Order references a ${expected} that does not exist.`,
+      });
+    });
+
+    it('falls back to a generic reference label when field_name is missing', async () => {
+      create.mockRejectedValue(knownError('P2003'));
+
+      await expect(repo.create(input)).rejects.toMatchObject({
+        message: 'Order references a related entity that does not exist.',
+      });
+    });
+
     it('rethrows unmapped Prisma error codes unchanged', async () => {
-      const prismaError = knownError('P2002');
+      const prismaError = knownError('P2002', 'orders_cnpj_key');
       create.mockRejectedValue(prismaError);
 
       await expect(repo.create(input)).rejects.toBe(prismaError);

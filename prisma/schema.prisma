@@ -217,7 +217,7 @@ model Order {
   updatedById    String?      @map("updated_by")
 
   businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id])
-  customer     User?         @relation("CustomerOrders", fields: [customerId], references: [id])
+  customer     User?         @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
   attendant    User?        @relation("AttendantOrders", fields: [attendantId], references: [id])
   updatedBy    User?        @relation("OrdersUpdatedBy", fields: [updatedById], references: [id])
 

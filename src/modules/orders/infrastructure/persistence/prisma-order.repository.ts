@@ -39,16 +39,37 @@ export class PrismaOrderRepository implements OrderRepository {
 
       return this.toEntity(fullOrder);
     } catch (err) {
-      // P2003: a foreign key (businessUnit, customer or one of the products) points to a missing row.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        const reference = this.classifyForeignKey(err.meta);
         throw new OrderReferenceNotFoundError(
-          'Order references a business unit, customer or product that does not exist.',
+          `Order references a ${reference} that does not exist.`,
           { cause: err },
         );
       }
 
       throw err;
     }
+  }
+
+  private classifyForeignKey(meta: unknown): string {
+    const fieldName =
+      typeof meta === 'object' && meta !== null && 'field_name' in meta
+        ? String((meta as { field_name: unknown }).field_name).toLowerCase()
+        : '';
+
+    if (fieldName.includes('customer')) {
+      return 'customer';
+    }
+    if (fieldName.includes('business_unit')) {
+      return 'business unit';
+    }
+    if (fieldName.includes('product')) {
+      return 'product';
+    }
+    if (fieldName.includes('attendant')) {
+      return 'attendant';
+    }
+    return 'related entity';
   }
 
   private toEntity(raw: Prisma.OrderGetPayload<{ include: { orderItems: true } }>): Order {

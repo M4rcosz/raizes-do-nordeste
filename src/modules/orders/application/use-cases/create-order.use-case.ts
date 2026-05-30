@@ -86,11 +86,17 @@ export class CreateOrderUseCase {
       return { attendantId: actor.id, customerId: command.customerId ?? null };
     }
 
-    if (channelCustomerSource(command.orderChannel) === 'anonymous') {
-      return { attendantId: null, customerId: null };
+    const source = channelCustomerSource(command.orderChannel);
+    switch (source) {
+      case 'authenticated':
+        return { attendantId: null, customerId: actor.id };
+      case 'anonymous':
+        return { attendantId: null, customerId: null };
+      case 'from-request':
+        // Unreachable today: 'from-request' only pairs with requiresAttendant=true.
+        throw new Error(
+          `Channel ${command.orderChannel} mixes 'from-request' with no attendant policy.`,
+        );
     }
-
-    // 'authenticated' channels (APP/WEB): the logged-in user is the customer.
-    return { attendantId: null, customerId: actor.id };
   }
 }
