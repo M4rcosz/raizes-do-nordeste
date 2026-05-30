@@ -8,7 +8,7 @@ export interface AuditLogRecord {
   metadata?: Record<string, unknown>;
 }
 
-export interface IAuditLogRepository {
+export interface AuditLogRepository {
   create(record: AuditLogRecord): Promise<void>;
 }
 

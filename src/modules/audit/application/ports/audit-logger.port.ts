@@ -2,7 +2,7 @@ import { AuditLogRecord } from '@modules/audit/domain/repositories/audit-log.rep
 
 export type AuditLogInput = AuditLogRecord;
 
-export interface IAuditLogger {
+export interface AuditLogger {
   log(input: AuditLogInput): Promise<void>;
 }
 

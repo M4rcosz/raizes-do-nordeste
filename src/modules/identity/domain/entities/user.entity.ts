@@ -1,4 +1,4 @@
-import { IPasswordHasher } from '../ports/password-hasher.port';
+import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRole } from '../value-objects/user-role';
 
 export class User {
@@ -20,12 +20,12 @@ export class User {
   static async verifyPasswordOrDecoy(
     user: User | null,
     plainPassword: string,
-    hasher: IPasswordHasher,
+    hasher: PasswordHasher,
   ): Promise<boolean> {
     return user ? user.verifyPassword(plainPassword, hasher) : hasher.verify(null, plainPassword);
   }
 
-  private verifyPassword(plainPassword: string, hasher: IPasswordHasher): Promise<boolean> {
+  private verifyPassword(plainPassword: string, hasher: PasswordHasher): Promise<boolean> {
     return hasher.verify(this.passwordHash, plainPassword);
   }
 }

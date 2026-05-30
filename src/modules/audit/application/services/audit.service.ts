@@ -2,9 +2,9 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AUDIT_LOG_REPOSITORY,
   AuditLogRecord,
-  type IAuditLogRepository,
+  type AuditLogRepository,
 } from '@modules/audit/domain/repositories/audit-log.repository';
-import { AuditLogInput, IAuditLogger } from '../ports/audit-logger.port';
+import { AuditLogInput, AuditLogger } from '../ports/audit-logger.port';
 
 const REDACTED = '[REDACTED]';
 
@@ -23,12 +23,12 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 @Injectable()
-export class AuditService implements IAuditLogger {
+export class AuditService implements AuditLogger {
   private readonly logger = new Logger(AuditService.name);
 
   constructor(
     @Inject(AUDIT_LOG_REPOSITORY)
-    private readonly repo: IAuditLogRepository,
+    private readonly repo: AuditLogRepository,
   ) {}
 
   async log(input: AuditLogInput): Promise<void> {

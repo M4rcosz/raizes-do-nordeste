@@ -3,11 +3,11 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import {
   AuditLogRecord,
-  IAuditLogRepository,
+  AuditLogRepository,
 } from '@modules/audit/domain/repositories/audit-log.repository';
 
 @Injectable()
-export class PrismaAuditLogRepository implements IAuditLogRepository {
+export class PrismaAuditLogRepository implements AuditLogRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(record: AuditLogRecord): Promise<void> {

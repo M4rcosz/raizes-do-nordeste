@@ -1,5 +1,5 @@
 import argon from 'argon2';
-import { IPasswordHasher } from '../../domain/ports/password-hasher.port';
+import { PasswordHasher } from '../../domain/ports/password-hasher.port';
 import { Injectable } from '@nestjs/common';
 
 const ARGON_OPTIONS = {
@@ -10,7 +10,7 @@ const ARGON_OPTIONS = {
 } as const;
 
 @Injectable()
-export class Argon2PasswordHasher implements IPasswordHasher {
+export class Argon2PasswordHasher implements PasswordHasher {
   private dummyHash?: string;
 
   async hash(password: string): Promise<string> {

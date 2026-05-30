@@ -4,14 +4,14 @@ import { ProductsFetchError } from '../errors/product-fetch.error';
 import { ProductNotFoundError } from '../errors/product-not-found.error';
 import {
   PRODUCT_REPOSITORY,
-  type IProductRepository,
+  type ProductRepository,
 } from '../../domain/repositories/product.repository';
 
 @Injectable()
 export class GetProductByIdUseCase {
   constructor(
     @Inject(PRODUCT_REPOSITORY)
-    private readonly products: IProductRepository,
+    private readonly products: ProductRepository,
   ) {}
 
   async execute(productId: string): Promise<Product> {

@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import Big from 'big.js';
 import {
   type CreateProductInput,
-  IProductRepository,
+  ProductRepository,
   PRODUCT_REPOSITORY,
 } from '../../domain/repositories/product.repository';
 import { CreateProductUseCase } from './create-product.use-case';
@@ -12,7 +12,7 @@ import { ProductAlreadyExistsError } from '../../domain/errors/product-already-e
 
 describe('CreateProductUseCase', () => {
   let useCase: CreateProductUseCase;
-  let create: jest.MockedFunction<IProductRepository['create']>;
+  let create: jest.MockedFunction<ProductRepository['create']>;
 
   const input: CreateProductInput = {
     name: 'Acarajé',
@@ -23,9 +23,9 @@ describe('CreateProductUseCase', () => {
   };
 
   beforeAll(async () => {
-    create = jest.fn() as jest.MockedFunction<IProductRepository['create']>;
+    create = jest.fn() as jest.MockedFunction<ProductRepository['create']>;
 
-    const mockRepo: jest.Mocked<IProductRepository> = {
+    const mockRepo: jest.Mocked<ProductRepository> = {
       findAllActive: jest.fn(),
       findById: jest.fn(),
       findAllByBusinessUnit: jest.fn(),

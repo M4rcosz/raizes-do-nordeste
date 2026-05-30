@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   PRODUCT_REPOSITORY,
   ProductFilters,
-  type IProductRepository,
+  type ProductRepository,
 } from '../../domain/repositories/product.repository';
 import { ProductsFetchError } from '../errors/product-fetch.error';
 import { Product } from '../../domain/entities/product.entity';
@@ -18,7 +18,7 @@ export interface GetActiveProductsInput {
 export class GetActiveProductsUseCase {
   constructor(
     @Inject(PRODUCT_REPOSITORY)
-    private readonly products: IProductRepository,
+    private readonly products: ProductRepository,
   ) {}
 
   async execute(input: GetActiveProductsInput): Promise<CursorPaginatedResult<Product>> {

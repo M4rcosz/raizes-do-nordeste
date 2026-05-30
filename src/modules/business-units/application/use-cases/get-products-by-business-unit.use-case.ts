@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  type IProductRepository,
+  type ProductRepository,
   PRODUCT_REPOSITORY,
   ProductFilters,
 } from '../../domain/repositories/product.repository';
@@ -19,7 +19,7 @@ export interface GetProductsByBusinessUnitInput {
 export class GetProductsByBusinessUnitUseCase {
   constructor(
     @Inject(PRODUCT_REPOSITORY)
-    private readonly products: IProductRepository,
+    private readonly products: ProductRepository,
   ) {}
 
   async execute(input: GetProductsByBusinessUnitInput): Promise<CursorPaginatedResult<Product>> {

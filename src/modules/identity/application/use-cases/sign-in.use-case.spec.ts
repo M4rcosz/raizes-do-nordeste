@@ -1,21 +1,21 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
 import { SignInUseCase } from './sign-in.use-case';
-import { IUserRepository, USER_REPOSITORY } from '../../domain/repositories/user.repository';
-import { IPasswordHasher, PASSWORD_HASHER } from '../../domain/ports/password-hasher.port';
-import { ITokenSigner, TOKEN_SIGNER } from '../../domain/ports/token-signer.port';
+import { UserRepository, USER_REPOSITORY } from '../../domain/repositories/user.repository';
+import { PasswordHasher, PASSWORD_HASHER } from '../../domain/ports/password-hasher.port';
+import { TokenSigner, TOKEN_SIGNER } from '../../domain/ports/token-signer.port';
 import { User } from '../../domain/entities/user.entity';
 import { UsersFetchError } from '../errors/users-fetch.error';
 import { InvalidCredentialsError } from '../errors/invalid-credentials.error';
-import { AUDIT_LOGGER, IAuditLogger } from '@modules/audit/application/ports/audit-logger.port';
+import { AUDIT_LOGGER, AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
 describe('SignInUseCase', () => {
   let useCase: SignInUseCase;
-  let findByUsername: jest.MockedFunction<IUserRepository['findByUsername']>;
-  let verify: jest.MockedFunction<IPasswordHasher['verify']>;
-  let sign: jest.MockedFunction<ITokenSigner['sign']>;
-  let auditLog: jest.MockedFunction<IAuditLogger['log']>;
+  let findByUsername: jest.MockedFunction<UserRepository['findByUsername']>;
+  let verify: jest.MockedFunction<PasswordHasher['verify']>;
+  let sign: jest.MockedFunction<TokenSigner['sign']>;
+  let auditLog: jest.MockedFunction<AuditLogger['log']>;
 
   const buildUser = (overrides?: { id?: string; passwordHash?: string }): User =>
     new User(
@@ -34,18 +34,18 @@ describe('SignInUseCase', () => {
     );
 
   beforeAll(async () => {
-    findByUsername = jest.fn() as jest.MockedFunction<IUserRepository['findByUsername']>;
-    verify = jest.fn() as jest.MockedFunction<IPasswordHasher['verify']>;
-    sign = jest.fn() as jest.MockedFunction<ITokenSigner['sign']>;
-    auditLog = jest.fn() as jest.MockedFunction<IAuditLogger['log']>;
+    findByUsername = jest.fn() as jest.MockedFunction<UserRepository['findByUsername']>;
+    verify = jest.fn() as jest.MockedFunction<PasswordHasher['verify']>;
+    sign = jest.fn() as jest.MockedFunction<TokenSigner['sign']>;
+    auditLog = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
 
-    const userRepo: jest.Mocked<IUserRepository> = { findByUsername };
-    const passwordHasher: jest.Mocked<IPasswordHasher> = {
-      hash: jest.fn() as jest.MockedFunction<IPasswordHasher['hash']>,
+    const userRepo: jest.Mocked<UserRepository> = { findByUsername };
+    const passwordHasher: jest.Mocked<PasswordHasher> = {
+      hash: jest.fn() as jest.MockedFunction<PasswordHasher['hash']>,
       verify,
     };
-    const tokenSigner: jest.Mocked<ITokenSigner> = { sign };
-    const auditLogger: jest.Mocked<IAuditLogger> = { log: auditLog };
+    const tokenSigner: jest.Mocked<TokenSigner> = { sign };
+    const auditLogger: jest.Mocked<AuditLogger> = { log: auditLog };
 
     const moduleRef = await Test.createTestingModule({
       providers: [

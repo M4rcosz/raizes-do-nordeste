@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import Big from 'big.js';
 import { GetProductsByBusinessUnitUseCase } from './get-products-by-business-unit.use-case';
 import {
-  IProductRepository,
+  ProductRepository,
   PRODUCT_REPOSITORY,
 } from '../../domain/repositories/product.repository';
 import { Product } from '../../domain/entities/product.entity';
@@ -11,7 +11,7 @@ import { ProductsFetchError } from '../errors/product-fetch.error';
 
 describe('GetProductsByBusinessUnitUseCase', () => {
   let useCase: GetProductsByBusinessUnitUseCase;
-  let findAllByBusinessUnit: jest.MockedFunction<IProductRepository['findAllByBusinessUnit']>;
+  let findAllByBusinessUnit: jest.MockedFunction<ProductRepository['findAllByBusinessUnit']>;
 
   const buildProduct = (id: string): Product =>
     new Product(
@@ -28,10 +28,10 @@ describe('GetProductsByBusinessUnitUseCase', () => {
 
   beforeAll(async () => {
     findAllByBusinessUnit = jest.fn() as jest.MockedFunction<
-      IProductRepository['findAllByBusinessUnit']
+      ProductRepository['findAllByBusinessUnit']
     >;
 
-    const mockRepo: jest.Mocked<IProductRepository> = {
+    const mockRepo: jest.Mocked<ProductRepository> = {
       findAllActive: jest.fn(),
       findById: jest.fn(),
       findAllByBusinessUnit,

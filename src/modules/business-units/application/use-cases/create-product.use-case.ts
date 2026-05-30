@@ -3,14 +3,14 @@ import { Product } from '../../domain/entities/product.entity';
 import {
   type CreateProductInput,
   PRODUCT_REPOSITORY,
-  type IProductRepository,
+  type ProductRepository,
 } from '../../domain/repositories/product.repository';
 
 @Injectable()
 export class CreateProductUseCase {
   constructor(
     @Inject(PRODUCT_REPOSITORY)
-    private readonly products: IProductRepository,
+    private readonly products: ProductRepository,
   ) {}
 
   execute(input: CreateProductInput): Promise<Product> {

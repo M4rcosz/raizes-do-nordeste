@@ -27,7 +27,7 @@ export interface CreateProductInput {
   imageUrl: string;
 }
 
-export interface IProductRepository {
+export interface ProductRepository {
   findById(id: string): Promise<Product | null>;
   /**
    * Lists products available for a business unit, filtered and cursor-paginated.

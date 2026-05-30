@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals'
 import { Test } from '@nestjs/testing';
 import Big from 'big.js';
 import {
-  IProductRepository,
+  ProductRepository,
   PRODUCT_REPOSITORY,
 } from '../../domain/repositories/product.repository';
 import { GetActiveProductsUseCase } from './get-active-products.use-case';
@@ -11,7 +11,7 @@ import { Product } from '../../domain/entities/product.entity';
 
 describe('GetActiveProductsUseCase', () => {
   let useCase: GetActiveProductsUseCase;
-  let findAllActive: jest.MockedFunction<IProductRepository['findAllActive']>;
+  let findAllActive: jest.MockedFunction<ProductRepository['findAllActive']>;
 
   const buildProduct = (id: string): Product =>
     new Product(
@@ -27,9 +27,9 @@ describe('GetActiveProductsUseCase', () => {
     );
 
   beforeAll(async () => {
-    findAllActive = jest.fn() as jest.MockedFunction<IProductRepository['findAllActive']>;
+    findAllActive = jest.fn() as jest.MockedFunction<ProductRepository['findAllActive']>;
 
-    const mockRepo: jest.Mocked<IProductRepository> = {
+    const mockRepo: jest.Mocked<ProductRepository> = {
       findAllActive,
       findById: jest.fn(),
       findAllByBusinessUnit: jest.fn(),
