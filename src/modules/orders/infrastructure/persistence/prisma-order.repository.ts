@@ -1,7 +1,10 @@
 import { Order } from '@modules/orders/domain/entities/order.entity';
 import {
   CreateOrderInput,
+  FindOrdersInput,
+  OrderFilters,
   OrderRepository,
+  UpdateOrderStatusInput,
 } from '@modules/orders/domain/repositories/order.repository';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
@@ -52,6 +55,57 @@ export class PrismaOrderRepository implements OrderRepository {
 
       throw err;
     }
+  }
+
+  async findById(id: string): Promise<Order | null> {
+    const raw = await this.prisma.order.findUnique({
+      where: { id },
+      include: { orderItems: true },
+    });
+    return raw ? this.toEntity(raw) : null;
+  }
+
+  async findMany(input: FindOrdersInput): Promise<Order[]> {
+    const { filters, pagination } = input;
+
+    const raws = await this.prisma.order.findMany({
+      where: this.buildWhere(filters),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
+      ...(pagination.cursor && {
+        cursor: { id: pagination.cursor },
+        skip: 1,
+      }),
+      include: { orderItems: true },
+    });
+
+    return raws.map((raw) => this.toEntity(raw));
+  }
+
+  async updateStatus(input: UpdateOrderStatusInput): Promise<Order> {
+    const updated = await this.prisma.order.update({
+      where: { id: input.id },
+      data: { orderStatus: input.orderStatus, updatedById: input.updatedById },
+      include: { orderItems: true },
+    });
+    return this.toEntity(updated);
+  }
+
+  private buildWhere(filters?: OrderFilters): Prisma.OrderWhereInput {
+    if (!filters) {
+      return {};
+    }
+    const where: Prisma.OrderWhereInput = {};
+    if (filters.businessUnitId) {
+      where.businessUnitId = filters.businessUnitId;
+    }
+    if (filters.orderChannel) {
+      where.orderChannel = filters.orderChannel;
+    }
+    if (filters.orderStatus) {
+      where.orderStatus = filters.orderStatus;
+    }
+    return where;
   }
 
   private classifyForeignKey(meta: unknown): string {

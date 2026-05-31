@@ -3,6 +3,25 @@ import Big from 'big.js';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { OrderChannel } from '../value-objects/order-channel';
+import { OrderStatus } from '../value-objects/order-status';
+import { InvalidOrderStatusTransitionError } from '../errors/invalid-order-status-transition.error';
+
+const orderWithStatus = (status: OrderStatus): Order =>
+  new Order(
+    'o-1',
+    'bu-1',
+    'c-1',
+    null,
+    0,
+    0,
+    null,
+    OrderChannel.APP,
+    status,
+    new Date(),
+    new Date(),
+    null,
+    [],
+  );
 
 describe('Order', () => {
   describe('calculateTotalAmount', () => {
@@ -39,6 +58,26 @@ describe('Order', () => {
       );
 
       expect(order.totalAmount.eq(new Big('25.50'))).toBe(true);
+    });
+  });
+
+  describe('assertCanTransitionTo', () => {
+    it('does not throw on a valid transition', () => {
+      expect(() =>
+        orderWithStatus(OrderStatus.PENDING).assertCanTransitionTo(OrderStatus.CONFIRMED),
+      ).not.toThrow();
+    });
+
+    it('throws InvalidOrderStatusTransitionError on an invalid transition', () => {
+      expect(() =>
+        orderWithStatus(OrderStatus.PENDING).assertCanTransitionTo(OrderStatus.DELIVERED),
+      ).toThrow(InvalidOrderStatusTransitionError);
+    });
+
+    it('throws out of a terminal state', () => {
+      expect(() =>
+        orderWithStatus(OrderStatus.DELIVERED).assertCanTransitionTo(OrderStatus.READY),
+      ).toThrow(InvalidOrderStatusTransitionError);
     });
   });
 });

@@ -30,7 +30,7 @@ interface OrderResponseBody {
   orderItems: OrderItemBody[];
 }
 
-describe('Orders (e2e) — POST /api/orders', () => {
+describe('Orders (e2e)', () => {
   let app: INestApplication;
   let server: Server;
   let prisma: PrismaService;
@@ -42,6 +42,10 @@ describe('Orders (e2e) — POST /api/orders', () => {
   let productId: string;
   let customerId: string;
   let token: string;
+  let staffId: string;
+  let staffToken: string;
+  let otherCustomerId: string;
+  let otherToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -106,22 +110,53 @@ describe('Orders (e2e) — POST /api/orders', () => {
     });
     customerId = user.id;
 
-    const loginResponse: { body: { access_token: string } } = await request(server)
-      .post('/api/auth/login')
-      .send({ username, password })
-      .expect(200);
-    token = loginResponse.body.access_token;
+    const login = async (uname: string): Promise<string> => {
+      const res: { body: { access_token: string } } = await request(server)
+        .post('/api/auth/login')
+        .send({ username: uname, password })
+        .expect(200);
+      return res.body.access_token;
+    };
+
+    token = await login(username);
+
+    const staffUsername = `e2e-staff-${randomUUID()}`;
+    const staff = await prisma.user.create({
+      data: {
+        name: 'E2E Staff',
+        username: staffUsername,
+        passwordHash,
+        role: 'MANAGER',
+        businessUnitId: unit.id,
+      },
+    });
+    staffId = staff.id;
+    staffToken = await login(staffUsername);
+
+    const otherUsername = `e2e-other-${randomUUID()}`;
+    const other = await prisma.user.create({
+      data: {
+        name: 'E2E Other Customer',
+        username: otherUsername,
+        passwordHash,
+        role: 'CUSTOMER',
+        businessUnitId: unit.id,
+      },
+    });
+    otherCustomerId = other.id;
+    otherToken = await login(otherUsername);
   });
 
   afterAll(async () => {
+    const userIds = [customerId, staffId, otherCustomerId];
     await prisma.orderItem.deleteMany({ where: { order: { businessUnitId: unitId } } });
     await prisma.order.deleteMany({ where: { businessUnitId: unitId } });
-    await prisma.auditLog.deleteMany({ where: { userId: customerId } });
-    await prisma.auditLog.deleteMany({ where: { entity: 'User', entityId: customerId } });
+    await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.auditLog.deleteMany({ where: { entity: 'User', entityId: { in: userIds } } });
     await prisma.businessUnitMenuItem.deleteMany({ where: { businessUnitId: unitId } });
     await prisma.product.deleteMany({ where: { categoryId } });
     await prisma.category.deleteMany({ where: { id: categoryId } });
-    await prisma.user.deleteMany({ where: { id: customerId } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await prisma.businessUnit.deleteMany({ where: { id: unitId } });
     await app.close();
   });
@@ -297,5 +332,94 @@ describe('Orders (e2e) — POST /api/orders', () => {
     expect(dbOrder).not.toBeNull();
     expect(dbOrder?.totalAmount.toString()).toBe('62.5');
     expect(dbOrder?.orderItems).toHaveLength(2);
+  });
+
+  describe('GET / PATCH', () => {
+    const createOrder = async (): Promise<string> => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(201);
+      return (res.body as OrderResponseBody).id;
+    };
+
+    it('GET /orders/:id returns the order to its owner', async () => {
+      const id = await createOrder();
+
+      const res = await request(server)
+        .get(`/api/orders/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect((res.body as OrderResponseBody).id).toBe(id);
+    });
+
+    it('GET /orders/:id hides another customer order with 404', async () => {
+      const id = await createOrder();
+
+      await request(server)
+        .get(`/api/orders/${id}`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(404);
+    });
+
+    it('GET /orders forbids a CUSTOMER with 403', async () => {
+      await request(server).get('/api/orders').set('Authorization', `Bearer ${token}`).expect(403);
+    });
+
+    it('GET /orders?orderChannel=APP returns only APP orders to staff', async () => {
+      await createOrder();
+
+      const res = await request(server)
+        .get('/api/orders?orderChannel=APP')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(200);
+
+      const body = res.body as { data: OrderResponseBody[]; meta: { hasMore: boolean } };
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data.length).toBeGreaterThan(0);
+      expect(body.data.every((o) => o.orderChannel === 'APP')).toBe(true);
+    });
+
+    it('PATCH /orders/:id/status performs a valid transition', async () => {
+      const id = await createOrder();
+
+      const res = await request(server)
+        .patch(`/api/orders/${id}/status`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ orderStatus: 'CONFIRMED' })
+        .expect(200);
+
+      expect((res.body as OrderResponseBody).orderStatus).toBe('CONFIRMED');
+
+      const dbOrder = await prisma.order.findUnique({ where: { id } });
+      expect(dbOrder?.orderStatus).toBe('CONFIRMED');
+      expect(dbOrder?.updatedById).toBe(staffId);
+    });
+
+    it('PATCH /orders/:id/status rejects an invalid transition with 422', async () => {
+      const id = await createOrder();
+
+      await request(server)
+        .patch(`/api/orders/${id}/status`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ orderStatus: 'DELIVERED' })
+        .expect(422);
+    });
+
+    it('PATCH /orders/:id/status forbids a CUSTOMER with 403', async () => {
+      const id = await createOrder();
+
+      await request(server)
+        .patch(`/api/orders/${id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ orderStatus: 'CONFIRMED' })
+        .expect(403);
+    });
   });
 });

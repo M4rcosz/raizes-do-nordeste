@@ -61,7 +61,15 @@ describe('CreateOrderUseCase', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         CreateOrderUseCase,
-        { provide: ORDER_REPOSITORY, useValue: { create } satisfies OrderRepository },
+        {
+          provide: ORDER_REPOSITORY,
+          useValue: {
+            create,
+            findById: jest.fn() as jest.MockedFunction<OrderRepository['findById']>,
+            findMany: jest.fn() as jest.MockedFunction<OrderRepository['findMany']>,
+            updateStatus: jest.fn() as jest.MockedFunction<OrderRepository['updateStatus']>,
+          } satisfies OrderRepository,
+        },
         {
           provide: ORDER_PRODUCT_LOOKUP,
           useValue: { resolve: resolveLookup } satisfies OrderProductLookup,

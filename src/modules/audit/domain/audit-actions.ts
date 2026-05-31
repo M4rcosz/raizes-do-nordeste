@@ -1,6 +1,7 @@
 export const AUDIT_ACTIONS = {
   LOGIN_SUCCESS: 'LOGIN_SUCCESS',
   LOGIN_FAILED: 'LOGIN_FAILED',
+  ORDER_STATUS_CHANGED: 'ORDER_STATUS_CHANGED',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

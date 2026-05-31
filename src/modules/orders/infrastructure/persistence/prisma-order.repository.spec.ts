@@ -9,6 +9,9 @@ import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
 
 type OrderCreateFn = (args: unknown) => Promise<PersistedOrderRow>;
+type OrderFindUniqueFn = (args: unknown) => Promise<PersistedOrderRow | null>;
+type OrderFindManyFn = (args: unknown) => Promise<PersistedOrderRow[]>;
+type OrderUpdateFn = (args: unknown) => Promise<PersistedOrderRow>;
 
 interface PersistedOrderRow {
   id: string;
@@ -44,6 +47,9 @@ const knownError = (code: string, fieldName?: string): Prisma.PrismaClientKnownR
 
 describe('PrismaOrderRepository', () => {
   let create: jest.MockedFunction<OrderCreateFn>;
+  let findUnique: jest.MockedFunction<OrderFindUniqueFn>;
+  let findMany: jest.MockedFunction<OrderFindManyFn>;
+  let update: jest.MockedFunction<OrderUpdateFn>;
   let repo: PrismaOrderRepository;
 
   const input: CreateOrderInput = {
@@ -98,7 +104,12 @@ describe('PrismaOrderRepository', () => {
 
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<OrderCreateFn>;
-    const prisma = { order: { create } } as unknown as PrismaService;
+    findUnique = jest.fn() as jest.MockedFunction<OrderFindUniqueFn>;
+    findMany = jest.fn() as jest.MockedFunction<OrderFindManyFn>;
+    update = jest.fn() as jest.MockedFunction<OrderUpdateFn>;
+    const prisma = {
+      order: { create, findUnique, findMany, update },
+    } as unknown as PrismaService;
     repo = new PrismaOrderRepository(prisma);
   });
 
@@ -178,6 +189,86 @@ describe('PrismaOrderRepository', () => {
       create.mockRejectedValue(genericError);
 
       await expect(repo.create(input)).rejects.toBe(genericError);
+    });
+  });
+
+  describe('findById', () => {
+    it('maps the persisted row to a domain Order', async () => {
+      findUnique.mockResolvedValue(persistedRow);
+
+      const order = await repo.findById('order-1');
+
+      expect(findUnique).toHaveBeenCalledWith({
+        where: { id: 'order-1' },
+        include: { orderItems: true },
+      });
+      expect(order).toBeInstanceOf(Order);
+      expect(order?.id).toBe('order-1');
+    });
+
+    it('returns null when no row is found', async () => {
+      findUnique.mockResolvedValue(null);
+
+      await expect(repo.findById('missing')).resolves.toBeNull();
+    });
+  });
+
+  describe('findMany', () => {
+    it('applies filters, cursor pagination and ordering', async () => {
+      findMany.mockResolvedValue([persistedRow]);
+
+      const orders = await repo.findMany({
+        filters: { businessUnitId: 'bu-1', orderChannel: OrderChannel.APP, orderStatus: 'PENDING' },
+        pagination: { cursor: 'order-0', take: 11 },
+      });
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { businessUnitId: 'bu-1', orderChannel: 'APP', orderStatus: 'PENDING' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 11,
+        cursor: { id: 'order-0' },
+        skip: 1,
+        include: { orderItems: true },
+      });
+      expect(orders).toHaveLength(1);
+      expect(orders[0]).toBeInstanceOf(Order);
+    });
+
+    it('omits cursor/skip when no cursor is provided and sends an empty where for no filters', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({ pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 20,
+        include: { orderItems: true },
+      });
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('updates the status and updatedById, returning the mapped Order', async () => {
+      update.mockResolvedValue({
+        ...persistedRow,
+        orderStatus: 'CONFIRMED',
+        updatedById: 'staff-1',
+      });
+
+      const order = await repo.updateStatus({
+        id: 'order-1',
+        orderStatus: 'CONFIRMED',
+        updatedById: 'staff-1',
+      });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'order-1' },
+        data: { orderStatus: 'CONFIRMED', updatedById: 'staff-1' },
+        include: { orderItems: true },
+      });
+      expect(order.orderStatus).toBe('CONFIRMED');
+      expect(order.updatedById).toBe('staff-1');
     });
   });
 });
