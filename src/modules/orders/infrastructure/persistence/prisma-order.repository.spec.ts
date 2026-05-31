@@ -10,7 +10,6 @@ import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order
 
 type OrderCreateFn = (args: unknown) => Promise<PersistedOrderRow>;
 type OrderFindUniqueFn = (args: unknown) => Promise<PersistedOrderRow | null>;
-type OrderFindUniqueOrThrowFn = (args: unknown) => Promise<PersistedOrderRow>;
 type OrderFindManyFn = (args: unknown) => Promise<PersistedOrderRow[]>;
 type OrderUpdateManyFn = (args: unknown) => Promise<{ count: number }>;
 
@@ -49,7 +48,6 @@ const knownError = (code: string, fieldName?: string): Prisma.PrismaClientKnownR
 describe('PrismaOrderRepository', () => {
   let create: jest.MockedFunction<OrderCreateFn>;
   let findUnique: jest.MockedFunction<OrderFindUniqueFn>;
-  let findUniqueOrThrow: jest.MockedFunction<OrderFindUniqueOrThrowFn>;
   let findMany: jest.MockedFunction<OrderFindManyFn>;
   let updateMany: jest.MockedFunction<OrderUpdateManyFn>;
   let repo: PrismaOrderRepository;
@@ -107,11 +105,10 @@ describe('PrismaOrderRepository', () => {
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<OrderCreateFn>;
     findUnique = jest.fn() as jest.MockedFunction<OrderFindUniqueFn>;
-    findUniqueOrThrow = jest.fn() as jest.MockedFunction<OrderFindUniqueOrThrowFn>;
     findMany = jest.fn() as jest.MockedFunction<OrderFindManyFn>;
     updateMany = jest.fn() as jest.MockedFunction<OrderUpdateManyFn>;
     const prisma = {
-      order: { create, findUnique, findUniqueOrThrow, findMany, updateMany },
+      order: { create, findUnique, findMany, updateMany },
     } as unknown as PrismaService;
     repo = new PrismaOrderRepository(prisma);
   });
@@ -261,7 +258,7 @@ describe('PrismaOrderRepository', () => {
 
     it('applies the conditional update and returns the re-read Order when a row matched', async () => {
       updateMany.mockResolvedValue({ count: 1 });
-      findUniqueOrThrow.mockResolvedValue({
+      findUnique.mockResolvedValue({
         ...persistedRow,
         orderStatus: 'CONFIRMED',
         updatedById: 'staff-1',
@@ -273,7 +270,7 @@ describe('PrismaOrderRepository', () => {
         where: { id: 'order-1', orderStatus: 'PENDING' },
         data: { orderStatus: 'CONFIRMED', updatedById: 'staff-1' },
       });
-      expect(findUniqueOrThrow).toHaveBeenCalledWith({
+      expect(findUnique).toHaveBeenCalledWith({
         where: { id: 'order-1' },
         include: { orderItems: true },
       });
@@ -285,7 +282,14 @@ describe('PrismaOrderRepository', () => {
       updateMany.mockResolvedValue({ count: 0 });
 
       await expect(repo.updateStatus(updateInput)).resolves.toBeNull();
-      expect(findUniqueOrThrow).not.toHaveBeenCalled();
+      expect(findUnique).not.toHaveBeenCalled();
+    });
+
+    it('returns null when the row vanished between the update and the re-read', async () => {
+      updateMany.mockResolvedValue({ count: 1 });
+      findUnique.mockResolvedValue(null);
+
+      await expect(repo.updateStatus(updateInput)).resolves.toBeNull();
     });
 
     it('translates a P2003 foreign-key violation into OrderReferenceNotFoundError, chaining the cause', async () => {

@@ -45,15 +45,7 @@ export class PrismaOrderRepository implements OrderRepository {
 
       return this.toEntity(fullOrder);
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-        const reference = this.classifyForeignKey(err.meta);
-        throw new OrderReferenceNotFoundError(
-          `Order references a ${reference} that does not exist.`,
-          { cause: err },
-        );
-      }
-
-      throw err;
+      this.mapForeignKeyError(err);
     }
   }
 
@@ -96,21 +88,14 @@ export class PrismaOrderRepository implements OrderRepository {
         return null;
       }
 
-      const updated = await this.prisma.order.findUniqueOrThrow({
+      const updated = await this.prisma.order.findUnique({
         where: { id: input.id },
         include: { orderItems: true },
       });
-      return this.toEntity(updated);
+      // Vanished between the update and the re-read (delete race): treat as a conflict.
+      return updated ? this.toEntity(updated) : null;
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-        const reference = this.classifyForeignKey(err.meta);
-        throw new OrderReferenceNotFoundError(
-          `Order references a ${reference} that does not exist.`,
-          { cause: err },
-        );
-      }
-
-      throw err;
+      this.mapForeignKeyError(err);
     }
   }
 
@@ -131,6 +116,18 @@ export class PrismaOrderRepository implements OrderRepository {
       where.orderStatus = filters.orderStatus;
     }
     return where;
+  }
+
+  /** Maps a Prisma FK violation (P2003) to a domain error; rethrows anything else. */
+  private mapForeignKeyError(err: unknown): never {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      throw new OrderReferenceNotFoundError(
+        `Order references a ${this.classifyForeignKey(err.meta)} that does not exist.`,
+        { cause: err },
+      );
+    }
+
+    throw err;
   }
 
   private classifyForeignKey(meta: unknown): string {
