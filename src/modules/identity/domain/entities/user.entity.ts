@@ -17,6 +17,12 @@ export class User {
     public readonly isActive: boolean,
   ) {}
 
+  /**
+   * Verifies a password without leaking whether the username exists. When `user`
+   * is `null` it still calls {@link PasswordHasher.verify} against a decoy so the
+   * work (and timing) matches the real path, defeating user-enumeration by response
+   * time. Always returns `false` for an unknown user.
+   */
   static async verifyPasswordOrDecoy(
     user: User | null,
     plainPassword: string,
