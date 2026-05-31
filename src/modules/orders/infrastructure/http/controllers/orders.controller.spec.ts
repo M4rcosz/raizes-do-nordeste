@@ -126,20 +126,34 @@ describe('OrdersController', () => {
   });
 
   describe('create', () => {
+    const body = {
+      businessUnitId: 'bu-1',
+      orderChannel: OrderChannel.APP,
+      orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '12.50' }],
+    };
+
     it('maps the JWT to an actor and maps the created order', async () => {
       createOrder.execute.mockResolvedValue(buildOrder('o-9'));
 
-      const body = {
-        businessUnitId: 'bu-1',
-        orderChannel: OrderChannel.APP,
-        orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '12.50' }],
-      };
-
       const response = await controller.create(body, jwt('c-1', UserRole.CUSTOMER));
 
-      expect(createOrder.execute).toHaveBeenCalledWith(body, { id: 'c-1', isStaff: false });
+      expect(createOrder.execute).toHaveBeenCalledWith(body, { id: 'c-1', canAttend: false });
       expect(response).toBeInstanceOf(OrderResponseDto);
       expect(response.id).toBe('o-9');
+    });
+
+    it.each<[UserRole, boolean]>([
+      [UserRole.CUSTOMER, false],
+      [UserRole.KITCHEN, false],
+      [UserRole.ATTENDANT, true],
+      [UserRole.MANAGER, true],
+      [UserRole.ADMIN, true],
+    ])('role %s derives canAttend=%s', async (role, canAttend) => {
+      createOrder.execute.mockResolvedValue(buildOrder('o-9'));
+
+      await controller.create(body, jwt('u-1', role));
+
+      expect(createOrder.execute).toHaveBeenCalledWith(body, { id: 'u-1', canAttend });
     });
   });
 });

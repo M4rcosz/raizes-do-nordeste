@@ -28,8 +28,12 @@ import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 /** Who is performing the operation, resolved from the auth token by the HTTP layer. */
 export interface Actor {
   id: string;
-  /** Whether the actor is a staff member (not a plain customer) and may attend orders. */
-  isStaff: boolean;
+  /**
+   * Whether the actor may be recorded as the attendant on attendant-only channels
+   * (COUNTER/PICKUP). The HTTP layer derives this from the user's role; the use case
+   * stays free of the identity role taxonomy.
+   */
+  canAttend: boolean;
 }
 
 export interface CreateOrderCommand {
@@ -161,9 +165,9 @@ export class CreateOrderUseCase {
     actor: Actor,
   ): { attendantId: string | null; customerId: string | null } {
     if (channelRequiresAttendant(command.orderChannel)) {
-      if (!actor.isStaff) {
+      if (!actor.canAttend) {
         throw new AttendantRequiredError(
-          `Channel ${command.orderChannel} can only be used by a staff member.`,
+          `Channel ${command.orderChannel} can only be used by an attending staff member.`,
         );
       }
       return { attendantId: actor.id, customerId: command.customerId ?? null };

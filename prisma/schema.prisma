@@ -231,7 +231,7 @@ model Order {
   @@index([businessUnitId])
   @@index([orderStatus])
   @@index([orderChannel])
-  @@index([createdAt])
+  @@index([createdAt, id])
   @@map("orders")
 }
 

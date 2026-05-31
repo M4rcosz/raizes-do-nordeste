@@ -10,8 +10,9 @@ import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order
 
 type OrderCreateFn = (args: unknown) => Promise<PersistedOrderRow>;
 type OrderFindUniqueFn = (args: unknown) => Promise<PersistedOrderRow | null>;
+type OrderFindUniqueOrThrowFn = (args: unknown) => Promise<PersistedOrderRow>;
 type OrderFindManyFn = (args: unknown) => Promise<PersistedOrderRow[]>;
-type OrderUpdateFn = (args: unknown) => Promise<PersistedOrderRow>;
+type OrderUpdateManyFn = (args: unknown) => Promise<{ count: number }>;
 
 interface PersistedOrderRow {
   id: string;
@@ -48,8 +49,9 @@ const knownError = (code: string, fieldName?: string): Prisma.PrismaClientKnownR
 describe('PrismaOrderRepository', () => {
   let create: jest.MockedFunction<OrderCreateFn>;
   let findUnique: jest.MockedFunction<OrderFindUniqueFn>;
+  let findUniqueOrThrow: jest.MockedFunction<OrderFindUniqueOrThrowFn>;
   let findMany: jest.MockedFunction<OrderFindManyFn>;
-  let update: jest.MockedFunction<OrderUpdateFn>;
+  let updateMany: jest.MockedFunction<OrderUpdateManyFn>;
   let repo: PrismaOrderRepository;
 
   const input: CreateOrderInput = {
@@ -105,10 +107,11 @@ describe('PrismaOrderRepository', () => {
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<OrderCreateFn>;
     findUnique = jest.fn() as jest.MockedFunction<OrderFindUniqueFn>;
+    findUniqueOrThrow = jest.fn() as jest.MockedFunction<OrderFindUniqueOrThrowFn>;
     findMany = jest.fn() as jest.MockedFunction<OrderFindManyFn>;
-    update = jest.fn() as jest.MockedFunction<OrderUpdateFn>;
+    updateMany = jest.fn() as jest.MockedFunction<OrderUpdateManyFn>;
     const prisma = {
-      order: { create, findUnique, findMany, update },
+      order: { create, findUnique, findUniqueOrThrow, findMany, updateMany },
     } as unknown as PrismaService;
     repo = new PrismaOrderRepository(prisma);
   });
@@ -249,26 +252,57 @@ describe('PrismaOrderRepository', () => {
   });
 
   describe('updateStatus', () => {
-    it('updates the status and updatedById, returning the mapped Order', async () => {
-      update.mockResolvedValue({
+    const updateInput = {
+      id: 'order-1',
+      expectedFrom: 'PENDING',
+      orderStatus: 'CONFIRMED',
+      updatedById: 'staff-1',
+    } as const;
+
+    it('applies the conditional update and returns the re-read Order when a row matched', async () => {
+      updateMany.mockResolvedValue({ count: 1 });
+      findUniqueOrThrow.mockResolvedValue({
         ...persistedRow,
         orderStatus: 'CONFIRMED',
         updatedById: 'staff-1',
       });
 
-      const order = await repo.updateStatus({
-        id: 'order-1',
-        orderStatus: 'CONFIRMED',
-        updatedById: 'staff-1',
-      });
+      const order = await repo.updateStatus(updateInput);
 
-      expect(update).toHaveBeenCalledWith({
-        where: { id: 'order-1' },
+      expect(updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', orderStatus: 'PENDING' },
         data: { orderStatus: 'CONFIRMED', updatedById: 'staff-1' },
+      });
+      expect(findUniqueOrThrow).toHaveBeenCalledWith({
+        where: { id: 'order-1' },
         include: { orderItems: true },
       });
-      expect(order.orderStatus).toBe('CONFIRMED');
-      expect(order.updatedById).toBe('staff-1');
+      expect(order?.orderStatus).toBe('CONFIRMED');
+      expect(order?.updatedById).toBe('staff-1');
+    });
+
+    it('returns null without re-reading when no row matched the expected status', async () => {
+      updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(repo.updateStatus(updateInput)).resolves.toBeNull();
+      expect(findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('translates a P2003 foreign-key violation into OrderReferenceNotFoundError, chaining the cause', async () => {
+      const prismaError = knownError('P2003', 'orders_updated_by_fkey');
+      updateMany.mockRejectedValue(prismaError);
+
+      await expect(repo.updateStatus(updateInput)).rejects.toBeInstanceOf(
+        OrderReferenceNotFoundError,
+      );
+      await expect(repo.updateStatus(updateInput)).rejects.toMatchObject({ cause: prismaError });
+    });
+
+    it('rethrows unmapped Prisma error codes unchanged', async () => {
+      const prismaError = knownError('P2002');
+      updateMany.mockRejectedValue(prismaError);
+
+      await expect(repo.updateStatus(updateInput)).rejects.toBe(prismaError);
     });
   });
 });

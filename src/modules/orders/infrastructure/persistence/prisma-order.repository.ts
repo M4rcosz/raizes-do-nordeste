@@ -82,16 +82,41 @@ export class PrismaOrderRepository implements OrderRepository {
     return raws.map((raw) => this.toEntity(raw));
   }
 
-  async updateStatus(input: UpdateOrderStatusInput): Promise<Order> {
-    const updated = await this.prisma.order.update({
-      where: { id: input.id },
-      data: { orderStatus: input.orderStatus, updatedById: input.updatedById },
-      include: { orderItems: true },
-    });
-    return this.toEntity(updated);
+  async updateStatus(input: UpdateOrderStatusInput): Promise<Order | null> {
+    // Optimistic lock: the write only lands if the row still holds the status the
+    // caller read. updateMany lets us filter on a non-unique column and tells us how
+    // many rows matched — 0 means someone transitioned the order concurrently.
+    try {
+      const { count } = await this.prisma.order.updateMany({
+        where: { id: input.id, orderStatus: input.expectedFrom },
+        data: { orderStatus: input.orderStatus, updatedById: input.updatedById },
+      });
+
+      if (count === 0) {
+        return null;
+      }
+
+      const updated = await this.prisma.order.findUniqueOrThrow({
+        where: { id: input.id },
+        include: { orderItems: true },
+      });
+      return this.toEntity(updated);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        const reference = this.classifyForeignKey(err.meta);
+        throw new OrderReferenceNotFoundError(
+          `Order references a ${reference} that does not exist.`,
+          { cause: err },
+        );
+      }
+
+      throw err;
+    }
   }
 
   private buildWhere(filters?: OrderFilters): Prisma.OrderWhereInput {
+    // TODO(multi-unit): businessUnitId is only an optional caller-supplied filter today.
+    // Once the JWT carries the staff member's unit, scope listings to it by default.
     if (!filters) {
       return {};
     }

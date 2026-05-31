@@ -8,6 +8,7 @@ import type { OrderStatus } from '@modules/orders/domain/value-objects/order-sta
 import { AUDIT_LOGGER, type AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
+import { OrderStatusConflictError } from '../errors/order-status-conflict.error';
 
 export interface UpdateOrderStatusCommand {
   orderId: string;
@@ -32,11 +33,20 @@ export class UpdateOrderStatusUseCase {
     // Domain guard: rejects invalid transitions (e.g. PENDING -> DELIVERED) with 422.
     order.assertCanTransitionTo(command.orderStatus);
 
+    // Optimistic lock: the write only applies if the status we read still holds.
+    // A null result means another request transitioned the order in between (409).
     const updated = await this.orders.updateStatus({
       id: command.orderId,
+      expectedFrom: order.orderStatus,
       orderStatus: command.orderStatus,
       updatedById: actorId,
     });
+
+    if (!updated) {
+      throw new OrderStatusConflictError(
+        `Order ${command.orderId} changed status concurrently; expected ${order.orderStatus}.`,
+      );
+    }
 
     await this.audit.log({
       userId: actorId,

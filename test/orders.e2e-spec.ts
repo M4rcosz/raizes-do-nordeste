@@ -421,5 +421,28 @@ describe('Orders (e2e)', () => {
         .send({ orderStatus: 'CONFIRMED' })
         .expect(403);
     });
+
+    it('PATCH /orders/:id/status applies a concurrent transition exactly once', async () => {
+      const id = await createOrder();
+
+      // Two staff fire the same PENDING -> CONFIRMED transition at once. The optimistic
+      // lock must let exactly one win; the other is rejected with 409 (lost the race) or
+      // 422 (it serialized after and re-read CONFIRMED) — never a second silent apply.
+      const patch = (): request.Test =>
+        request(server)
+          .patch(`/api/orders/${id}/status`)
+          .set('Authorization', `Bearer ${staffToken}`)
+          .send({ orderStatus: 'CONFIRMED' });
+
+      const [a, b] = await Promise.all([patch(), patch()]);
+      const statuses = [a.status, b.status].sort();
+
+      expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+      expect(statuses.some((s) => s === 409 || s === 422)).toBe(true);
+
+      const dbOrder = await prisma.order.findUnique({ where: { id } });
+      expect(dbOrder?.orderStatus).toBe('CONFIRMED');
+      expect(dbOrder?.updatedById).toBe(staffId);
+    });
   });
 });

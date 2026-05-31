@@ -36,6 +36,8 @@ export interface FindOrdersInput {
 
 export interface UpdateOrderStatusInput {
   id: string;
+  /** The status the caller read; the update only applies if the row still holds it. */
+  expectedFrom: OrderStatus;
   orderStatus: OrderStatus;
   updatedById: string;
 }
@@ -44,7 +46,8 @@ export interface OrderRepository {
   create(input: CreateOrderInput, tx?: TransactionContext): Promise<Order>;
   findById(id: string): Promise<Order | null>;
   findMany(input: FindOrdersInput): Promise<Order[]>;
-  updateStatus(input: UpdateOrderStatusInput): Promise<Order>;
+  /** Returns `null` when no row matched the expected "from" status (concurrent change). */
+  updateStatus(input: UpdateOrderStatusInput): Promise<Order | null>;
 }
 
 export const ORDER_REPOSITORY = Symbol('OrderRepository');

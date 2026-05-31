@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
+import { OrderStatusConflictError } from '../errors/order-status-conflict.error';
 import { InvalidOrderStatusTransitionError } from '../../domain/errors/invalid-order-status-transition.error';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
 import type { AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
@@ -60,6 +61,7 @@ describe('UpdateOrderStatusUseCase', () => {
 
     expect(updateStatus).toHaveBeenCalledWith({
       id: 'o-1',
+      expectedFrom: OrderStatus.PENDING,
       orderStatus: OrderStatus.CONFIRMED,
       updatedById: 'staff-1',
     });
@@ -94,5 +96,17 @@ describe('UpdateOrderStatusUseCase', () => {
     ).rejects.toBeInstanceOf(OrderNotFoundError);
 
     expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('throws OrderStatusConflictError when the status changed concurrently (null update)', async () => {
+    findById.mockResolvedValue(makeOrder(OrderStatus.PENDING));
+    // The optimistic update matched no row: another request already transitioned it.
+    updateStatus.mockResolvedValue(null);
+
+    await expect(
+      useCase.execute({ orderId: 'o-1', orderStatus: OrderStatus.CONFIRMED }, 'staff-1'),
+    ).rejects.toBeInstanceOf(OrderStatusConflictError);
+
+    expect(log).not.toHaveBeenCalled();
   });
 });

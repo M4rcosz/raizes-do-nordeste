@@ -42,6 +42,12 @@ const STAFF_ROLES: UserRole[] = [
   UserRole.KITCHEN,
 ];
 
+/**
+ * Roles allowed to attend an order on attendant-only channels (COUNTER/PICKUP).
+ * KITCHEN is staff but does not serve customers, so it is intentionally excluded.
+ */
+const ATTENDING_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.MANAGER, UserRole.ATTENDANT];
+
 @ApiTags('orders')
 @ApiBearerAuth()
 @Controller('orders')
@@ -61,7 +67,7 @@ export class OrdersController {
     @Body() body: OrderCreateDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<OrderResponseDto> {
-    const actor = { id: user.sub, isStaff: user.role !== UserRole.CUSTOMER };
+    const actor = { id: user.sub, canAttend: ATTENDING_ROLES.includes(user.role) };
 
     const order = await this.createOrder.execute(body, actor);
 

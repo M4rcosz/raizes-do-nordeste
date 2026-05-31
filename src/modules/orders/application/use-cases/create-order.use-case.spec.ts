@@ -93,7 +93,7 @@ describe('CreateOrderUseCase', () => {
   });
 
   it('computes each subtotal and the total from the items', async () => {
-    await useCase.execute(command(), { id: 'u-1', isStaff: false });
+    await useCase.execute(command(), { id: 'u-1', canAttend: false });
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -105,7 +105,7 @@ describe('CreateOrderUseCase', () => {
   });
 
   it('writes an ORDER_CREATED audit entry for the created order', async () => {
-    await useCase.execute(command(), { id: 'u-1', isStaff: false });
+    await useCase.execute(command(), { id: 'u-1', canAttend: false });
 
     expect(logAudit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -120,7 +120,7 @@ describe('CreateOrderUseCase', () => {
   it('APP channel: the logged-in user is the customer and there is no attendant', async () => {
     await useCase.execute(command({ orderChannel: OrderChannel.APP }), {
       id: 'u-1',
-      isStaff: false,
+      canAttend: false,
     });
 
     expect(create).toHaveBeenCalledWith(
@@ -132,7 +132,7 @@ describe('CreateOrderUseCase', () => {
   it('TOTEM channel: anonymous, no customer and no attendant', async () => {
     await useCase.execute(command({ orderChannel: OrderChannel.TOTEM }), {
       id: 'u-1',
-      isStaff: false,
+      canAttend: false,
     });
 
     expect(create).toHaveBeenCalledWith(
@@ -144,7 +144,7 @@ describe('CreateOrderUseCase', () => {
   it('COUNTER channel with a staff actor: actor is the attendant, customer comes from the command', async () => {
     await useCase.execute(command({ orderChannel: OrderChannel.COUNTER, customerId: 'c-9' }), {
       id: 'att-1',
-      isStaff: true,
+      canAttend: true,
     });
 
     expect(create).toHaveBeenCalledWith(
@@ -157,7 +157,7 @@ describe('CreateOrderUseCase', () => {
     await expect(
       useCase.execute(command({ orderChannel: OrderChannel.COUNTER }), {
         id: 'u-1',
-        isStaff: false,
+        canAttend: false,
       }),
     ).rejects.toBeInstanceOf(AttendantRequiredError);
 
@@ -173,7 +173,7 @@ describe('CreateOrderUseCase', () => {
       await expect(
         useCase.execute(
           command({ orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '10.00' }] }),
-          { id: 'u-1', isStaff: false },
+          { id: 'u-1', canAttend: false },
         ),
       ).rejects.toBeInstanceOf(PriceMismatchError);
       expect(create).not.toHaveBeenCalled();
@@ -186,7 +186,7 @@ describe('CreateOrderUseCase', () => {
       await expect(
         useCase.execute(
           command({ orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '10.00' }] }),
-          { id: 'u-1', isStaff: false },
+          { id: 'u-1', canAttend: false },
         ),
       ).rejects.toBeInstanceOf(OrderReferenceNotFoundError);
       expect(create).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ describe('CreateOrderUseCase', () => {
       await expect(
         useCase.execute(
           command({ orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '10.00' }] }),
-          { id: 'u-1', isStaff: false },
+          { id: 'u-1', canAttend: false },
         ),
       ).rejects.toBeInstanceOf(ProductInactiveError);
       expect(create).not.toHaveBeenCalled();
@@ -214,7 +214,7 @@ describe('CreateOrderUseCase', () => {
       await expect(
         useCase.execute(
           command({ orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '10.00' }] }),
-          { id: 'u-1', isStaff: false },
+          { id: 'u-1', canAttend: false },
         ),
       ).rejects.toBeInstanceOf(ProductUnavailableError);
       expect(create).not.toHaveBeenCalled();
@@ -227,7 +227,7 @@ describe('CreateOrderUseCase', () => {
 
       await useCase.execute(
         command({ orderItems: [{ productId: 'p-1', quantity: 1, unitPrice: '10' }] }),
-        { id: 'u-1', isStaff: false },
+        { id: 'u-1', canAttend: false },
       );
 
       expect(create).toHaveBeenCalledTimes(1);
