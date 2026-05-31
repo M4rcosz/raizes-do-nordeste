@@ -15,12 +15,15 @@ import {
   TRANSACTION_RUNNER,
   type TransactionRunner,
 } from '@shared/transaction/transaction-runner.port';
+import { AUDIT_LOGGER, type AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
+import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
 describe('CreateOrderUseCase', () => {
   const txContext: unknown = Symbol('tx-context');
   let useCase: CreateOrderUseCase;
   let create: jest.MockedFunction<OrderRepository['create']>;
   let resolveLookup: jest.MockedFunction<OrderProductLookup['resolve']>;
+  let logAudit: jest.MockedFunction<AuditLogger['log']>;
 
   const command = (overrides: Partial<CreateOrderCommand> = {}): CreateOrderCommand => ({
     businessUnitId: 'bu-1',
@@ -54,6 +57,9 @@ describe('CreateOrderUseCase', () => {
       new Map([['p-1', { price: new Big('10.00'), isActive: true, isAvailable: true }]]),
     );
 
+    logAudit = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
+    logAudit.mockResolvedValue(undefined);
+
     // Fake unit of work: runs the work immediately, handing it a sentinel tx
     // so tests can assert the same context reaches the repository.
     const transactions: TransactionRunner = { run: (work) => work(txContext) };
@@ -61,6 +67,7 @@ describe('CreateOrderUseCase', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         CreateOrderUseCase,
+        { provide: AUDIT_LOGGER, useValue: { log: logAudit } satisfies AuditLogger },
         {
           provide: ORDER_REPOSITORY,
           useValue: {
@@ -94,6 +101,19 @@ describe('CreateOrderUseCase', () => {
         orderItems: [expect.objectContaining({ subtotal: '20' })],
       }),
       txContext,
+    );
+  });
+
+  it('writes an ORDER_CREATED audit entry for the created order', async () => {
+    await useCase.execute(command(), { id: 'u-1', isStaff: false });
+
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'u-1',
+        action: AUDIT_ACTIONS.ORDER_CREATED,
+        entity: 'Order',
+        entityId: 'o-1',
+      }),
     );
   });
 
@@ -157,6 +177,7 @@ describe('CreateOrderUseCase', () => {
         ),
       ).rejects.toBeInstanceOf(PriceMismatchError);
       expect(create).not.toHaveBeenCalled();
+      expect(logAudit).not.toHaveBeenCalled();
     });
 
     it('rejects with OrderReferenceNotFoundError when the product is not on this unit menu', async () => {

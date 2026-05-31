@@ -22,6 +22,8 @@ import {
   type TransactionContext,
   type TransactionRunner,
 } from '@shared/transaction/transaction-runner.port';
+import { AUDIT_LOGGER, type AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
+import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
 /** Who is performing the operation, resolved from the auth token by the HTTP layer. */
 export interface Actor {
@@ -53,6 +55,8 @@ export class CreateOrderUseCase {
     private readonly productLookup: OrderProductLookup,
     @Inject(TRANSACTION_RUNNER)
     private readonly transactions: TransactionRunner,
+    @Inject(AUDIT_LOGGER)
+    private readonly audit: AuditLogger,
   ) {}
 
   async execute(command: CreateOrderCommand, actor: Actor): Promise<Order> {
@@ -68,7 +72,7 @@ export class CreateOrderUseCase {
 
     // Validate and persist atomically: the menu/product state read here must not
     // change before the order insert, so both share one transaction.
-    return this.transactions.run(async (tx) => {
+    const order = await this.transactions.run(async (tx) => {
       await this.assertOrderableProducts(command, tx);
 
       const orderItems = rawOrderItems.map((item) => ({
@@ -98,6 +102,17 @@ export class CreateOrderUseCase {
         tx,
       );
     });
+
+    // Best-effort audit after the order is committed; failures here never roll it back.
+    await this.audit.log({
+      userId: actor.id,
+      action: AUDIT_ACTIONS.ORDER_CREATED,
+      entity: 'Order',
+      entityId: order.id,
+      metadata: { orderChannel, totalAmount: order.totalAmount.toFixed(2) },
+    });
+
+    return order;
   }
 
   /**
