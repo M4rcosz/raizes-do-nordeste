@@ -3,17 +3,17 @@ import { Test } from '@nestjs/testing';
 import { AuditService } from './audit.service';
 import {
   AUDIT_LOG_REPOSITORY,
-  IAuditLogRepository,
+  AuditLogRepository,
 } from '@modules/audit/domain/repositories/audit-log.repository';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
 describe('AuditService', () => {
   let service: AuditService;
-  let create: jest.MockedFunction<IAuditLogRepository['create']>;
+  let create: jest.MockedFunction<AuditLogRepository['create']>;
 
   beforeAll(async () => {
-    create = jest.fn() as jest.MockedFunction<IAuditLogRepository['create']>;
-    const repo: jest.Mocked<IAuditLogRepository> = { create };
+    create = jest.fn() as jest.MockedFunction<AuditLogRepository['create']>;
+    const repo: jest.Mocked<AuditLogRepository> = { create };
 
     const moduleRef = await Test.createTestingModule({
       providers: [AuditService, { provide: AUDIT_LOG_REPOSITORY, useValue: repo }],

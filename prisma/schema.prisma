@@ -203,7 +203,7 @@ enum OrderStatus {
 model Order {
   id             String  @id @default(uuid())
   businessUnitId String  @map("business_unit_id")
-  customerId     String  @map("customer_id")
+  customerId     String?  @map("customer_id")
   attendantId    String? @map("attendant_id")
 
   pointsRedeemed Int          @default(0) @map("points_redeemed")
@@ -217,7 +217,7 @@ model Order {
   updatedById    String?      @map("updated_by")
 
   businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id])
-  customer     User         @relation("CustomerOrders", fields: [customerId], references: [id])
+  customer     User?         @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
   attendant    User?        @relation("AttendantOrders", fields: [attendantId], references: [id])
   updatedBy    User?        @relation("OrdersUpdatedBy", fields: [updatedById], references: [id])
 
@@ -231,7 +231,7 @@ model Order {
   @@index([businessUnitId])
   @@index([orderStatus])
   @@index([orderChannel])
-  @@index([createdAt])
+  @@index([createdAt, id])
   @@map("orders")
 }
 

@@ -1,6 +1,6 @@
 import { JwtPayloadSign } from '@shared/auth/jwt-payload.type';
 
-export interface ITokenSigner {
+export interface TokenSigner {
   sign(payload: JwtPayloadSign): Promise<string>;
 }
 

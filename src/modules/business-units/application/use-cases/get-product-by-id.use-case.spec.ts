@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals'
 import { Test } from '@nestjs/testing';
 import Big from 'big.js';
 import {
-  IProductRepository,
+  ProductRepository,
   PRODUCT_REPOSITORY,
 } from '../../domain/repositories/product.repository';
 import { GetProductByIdUseCase } from './get-product-by-id.use-case';
@@ -13,12 +13,12 @@ import { ProductNotFoundError } from '../errors/product-not-found.error';
 describe('GetProductByIdUseCase', () => {
   describe('execute', () => {
     let useCase: GetProductByIdUseCase;
-    let findById: jest.MockedFunction<IProductRepository['findById']>;
+    let findById: jest.MockedFunction<ProductRepository['findById']>;
 
     beforeAll(async () => {
-      findById = jest.fn() as jest.MockedFunction<IProductRepository['findById']>;
+      findById = jest.fn() as jest.MockedFunction<ProductRepository['findById']>;
 
-      const mockRepo: jest.Mocked<IProductRepository> = {
+      const mockRepo: jest.Mocked<ProductRepository> = {
         findAllActive: jest.fn(),
         findById,
         findAllByBusinessUnit: jest.fn(),

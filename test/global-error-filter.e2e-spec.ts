@@ -5,7 +5,7 @@ import type { Server } from 'http';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import {
-  IProductRepository,
+  ProductRepository,
   PRODUCT_REPOSITORY,
 } from '@modules/business-units/domain/repositories/product.repository';
 
@@ -17,7 +17,7 @@ describe('GlobalErrorFilter (e2e)', () => {
   let app: INestApplication;
   let server: Server;
 
-  const throwingRepository: IProductRepository = {
+  const throwingRepository: ProductRepository = {
     findById: () => Promise.reject(new Error('SECRET: db credentials in stack')),
     findAllActive: () => Promise.reject(new Error('SECRET: db credentials in stack')),
     findAllByBusinessUnit: () => Promise.reject(new Error('SECRET: db credentials in stack')),

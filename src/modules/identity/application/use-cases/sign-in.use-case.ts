@@ -1,20 +1,20 @@
 import { User } from '@modules/identity/domain/entities/user.entity';
 import {
   USER_REPOSITORY,
-  type IUserRepository,
+  type UserRepository,
 } from '@modules/identity/domain/repositories/user.repository';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { UsersFetchError } from '../errors/users-fetch.error';
 import { InvalidCredentialsError } from '../errors/invalid-credentials.error';
 import {
-  type IPasswordHasher,
+  type PasswordHasher,
   PASSWORD_HASHER,
 } from '@modules/identity/domain/ports/password-hasher.port';
-import { type ITokenSigner, TOKEN_SIGNER } from '@modules/identity/domain/ports/token-signer.port';
+import { type TokenSigner, TOKEN_SIGNER } from '@modules/identity/domain/ports/token-signer.port';
 import {
   AUDIT_LOGGER,
   type AuditLogInput,
-  type IAuditLogger,
+  type AuditLogger,
 } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
@@ -24,13 +24,13 @@ export class SignInUseCase {
 
   constructor(
     @Inject(USER_REPOSITORY)
-    private readonly users: IUserRepository,
+    private readonly users: UserRepository,
     @Inject(TOKEN_SIGNER)
-    private readonly tokenSigner: ITokenSigner,
+    private readonly tokenSigner: TokenSigner,
     @Inject(PASSWORD_HASHER)
-    private readonly passwordHasher: IPasswordHasher,
+    private readonly passwordHasher: PasswordHasher,
     @Inject(AUDIT_LOGGER)
-    private readonly auditLogger: IAuditLogger,
+    private readonly auditLogger: AuditLogger,
   ) {}
 
   async execute(username: string, plainPassword: string): Promise<{ access_token: string }> {

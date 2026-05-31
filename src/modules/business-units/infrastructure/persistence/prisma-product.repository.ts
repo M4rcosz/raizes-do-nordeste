@@ -5,7 +5,7 @@ import type {
   CreateProductInput,
   FindProductsByBusinessUnitInput,
   FindProductsInput,
-  IProductRepository,
+  ProductRepository,
   ProductFilters,
 } from '../../domain/repositories/product.repository';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
@@ -14,7 +14,7 @@ import { ProductAlreadyExistsError } from '../../domain/errors/product-already-e
 import { CategoryNotFoundError } from '../../domain/errors/category-not-found.error';
 
 @Injectable()
-export class PrismaProductRepository implements IProductRepository {
+export class PrismaProductRepository implements ProductRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: string): Promise<Product | null> {

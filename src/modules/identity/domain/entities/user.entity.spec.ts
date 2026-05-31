@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { User } from './user.entity';
-import { IPasswordHasher } from '../ports/password-hasher.port';
+import { PasswordHasher } from '../ports/password-hasher.port';
 
 describe('User', () => {
   const buildUser = (overrides?: { passwordHash?: string }): User =>
@@ -53,12 +53,12 @@ describe('User', () => {
   });
 
   describe('verifyPasswordOrDecoy', () => {
-    let verify: jest.MockedFunction<IPasswordHasher['verify']>;
-    let hasher: IPasswordHasher;
+    let verify: jest.MockedFunction<PasswordHasher['verify']>;
+    let hasher: PasswordHasher;
 
     beforeEach(() => {
-      verify = jest.fn() as jest.MockedFunction<IPasswordHasher['verify']>;
-      hasher = { hash: jest.fn() as jest.MockedFunction<IPasswordHasher['hash']>, verify };
+      verify = jest.fn() as jest.MockedFunction<PasswordHasher['verify']>;
+      hasher = { hash: jest.fn() as jest.MockedFunction<PasswordHasher['hash']>, verify };
     });
 
     it("should call hasher with the user's password hash when user exists", async () => {
