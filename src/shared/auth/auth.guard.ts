@@ -19,6 +19,12 @@ export class AuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
   ) {}
 
+  /**
+   * Two-phase gate. First, `@Public()` handlers bypass auth entirely. Otherwise the
+   * Bearer JWT must verify (401 on missing/invalid) and its payload is attached to the
+   * request. Then authorization: with no `@Roles()` any authenticated user passes; with
+   * `@Roles()` the user's role must be in the list.
+   */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
