@@ -275,12 +275,12 @@ enum PaymentStatus {
 
 model Payment {
   id      String @id @default(uuid())
-  orderId String @unique @map("order_id")
+  orderId String @map("order_id")
 
   amount           Decimal       @db.Decimal(10, 2)
   method           PaymentMethod
   status           PaymentStatus @default(PENDING)
-  extTransactionId String?       @map("ext_transaction_id")
+  extTransactionId String?       @unique @map("ext_transaction_id")
   gatewayRequest   Json?         @map("gateway_request")
   gatewayResponse  Json?         @map("gateway_response")
   createdAt        DateTime      @default(now()) @map("created_at")
@@ -288,6 +288,10 @@ model Payment {
 
   order Order @relation(fields: [orderId], references: [id])
 
+  // A payment is one *attempt*: an order may have many, at most one live/settled.
+  // The "one live attempt per order" rule is a partial unique index added in the
+  // migration SQL (Prisma can't express a filtered index in the schema).
+  @@index([orderId])
   @@index([status])
   @@map("payments")
 }

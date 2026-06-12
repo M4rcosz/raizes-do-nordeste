@@ -49,8 +49,10 @@ export class PrismaOrderRepository implements OrderRepository {
     }
   }
 
-  async findById(id: string): Promise<Order | null> {
-    const raw = await this.prisma.order.findUnique({
+  async findById(id: string, tx?: TransactionContext): Promise<Order | null> {
+    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
+
+    const raw = await db.order.findUnique({
       where: { id },
       include: { orderItems: true },
     });
@@ -74,12 +76,17 @@ export class PrismaOrderRepository implements OrderRepository {
     return raws.map((raw) => this.toEntity(raw));
   }
 
-  async updateStatus(input: UpdateOrderStatusInput): Promise<Order | null> {
-    // Optimistic lock: the write only lands if the row still holds the status the
-    // caller read. updateMany lets us filter on a non-unique column and tells us how
-    // many rows matched — 0 means someone transitioned the order concurrently.
+  async updateStatus(
+    input: UpdateOrderStatusInput,
+    tx?: TransactionContext,
+  ): Promise<Order | null> {
+    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
+
+    // Optimistic lock: the write only lands if the row still holds the status the caller
+    // read. updateMany filters on a non-unique column and returns the match count; 0
+    // means someone transitioned the order concurrently.
     try {
-      const { count } = await this.prisma.order.updateMany({
+      const { count } = await db.order.updateMany({
         where: { id: input.id, orderStatus: input.expectedFrom },
         data: { orderStatus: input.orderStatus, updatedById: input.updatedById },
       });
@@ -88,7 +95,7 @@ export class PrismaOrderRepository implements OrderRepository {
         return null;
       }
 
-      const updated = await this.prisma.order.findUnique({
+      const updated = await db.order.findUnique({
         where: { id: input.id },
         include: { orderItems: true },
       });
@@ -159,6 +166,7 @@ export class PrismaOrderRepository implements OrderRepository {
       raw.attendantId,
       raw.pointsRedeemed,
       raw.pointsEarned,
+      new Big(raw.totalAmount.toString()),
       raw.notes,
       raw.orderChannel,
       raw.orderStatus,

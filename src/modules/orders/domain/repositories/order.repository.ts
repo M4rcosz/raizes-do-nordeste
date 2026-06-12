@@ -39,15 +39,17 @@ export interface UpdateOrderStatusInput {
   /** The status the caller read; the update only applies if the row still holds it. */
   expectedFrom: OrderStatus;
   orderStatus: OrderStatus;
-  updatedById: string;
+  /** `null` when the transition is performed by the system (e.g. a payment hook). */
+  updatedById: string | null;
 }
 
 export interface OrderRepository {
   create(input: CreateOrderInput, tx?: TransactionContext): Promise<Order>;
-  findById(id: string): Promise<Order | null>;
+  /** Pass `tx` to read inside an open transaction (read + later write share one snapshot). */
+  findById(id: string, tx?: TransactionContext): Promise<Order | null>;
   findMany(input: FindOrdersInput): Promise<Order[]>;
   /** Returns `null` when no row matched the expected "from" status (concurrent change). */
-  updateStatus(input: UpdateOrderStatusInput): Promise<Order | null>;
+  updateStatus(input: UpdateOrderStatusInput, tx?: TransactionContext): Promise<Order | null>;
 }
 
 export const ORDER_REPOSITORY = Symbol('OrderRepository');

@@ -39,10 +39,9 @@ describe('ValidationPipe (e2e)', () => {
     await app.close();
   });
 
-  describe('forbidNonWhitelisted — unknown properties rejected', () => {
+  describe('forbidNonWhitelisted - unknown properties rejected', () => {
     it('rejects a login body carrying an extra field (400)', async () => {
-      // username/password are valid on their own, so 400 is caused
-      // *only* by the unknown `role` field -> proves forbidNonWhitelisted.
+      // username/password are valid, so the 400 comes only from the unknown `role` field.
       await request(server)
         .post('/api/auth/login')
         .send({ username: 'someone', password: 'supersecret', role: 'ADMIN' })
@@ -54,16 +53,14 @@ describe('ValidationPipe (e2e)', () => {
     });
   });
 
-  describe('type validation — wrong types rejected', () => {
-    // DoD: "string in a number field -> 400". @Type(() => Number) coerces
-    // "abc" -> NaN, then @IsInt fails.
+  describe('type validation - wrong types rejected', () => {
+    // @Type(() => Number) turns "abc" into NaN, then @IsInt fails.
     it('rejects a non-numeric "limit" query param (400)', async () => {
       await request(server).get('/api/products?limit=abc').expect(400);
     });
 
-    // With enableImplicitConversion OFF and no @Type on username, 12345
-    // stays a number, so @IsString rejects it -> 400. Under implicit
-    // conversion this would be stringified first and slip through.
+    // With implicit conversion off and no @Type on username, 12345 stays a
+    // number, so @IsString rejects it.
     it('rejects a non-string username in the login body (400)', async () => {
       await request(server)
         .post('/api/auth/login')
@@ -82,20 +79,17 @@ describe('ValidationPipe (e2e)', () => {
     });
 
     it('coerces a valid numeric "limit" via explicit @Type (200)', async () => {
-      // Proves @Type(() => Number) still converts the query string with
-      // implicit conversion OFF — @Type is now load-bearing, not redundant.
+      // @Type(() => Number) still converts the query string with implicit conversion off.
       await request(server).get('/api/products?limit=5').expect(200);
     });
 
     it('clamps an out-of-range "limit" instead of rejecting it (200)', async () => {
-      // By design: limit bounds are clamped by sanitizeLimit, not
-      // rejected by @Max. ?limit=99999 -> clamped to MAX_LIMIT, 200.
+      // limit is clamped by sanitizeLimit, not rejected by @Max, so 99999 becomes MAX_LIMIT.
       await request(server).get('/api/products?limit=99999').expect(200);
     });
 
     it('lets a well-formed login through to the use-case (not 400)', async () => {
-      // Unknown user -> the use-case rejects it (401), but the request
-      // reached the use-case at all, proving the pipe let it through.
+      // Unknown user gets a 401 from the use-case, which proves the pipe let it through.
       const response = await request(server)
         .post('/api/auth/login')
         .send({ username: 'nonexistent-user', password: 'supersecret' });

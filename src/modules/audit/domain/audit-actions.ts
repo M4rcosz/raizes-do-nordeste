@@ -3,6 +3,11 @@ export const AUDIT_ACTIONS = {
   LOGIN_FAILED: 'LOGIN_FAILED',
   ORDER_CREATED: 'ORDER_CREATED',
   ORDER_STATUS_CHANGED: 'ORDER_STATUS_CHANGED',
+  PAYMENT_CREATED: 'PAYMENT_CREATED',
+  PAYMENT_APPROVED: 'PAYMENT_APPROVED',
+  PAYMENT_REFUSED: 'PAYMENT_REFUSED',
+  /** Payment approved but the order could not be confirmed - needs manual reconciliation. */
+  PAYMENT_RECONCILE_REQUIRED: 'PAYMENT_RECONCILE_REQUIRED',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

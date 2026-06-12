@@ -57,7 +57,7 @@ describe('PrismaProductRepository', () => {
 
       const product = await repo.create(input);
 
-      // Money is forwarded as the original decimal string — never coerced to a float.
+      // Money is forwarded as the original decimal string - never coerced to a float.
       expect(create).toHaveBeenCalledWith({
         data: {
           name: input.name,

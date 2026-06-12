@@ -5,7 +5,7 @@ import { ProductResponseDto } from './product-response.dto';
 /**
  * Schema-only DTO: never instantiated at runtime. It exists so Swagger can
  * describe the generic `PaginatedResponseDto<ProductResponseDto>` returned by
- * the list endpoints (OpenAPI has no generics — a concrete class is needed).
+ * the list endpoints (OpenAPI has no generics - a concrete class is needed).
  */
 export class PaginatedProductResponseDto {
   @ApiProperty({ type: [ProductResponseDto] })

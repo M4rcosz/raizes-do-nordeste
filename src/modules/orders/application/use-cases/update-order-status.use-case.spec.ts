@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import Big from 'big.js';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
 import { OrderStatusConflictError } from '../errors/order-status-conflict.error';
@@ -18,6 +19,7 @@ const makeOrder = (status: OrderStatus): Order =>
     null,
     0,
     0,
+    new Big(0),
     null,
     OrderChannel.APP,
     status,
@@ -59,12 +61,16 @@ describe('UpdateOrderStatusUseCase', () => {
       'staff-1',
     );
 
-    expect(updateStatus).toHaveBeenCalledWith({
-      id: 'o-1',
-      expectedFrom: OrderStatus.PENDING,
-      orderStatus: OrderStatus.CONFIRMED,
-      updatedById: 'staff-1',
-    });
+    expect(updateStatus).toHaveBeenCalledWith(
+      {
+        id: 'o-1',
+        expectedFrom: OrderStatus.PENDING,
+        orderStatus: OrderStatus.CONFIRMED,
+        updatedById: 'staff-1',
+      },
+      undefined,
+    );
+    expect(findById).toHaveBeenCalledWith('o-1', undefined);
     expect(log).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AUDIT_ACTIONS.ORDER_STATUS_CHANGED,
@@ -74,6 +80,32 @@ describe('UpdateOrderStatusUseCase', () => {
         metadata: { from: OrderStatus.PENDING, to: OrderStatus.CONFIRMED },
       }),
     );
+    expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
+  });
+
+  it('reads/writes inside an injected tx and defers auditing to the caller', async () => {
+    findById.mockResolvedValue(makeOrder(OrderStatus.PENDING));
+    updateStatus.mockResolvedValue(makeOrder(OrderStatus.CONFIRMED));
+    const tx = {} as unknown; // opaque transaction context
+
+    const result = await useCase.execute(
+      { orderId: 'o-1', orderStatus: OrderStatus.CONFIRMED },
+      null,
+      tx,
+    );
+
+    expect(findById).toHaveBeenCalledWith('o-1', tx);
+    expect(updateStatus).toHaveBeenCalledWith(
+      {
+        id: 'o-1',
+        expectedFrom: OrderStatus.PENDING,
+        orderStatus: OrderStatus.CONFIRMED,
+        updatedById: null,
+      },
+      tx,
+    );
+    // With a tx the write is not durable yet, so the use case must not audit here.
+    expect(log).not.toHaveBeenCalled();
     expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
   });
 

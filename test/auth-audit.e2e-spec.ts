@@ -64,7 +64,7 @@ describe('Auth + AuditLog (e2e)', () => {
     await app.close();
   });
 
-  describe('POST /api/auth/login — success', () => {
+  describe('POST /api/auth/login - success', () => {
     it('writes a LOGIN_SUCCESS audit entry without password/token/cpf in metadata', async () => {
       const response: { body: { access_token: string } } = await request(server)
         .post('/api/auth/login')
@@ -87,7 +87,7 @@ describe('Auth + AuditLog (e2e)', () => {
     });
   });
 
-  describe('POST /api/auth/login — failure (wrong password)', () => {
+  describe('POST /api/auth/login - failure (wrong password)', () => {
     it('writes a LOGIN_FAILED audit entry with the matched userId', async () => {
       await request(server)
         .post('/api/auth/login')
@@ -103,7 +103,7 @@ describe('Auth + AuditLog (e2e)', () => {
     });
   });
 
-  describe('POST /api/auth/login — failure (unknown user)', () => {
+  describe('POST /api/auth/login - failure (unknown user)', () => {
     it('writes a LOGIN_FAILED audit entry with null userId', async () => {
       const ghostUsername = `ghost-${randomUUID()}`;
 

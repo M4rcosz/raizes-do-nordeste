@@ -4,7 +4,7 @@ import { JwtPayload } from './jwt-payload.type';
 
 /**
  * Reads the authenticated principal that {@link AuthGuard} attaches to the
- * request after verifying the JWT. Throws if it is absent — that means the
+ * request after verifying the JWT. Throws if it is absent - that means the
  * route ran without the guard (e.g. it is @Public), which is a programming
  * error for any handler asking for the current user.
  */

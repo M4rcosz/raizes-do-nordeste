@@ -74,8 +74,8 @@ export class CreateOrderUseCase {
 
     const { attendantId, customerId } = this.resolveParties(command, actor);
 
-    // Validate and persist atomically: the menu/product state read here must not
-    // change before the order insert, so both share one transaction.
+    // Validate and insert in one transaction, so the menu/product state can't change
+    // between the read and the order insert.
     const order = await this.transactions.run(async (tx) => {
       await this.assertOrderableProducts(command, tx);
 
@@ -84,13 +84,16 @@ export class CreateOrderUseCase {
         subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toString(),
       }));
 
-      const totalAmount = Order.calculateTotalAmount(
-        orderItems.map((item) => item.subtotal),
-      ).toString();
+      const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
 
-      // TODO(loyalty): when the loyalty module ships, set pointsEarned = floor(totalAmount)
-      // only if the customer has a LoyaltyAccount with consentGiven=true; otherwise 0.
-      // Today no loyalty data exists, so every order keeps pointsEarned at the DB default (0).
+      // TODO(loyalty): when the loyalty module ships, derive this discount from
+      // pointsRedeemed (points -> money at the loyalty rate) instead of 0. The discount
+      // rule (total = subtotal - discount) already lives in Order.computeTotal.
+      const discountAmount = new Big(0);
+      const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toString();
+
+      // TODO(loyalty): also set pointsEarned = floor(totalAmount) only when the customer
+      // has a LoyaltyAccount with consent. For now it stays at the DB default (0).
 
       return this.orders.create(
         {
@@ -123,7 +126,7 @@ export class CreateOrderUseCase {
    * Rejects orders that reference a product not on this unit's menu (404), a product
    * that is inactive brand-wide (422), a menu item currently unavailable (422), or a
    * unitPrice that diverges from the authoritative price (422). Authoritative price is
-   * BusinessUnitMenuItem.customPrice — only menu items are orderable.
+   * BusinessUnitMenuItem.customPrice - only menu items are orderable.
    */
   private async assertOrderableProducts(
     command: CreateOrderCommand,
@@ -180,10 +183,16 @@ export class CreateOrderUseCase {
       case 'anonymous':
         return { attendantId: null, customerId: null };
       case 'from-request':
-        // Unreachable today: 'from-request' only pairs with requiresAttendant=true.
+        // Invariant: 'from-request' only pairs with requiresAttendant=true (handled above).
+        // Reaching here means a channel policy is misconfigured: a 500-class bug, not user error.
         throw new Error(
           `Channel ${command.orderChannel} mixes 'from-request' with no attendant policy.`,
         );
+      default: {
+        // Compile-time exhaustiveness: a new CustomerSource must be handled above.
+        const _exhaustive: never = source;
+        throw new Error(`Unhandled customer source ${String(_exhaustive)}.`);
+      }
     }
   }
 }

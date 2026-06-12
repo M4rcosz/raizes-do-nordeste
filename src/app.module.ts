@@ -8,6 +8,7 @@ import { AuthGuard } from '@shared/auth/auth.guard';
 import { GlobalErrorFilter } from '@shared/filter/global-error.filter';
 import { AuditModule } from '@modules/audit/audit.module';
 import { OrdersModule } from '@modules/orders/orders.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
     IdentityModule,
     BusinessUnitsModule,
     OrdersModule,
+    PaymentsModule,
   ],
   providers: [
     {

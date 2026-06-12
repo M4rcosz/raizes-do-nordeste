@@ -14,7 +14,7 @@ describe('OrderItem', () => {
   });
 
   describe('constructor enforces the subtotal invariant', () => {
-    it('computes subtotal from quantity and unitPrice — caller cannot pass an inconsistent value', () => {
+    it('computes subtotal from quantity and unitPrice - caller cannot pass an inconsistent value', () => {
       const item = new OrderItem('i-1', 'o-1', 'p-1', 4, new Big('7.25'), null);
 
       expect(item.subtotal.eq(new Big('29'))).toBe(true);

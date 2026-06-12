@@ -6,9 +6,9 @@ export const ORDER_PRODUCT_LOOKUP = Symbol('OrderProductLookup');
 export interface ResolvedProduct {
   /** Authoritative price for the product at the business unit: BusinessUnitMenuItem.customPrice. */
   price: Big;
-  /** Product.isActive — whether the product is enabled brand-wide. */
+  /** Product.isActive - whether the product is enabled brand-wide. */
   isActive: boolean;
-  /** BusinessUnitMenuItem.isAvailable — whether the unit is currently offering it. */
+  /** BusinessUnitMenuItem.isAvailable - whether the unit is currently offering it. */
   isAvailable: boolean;
 }
 
