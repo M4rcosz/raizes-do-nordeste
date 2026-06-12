@@ -427,7 +427,7 @@ describe('Orders (e2e)', () => {
 
       // Two staff fire the same PENDING -> CONFIRMED transition at once. The optimistic
       // lock must let exactly one win; the other is rejected with 409 (lost the race) or
-      // 422 (it serialized after and re-read CONFIRMED) — never a second silent apply.
+      // 422 (it serialized after and re-read CONFIRMED) - never a second silent apply.
       const patch = (): request.Test =>
         request(server)
           .patch(`/api/orders/${id}/status`)

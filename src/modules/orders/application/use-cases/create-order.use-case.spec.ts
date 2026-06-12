@@ -39,6 +39,7 @@ describe('CreateOrderUseCase', () => {
     null,
     0,
     0,
+    new Big(0),
     null,
     OrderChannel.APP,
     'PENDING',

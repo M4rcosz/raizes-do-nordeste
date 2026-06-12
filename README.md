@@ -1,17 +1,18 @@
-# Raízes do Nordeste — Backend API
+# Raízes do Nordeste - Backend API
 
 [![CI](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml/badge.svg)](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml)
 
 REST API for a multi-unit restaurant ordering system. The platform powers menu
 browsing, order management, payment processing, inventory control and a
-customer loyalty program — across multiple business units (franchises).
+customer loyalty program - across multiple business units (franchises).
 
 > **Status:** the project is being built incrementally. The shipped surface
 > is the product catalog (public browsing + role-gated creation), identity
 > (JWT login + argon2 hashing + global role guard), a cross-cutting audit
-> log wired into the login flow, and a first slice of **orders**
-> (channel-aware `POST /api/orders` with server-side total). Payments,
-> inventory, promotions and loyalty are planned (see [Roadmap](#roadmap)).
+> log wired into the login flow, **orders** (channel-aware creation, reads,
+> status state machine), and **payments** (gateway charge + webhook
+> confirmation that advances the order). Inventory, promotions and loyalty
+> are planned (see [Roadmap](#roadmap)).
 
 ---
 
@@ -49,9 +50,9 @@ customer loyalty program — across multiple business units (franchises).
 
 ## Architecture
 
-The codebase follows **Clean Architecture organized by bounded context** — each
+The codebase follows **Clean Architecture organized by bounded context** - each
 business context owns its own four-layer stack, and dependencies point strictly
-inwards (infrastructure → application → domain).
+inwards (infrastructure -> application -> domain).
 
 ```
    ┌────────────────────────────────────────────────────────┐
@@ -61,7 +62,7 @@ inwards (infrastructure → application → domain).
                                │ depends on
    ┌───────────────────────────▼────────────────────────────┐
    │                    Application Layer                   │  Orchestration
-   │            (Use Cases — one per business action)       │
+   │            (Use Cases - one per business action)       │
    └───────────────────────────┬────────────────────────────┘
                                │ depends on
    ┌───────────────────────────▼────────────────────────────┐
@@ -75,7 +76,7 @@ inwards (infrastructure → application → domain).
    └────────────────────────────────────────────────────────┘
 ```
 
-> **Heads-up — structural change mid-project (May 2026):** the codebase was
+> **Heads-up - structural change mid-project (May 2026):** the codebase was
 > refactored from a flat layout (`src/domain`, `src/infrastructure`,
 > `src/modules/<feature>`) into a per-bounded-context layout
 > (`src/modules/<context>/{domain,application,infrastructure}`). The flat
@@ -90,10 +91,10 @@ inwards (infrastructure → application → domain).
 ### Architectural Decisions
 
 **1. Clean Architecture with NestJS pragmatism**
-The `domain/` layer of each context contains pure TypeScript — no NestJS, no
+The `domain/` layer of each context contains pure TypeScript - no NestJS, no
 Prisma, no framework imports. This keeps business rules portable and trivial
 to unit test. Use cases, however, use `@Injectable()` so the DI container can
-wire them up — this is a deliberate, accepted compromise for ergonomics.
+wire them up - this is a deliberate, accepted compromise for ergonomics.
 
 **2. Repository Pattern**
 Each context's `domain/repositories/` declares interfaces. The matching
@@ -128,15 +129,15 @@ likewise validated as decimal strings (`@IsDecimal`) and never coerced via
 - Domain and application errors extend shared base classes
   (`DomainError` / `ApplicationError`) that carry a transport-agnostic
   `kind` (`not-found`, `invalid`, `conflict`, `unauthorized`, `forbidden`,
-  `unavailable`) — never an HTTP status.
+  `unavailable`) - never an HTTP status.
 - A global exception filter (`shared/filter/`, registered via `APP_FILTER`)
-  is the single place that maps `kind` → HTTP status, re-wraps NestJS
+  is the single place that maps `kind` -> HTTP status, re-wraps NestJS
   `HttpException`s, and emits one consistent JSON envelope. It logs the full
   `Error.cause` chain server-side but never leaks internals to the client.
 - `ProductsFetchError` (application layer) wraps the underlying repository
   failure with the standard `Error.cause` option and `kind: unavailable`.
 - Repositories translate persistence-specific failures into domain errors at
-  the boundary — a Prisma `P2002` unique-constraint violation becomes
+  the boundary - a Prisma `P2002` unique-constraint violation becomes
   `ProductAlreadyExistsError` (`kind: conflict`) and a `P2003` foreign-key
   violation becomes `CategoryNotFoundError` (`kind: not-found`), each chaining
   the original error as `Error.cause`. Application and domain code therefore
@@ -150,8 +151,8 @@ context, it stays inside that context.
 
 **8. Cross-context capabilities are exposed via published ports**
 A bounded context that needs to be **consumed** by other contexts (e.g.
-`audit`) publishes a port — a TypeScript `interface` plus a `Symbol` DI
-token — in its `application/ports/` folder, and binds the token to its
+`audit`) publishes a port - a TypeScript `interface` plus a `Symbol` DI
+token - in its `application/ports/` folder, and binds the token to its
 implementation in its NestJS module's `providers` / `exports`. Consumers
 inject the token and depend on the interface only; they never import
 entities or repositories from another context's `domain/`. This is the
@@ -163,13 +164,13 @@ payment use cases need to log audit entries.
 **9. Path aliases for cross-boundary imports**
 Imports that cross a context boundary use TypeScript path aliases:
 
-- `@shared/*` → `src/shared/*`
-- `@modules/*` → `src/modules/*`
+- `@shared/*` -> `src/shared/*`
+- `@modules/*` -> `src/modules/*`
 
 Imports **inside** the same bounded context stay relative
 (`../domain/entities/product.entity`). The alias is a visual signal that
 the import crosses a context boundary; a relative path documents that the
-dependency stays local. This is a convention, not a lint rule — review for
+dependency stays local. This is a convention, not a lint rule - review for
 it in PRs.
 
 > When adding a new alias, **four** configs must stay in sync:
@@ -183,10 +184,10 @@ it in PRs.
 > `jsc.baseUrl` (so `shared/*` with baseUrl `./src`); jest paths use
 > jest's `<rootDir>` token.
 
-**10. Build pipeline — SWC with `tsc` type-check sidecar**
+**10. Build pipeline - SWC with `tsc` type-check sidecar**
 `nest build` uses [SWC](https://swc.rs/) (configured in `nest-cli.json`
 under `compilerOptions.builder`) instead of `tsc`. SWC compiles each file
-in parallel — roughly 10× faster on this codebase — and resolves path
+in parallel - roughly 10x faster on this codebase - and resolves path
 aliases natively, so `dist/` contains real relative paths and no runtime
 alias resolver is needed.
 
@@ -195,21 +196,21 @@ that file minimal: it declares only `jsc.baseUrl` and `jsc.paths` so SWC
 has its own source of truth for alias resolution and does not try to
 recombine the tsconfig values. The decorator and `emitDecoratorMetadata`
 behavior NestJS needs comes from the defaults that the `@nestjs/cli`
-SWC integration injects — replicating them in `.swcrc` would just be
+SWC integration injects - replicating them in `.swcrc` would just be
 duplication.
 
 SWC does not perform type checking. The `typeCheck: true` flag in
 `nest-cli.json` runs `tsc --noEmit` alongside the SWC compile so type
 errors still fail the build.
 
-> ⚠️ **Caveat — circular imports + SWC.** Because SWC compiles each file
+> **Caveat - circular imports + SWC.** Because SWC compiles each file
 > in isolation, it can mis-emit `design:type` reflection metadata when two
 > files reference each other across a decorator boundary (`@Injectable()`,
 > `class-validator`, decorator-driven ORMs). The build succeeds; the bug
 > surfaces only at runtime (DI injects `undefined`, validator silently
 > skipped, ORM loses the relation).
 >
-> **Low risk for this project today** — Prisma does not rely on
+> **Low risk for this project today** - Prisma does not rely on
 > `emitDecoratorMetadata` and domain entities are plain classes.
 > `class-validator` is now wired (global `ValidationPipe` + `SignInDto`),
 > but its DTOs are flat (no bidirectional aggregate references), so the
@@ -220,7 +221,7 @@ errors still fail the build.
 > - Adopting a decorator-based ORM with bidirectional relations
 >
 > Mitigations, in preferred order: (1) use `import type` for type-only
-> imports — they are erased at runtime and break many cycles automatically;
+> imports - they are erased at runtime and break many cycles automatically;
 > (2) treat circularity as a design smell and refactor; (3) `forwardRef()`
 > for module-level DI cycles; (4) for metadata-driven cases without ORM
 > workarounds, define a wrapper type analogous to TypeORM's `Relation<T>`
@@ -237,7 +238,7 @@ src/
 ├── shared/                       ← Cross-context kernel
 │   ├── auth/                     ← Global AuthGuard, @Public/@Roles, JWT payload
 │   ├── errors/                   ← DomainError/ApplicationError base + ErrorKind
-│   ├── filter/                   ← Global exception filter (error → envelope)
+│   ├── filter/                   ← Global exception filter (error -> envelope)
 │   ├── infrastructure/
 │   │   └── prisma/               ← @Global() PrismaService + lifecycle
 │   └── pagination/               ← Cursor-pagination types and DTO envelope
@@ -266,11 +267,16 @@ src/
     │   ├── domain/               ← User entity, repo + hasher/signer ports, UserRole
     │   ├── application/          ← SignInUseCase + app-layer errors
     │   └── infrastructure/       ← Argon2 hasher, JWT signer, auth controller/DTO
-    └── orders/                   ← Channel-aware order creation
-        ├── orders.module.ts
-        ├── domain/               ← Order/OrderItem entities, OrderChannel/Status VOs (channel policies), OrderRepository, NOT_FOUND errors
-        ├── application/          ← CreateOrderUseCase + AttendantRequiredError
-        └── infrastructure/       ← PrismaOrderRepository, OrdersController, request/response DTOs
+    ├── orders/                   ← Channel-aware order creation
+    │   ├── orders.module.ts
+    │   ├── domain/               ← Order/OrderItem entities, OrderChannel/Status VOs (channel policies), OrderRepository, NOT_FOUND errors
+    │   ├── application/          ← Use cases + OrderForPayment port (published to payments) + errors
+    │   └── infrastructure/       ← PrismaOrderRepository, OrdersController, request/response DTOs
+    └── payments/                 ← Gateway charge + webhook confirmation
+        ├── payments.module.ts
+        ├── domain/               ← Payment entity, PaymentStatus/PaymentMethod VOs, PaymentRepository
+        ├── application/          ← CreatePayment/ConfirmPayment/FindPaymentByOrder, PaymentGateway port, errors
+        └── infrastructure/       ← MockPaymentGateway, PrismaPaymentRepository, PaymentsController, webhook guard, DTOs
 prisma/
 ├── schema.prisma                 ← Single source of truth for the database
 ├── seed.ts                       ← Idempotent seed for local dev
@@ -282,8 +288,8 @@ test/
 └── global-error-filter.e2e-spec.ts ← Error envelope e2e (full pipeline)
 ```
 
-> Remaining contexts (`inventory`, `orders`, `payments`, `promotions`,
-> `loyalty`) will follow the same internal shape under `src/modules/`.
+> Remaining contexts (`inventory`, `promotions`, `loyalty`) will follow the
+> same internal shape under `src/modules/`.
 
 ---
 
@@ -322,11 +328,11 @@ PORT=3000
 JWT_SECRET_KEY=replace-with-a-strong-random-secret
 ```
 
-> ⚠️ `DATABASE_URL` uses `localhost` for local development. The full-stack
+> `DATABASE_URL` uses `localhost` for local development. The full-stack
 > Docker compose (`docker-compose.prod.yml`) overrides this variable inside
 > the `app` service so it points at the `db` service hostname.
 >
-> 🔑 `JWT_SECRET_KEY` is **required** — the identity module calls
+> `JWT_SECRET_KEY` is **required** - the identity module calls
 > `cfg.getOrThrow('JWT_SECRET_KEY')` on boot and the app exits if it is
 > missing. Generate one with, for example:
 >
@@ -353,7 +359,7 @@ npm run db:seed      # loads sample data
 
 You have two options.
 
-**Option A — Local watch mode (recommended for development):**
+**Option A - Local watch mode (recommended for development):**
 
 ```bash
 npm run start:dev
@@ -361,10 +367,10 @@ npm run start:dev
 
 This expects the database to be already up (step 4). The API is then
 available at **http://localhost:3000/api**. Swagger UI is exposed at
-**http://localhost:3000/api/docs** (development only — disabled when
+**http://localhost:3000/api/docs** (development only - disabled when
 `NODE_ENV=production`).
 
-**Option B — Full Docker stack (build the image, run migrations + seed via
+**Option B - Full Docker stack (build the image, run migrations + seed via
 the container entrypoint):**
 
 ```bash
@@ -377,7 +383,7 @@ On startup, the application container automatically:
 2. Runs the database seed (`prisma db seed`)
 3. Starts the compiled NestJS server on port `3000`
 
-> ℹ️ The default `docker-compose.yml` only contains the `db` service — it is
+> The default `docker-compose.yml` only contains the `db` service - it is
 > the file used by `npm run db:up`. The `app` service lives in
 > `docker-compose.prod.yml`, so the full stack requires the explicit `-f`
 > flag.
@@ -401,7 +407,7 @@ re-applies migrations, re-seeds and starts the watcher:
 npm run devs
 ```
 
-> ⚠️ `npm run devs` runs `db:down -v`, which **wipes the local database
+> `npm run devs` runs `db:down -v`, which **wipes the local database
 > volume**. Never run it against any environment that holds data you care
 > about.
 
@@ -438,29 +444,29 @@ npm run devs
 > Of the domains above, **Identity, Business Units, Audit and Orders**
 > (creation only) have application code shipped. The remaining tables
 > (Inventory, Payments, Promotions, Loyalty) exist in the schema as
-> forward-looking infrastructure — there are no use cases, controllers or
+> forward-looking infrastructure - there are no use cases, controllers or
 > repositories for them yet.
 
 ### Design Decisions
 
-- **UUIDs as primary keys** — prevents sequential ID exposure and
+- **UUIDs as primary keys** - prevents sequential ID exposure and
   enumeration attacks; safer for distributed systems.
-- **camelCase in TypeScript, snake_case in PostgreSQL** — enforced via
+- **camelCase in TypeScript, snake_case in PostgreSQL** - enforced via
   `@map()` and `@@map()` directives so each side follows its own idiomatic
   convention.
-- **`Decimal(10, 2)` for monetary values** — avoids floating-point precision
+- **`Decimal(10, 2)` for monetary values** - avoids floating-point precision
   loss on multiplication and rounding.
-- **`DateTime` (TIMESTAMPTZ) for `createdAt`/`updatedAt`** — preserves
+- **`DateTime` (TIMESTAMPTZ) for `createdAt`/`updatedAt`** - preserves
   timezone semantics, is human-readable in queries, and Prisma serializes
   it as ISO-8601 to JSON. Numeric Unix timestamps were intentionally
   rejected because they lose precision and timezone meaning.
-- **Optional descriptions are `NULL`, not empty strings** — `NULL`
+- **Optional descriptions are `NULL`, not empty strings** - `NULL`
   unambiguously means "no value" and is semantically distinct from an empty
   description, which is a meaningful (but unusual) state.
-- **Selective audit trail** — `updated_by` is applied only where
+- **Selective audit trail** - `updated_by` is applied only where
   operationally or legally relevant (e.g. LGPD compliance), avoiding
   pointless metadata noise on append-only tables.
-- **Indexed columns by access pattern** — every foreign key and every
+- **Indexed columns by access pattern** - every foreign key and every
   enum-style filter (`isActive`, `orderStatus`, etc.) has an explicit
   `@@index`.
 
@@ -475,8 +481,8 @@ All routes are prefixed with **`/api`**.
 When `NODE_ENV` is not `production`, an OpenAPI document and Swagger UI are
 exposed at:
 
-- UI — **http://localhost:3000/api/docs**
-- JSON — **http://localhost:3000/api/docs-json**
+- UI - **http://localhost:3000/api/docs**
+- JSON - **http://localhost:3000/api/docs-json**
 
 Swagger is disabled in production to avoid leaking schema details. Bearer
 auth is wired into the document (`addBearerAuth`) so you can paste a JWT
@@ -486,7 +492,7 @@ returned by `POST /api/auth/login` directly into the "Authorize" dialog.
 
 A global `AuthGuard` protects every route by default; routes opt out with
 `@Public()`. The read endpoints shipped so far are public; **writes are
-protected** — `POST /api/products` requires a `Bearer` JWT in the
+protected** - `POST /api/products` requires a `Bearer` JWT in the
 `Authorization` header and the `ADMIN` or `MANAGER` role (via `@Roles()`).
 `POST /api/orders` also requires a Bearer JWT, but the required role is not
 fixed on the route: it is enforced per request by the `orderChannel` policy
@@ -497,13 +503,13 @@ missing or invalid and `403` when the role is insufficient.
 | ------ | ----------------- | ------ | ------------------------------------------- |
 | `POST` | `/api/auth/login` | Public | Exchange `username` + `password` for a JWT. |
 
-Request body — `SignInDto` (`password` ≥ 8 chars):
+Request body - `SignInDto` (`password` >= 8 chars):
 
 ```json
 { "username": "jane", "password": "min-8-chars" }
 ```
 
-Response — `200 OK`:
+Response - `200 OK`:
 
 ```json
 { "access_token": "eyJhbGciOiJI..." }
@@ -511,7 +517,7 @@ Response — `200 OK`:
 
 Invalid credentials return `401` (see [Error responses](#error-responses)).
 
-Every login attempt — successful **and** failed — is persisted to the
+Every login attempt - successful **and** failed - is persisted to the
 `audit_logs` table by the `AuditService` (`LOGIN_SUCCESS` or `LOGIN_FAILED`
 action). Metadata is defensively sanitized: any key matching
 `password` / `token` / `cpf` / `authorization` / `secret` (case-insensitive,
@@ -527,7 +533,7 @@ swallowed so they cannot break the login outcome.
 | `GET`  | `/api/products/by-business-unit/:businessUnitId` | Public          | List products available at a business unit (effective price = `customPrice` when set, otherwise `basePrice`). |
 | `POST` | `/api/products`                                  | ADMIN / MANAGER | Create a product. `201` on success, `409` if the name exists, `404` if the category does not exist.           |
 
-#### Request body — `ProductCreateDto` (`POST /api/products`)
+#### Request body - `ProductCreateDto` (`POST /api/products`)
 
 `price` is a **positive decimal string** (up to 8 integer + 2 fractional
 digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
@@ -543,7 +549,7 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 }
 ```
 
-#### Response — `ProductResponseDto`
+#### Response - `ProductResponseDto`
 
 ```json
 {
@@ -577,19 +583,19 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 
 When the channel requires a staff actor (`COUNTER` / `PICKUP`), a JWT
 belonging to a `CUSTOMER` is rejected with `403 AttendantRequiredError`.
-For these channels `attendantId` is taken from the JWT (`sub`) — never from
+For these channels `attendantId` is taken from the JWT (`sub`) - never from
 the request body.
 
-#### Request body — `OrderCreateDto`
+#### Request body - `OrderCreateDto`
 
-`unitPrice` is a **decimal string** (`@IsDecimal`, up to 2 fractional digits) —
+`unitPrice` is a **decimal string** (`@IsDecimal`, up to 2 fractional digits) -
 money is never coerced to a `number`. `totalAmount` is **not** accepted from
-the client: it is computed server-side from each item's `quantity × unitPrice`
+the client: it is computed server-side from each item's `quantity x unitPrice`
 via domain statics (`OrderItem.calculateSubtotal`, `Order.calculateTotalAmount`).
 
 `unitPrice` is also **validated server-side** against the authoritative price
 of the product at the business unit. Resolution order is
-`BusinessUnitMenuItem.customPrice` (when a menu item exists for the pair) →
+`BusinessUnitMenuItem.customPrice` (when a menu item exists for the pair) ->
 `Product.basePrice`. A divergence surfaces as `422 PriceMismatchError`, so a
 tampered body cannot buy an item for a price different from the registered
 one. The same lookup also surfaces `Product.isActive`: an order referencing
@@ -616,7 +622,7 @@ points (1 point per real). Until then every order persists `pointsEarned = 0`
 }
 ```
 
-#### Response — `OrderResponseDto`
+#### Response - `OrderResponseDto`
 
 Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
 **decimal string** so JSON cannot reintroduce float rounding on the client.
@@ -650,11 +656,87 @@ Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
 ```
 
 A foreign key pointing to a missing business unit, customer, attendant or
-product surfaces as `404 OrderReferenceNotFoundError` — `PrismaOrderRepository`
+product surfaces as `404 OrderReferenceNotFoundError` - `PrismaOrderRepository`
 translates Prisma's `P2003` into a typed domain error and inspects
 `err.meta.field_name` to produce a message that names the specific reference
 (`customer`, `business unit`, `product`, `attendant`) instead of grouping all
 foreign-key failures under one generic label.
+
+### Payments
+
+| Method | Path                           | Auth           | Description                                                    |
+| ------ | ------------------------------ | -------------- | -------------------------------------------------------------- |
+| `POST` | `/api/payments`                | Bearer         | Create a payment for an order and charge the gateway.          |
+| `POST` | `/api/payments/webhook`        | Webhook secret | Gateway callback: settle a payment and advance its order.      |
+| `GET`  | `/api/orders/:orderId/payment` | Bearer         | Get the payment of an order. Customers may only see their own. |
+
+#### The webhook is the source of truth
+
+Payment confirmation follows the asynchronous-gateway model used in production
+processors (Stripe, Mercado Pago): `POST /api/payments` charges the gateway and
+persists the payment as **`PROCESSING`**, but the order is **not** advanced yet.
+The gateway then calls back `POST /api/payments/webhook`, and only that callback
+settles the payment to `APPROVED`/`REFUSED`. On approval the order is advanced to
+`CONFIRMED` **in the same database transaction** as the payment update, so the two
+never drift apart. The webhook is idempotent: a redelivered callback for an
+already-settled payment is a no-op.
+
+> **Cross-context note.** Payments never imports the `Order` entity. The orders
+> context publishes an `OrderForPayment` port (a TypeScript interface + `Symbol`
+> token, the same mechanism as `AUDIT_LOGGER`) exposing only what payments needs:
+> read the order's payable state/total, and confirm it after approval. The order
+> confirmation reuses the existing order state machine and optimistic lock.
+
+#### Request body - `CreatePaymentDto` (`POST /api/payments`)
+
+`amount` is **not** accepted from the client: it is the order's authoritative
+`totalAmount`, read server-side (anti-tampering, mirroring `unitPrice` on orders).
+An order that is not `PENDING`, or that already has a payment, is rejected with
+`422 OrderNotPayableError` (the `payments.order_id` unique constraint also guards
+the concurrent double-payment race).
+
+```json
+{ "orderId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "method": "PIX" }
+```
+
+#### Request body - `PaymentWebhookDto` (`POST /api/payments/webhook`)
+
+The request must carry the shared secret in the **`x-webhook-secret`** header
+(stand-in for gateway signature verification); a missing/invalid secret returns
+`401`. `status` is the settled outcome the gateway reports.
+
+```json
+{ "extTransactionId": "mock_4f1c...", "status": "APPROVED" }
+```
+
+#### Response - `PaymentResponseDto`
+
+`amount` is serialized as a **decimal string** so JSON cannot reintroduce float
+rounding on the client.
+
+```json
+{
+  "id": "9b2e...",
+  "orderId": "7c9e...",
+  "amount": "25.00",
+  "method": "PIX",
+  "status": "PROCESSING",
+  "extTransactionId": "mock_4f1c...",
+  "createdAt": "2026-05-31T12:00:00.000Z",
+  "updatedAt": "2026-05-31T12:00:00.000Z"
+}
+```
+
+> **Mock gateway.** The bundled `MockPaymentGateway` simulates ~200 ms of latency
+> and **refuses any charge of exactly `13.13`**, approving everything else - a
+> deterministic hook for exercising the failure path in tests.
+
+> **Note on order status (idiomatic deviation).** The sprint brief described the
+> post-payment state as `EM_PREPARO` ("preparing"). The codebase is English-only
+> and an approved payment advances the order to **`CONFIRMED`**: a payment
+> _confirms_ an order, while `PREPARING` stays the kitchen's explicit human
+> acceptance. `PENDING -> CONFIRMED` was already a valid transition, so the state
+> machine was not changed.
 
 ### Error responses
 
@@ -672,23 +754,23 @@ are logged server-side but never sent to the client:
 }
 ```
 
-| Status | When                                                                                       |
-| ------ | ------------------------------------------------------------------------------------------ |
-| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                       |
-| `401`  | Invalid login credentials, or missing/invalid JWT on a protected route                     |
-| `403`  | Authenticated but the role is not allowed (e.g. a `CUSTOMER` creating a `COUNTER` order)   |
-| `404`  | Requested product does not exist, or an order references a missing business unit / product |
-| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                  |
-| `422`  | An order references an inactive product (`ProductInactiveError`) or a `unitPrice` does not match the authoritative price (`PriceMismatchError`) |
-| `503`  | Repository / database failure (`ProductsFetchError`)                                       |
+| Status | When                                                                                                                  |
+| ------ | --------------------------------------------------------------------------------------------------------------------- |
+| `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                                                  |
+| `401`  | Invalid login credentials, missing/invalid JWT, or a webhook with a missing/invalid secret                            |
+| `403`  | Authenticated but the role is not allowed (e.g. a `CUSTOMER` creating a `COUNTER` order)                              |
+| `404`  | Requested product/order/payment does not exist, or an order references a missing reference                            |
+| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                                             |
+| `422`  | An order references an inactive product / mismatched `unitPrice`, or an order is not payable (`OrderNotPayableError`) |
+| `503`  | Repository / database failure (`ProductsFetchError`)                                                                  |
 
 Application and domain errors carry a transport-agnostic `kind` that the filter
-maps to a status: `not-found` → 404, `invalid` → 422, `conflict` → 409,
-`unauthorized` → 401, `forbidden` → 403, `unavailable` → 503. Use cases throw
+maps to a status: `not-found` -> 404, `invalid` -> 422, `conflict` -> 409,
+`unauthorized` -> 401, `forbidden` -> 403, `unavailable` -> 503. Use cases throw
 these (e.g. `ProductNotFoundError`, `InvalidCredentialsError`) instead of HTTP
 exceptions, keeping the application layer framework-agnostic. NestJS
-`HttpException`s raised by the framework itself — the `AuthGuard` (`401`/`403`)
-and the validation pipe (`400`) — keep their own status and are re-wrapped into
+`HttpException`s raised by the framework itself - the `AuthGuard` (`401`/`403`)
+and the validation pipe (`400`) - keep their own status and are re-wrapped into
 the same envelope.
 
 ---
@@ -702,7 +784,7 @@ npm test
 # Watch mode
 npm run test:watch
 
-# Coverage report → ./coverage/lcov-report/index.html
+# Coverage report -> ./coverage/lcov-report/index.html
 npm run test:cov
 
 # End-to-end tests (boots the full Nest application)
@@ -716,12 +798,12 @@ npm run test:e2e
   `AuthGuard` are validated without any database. Entities, value objects,
   DTOs and the global exception filter are tested in isolation.
 - **e2e tests** boot the full Nest application against the development
-  database and exercise the HTTP surface — products
+  database and exercise the HTTP surface - products
   (`app.e2e-spec.ts`), login + audit-log persistence
   (`auth-audit.e2e-spec.ts`), global validation rejection
   (`validation-pipe.e2e-spec.ts`), and the global error envelope via a
   throwing repository (`global-error-filter.e2e-spec.ts`).
-- Each test asserts both **success paths** and **failure paths** — including
+- Each test asserts both **success paths** and **failure paths** - including
   `ProductNotFoundError` propagation, domain errors surfacing from the create
   use case (`ProductAlreadyExistsError`), and `ProductsFetchError` wrapping
   with `Error.cause`.
@@ -733,11 +815,11 @@ npm run test:e2e
 - **ESLint** (`eslint.config.mjs`) with `typescript-eslint` strict-typed
   rules, `no-explicit-any: error`, `no-floating-promises: error`,
   `eqeqeq: error`, `curly: error`.
-- **Prettier** (`.prettierrc`) — single quotes, 100-column width,
+- **Prettier** (`.prettierrc`) - single quotes, 100-column width,
   trailing commas everywhere.
-- **Husky + lint-staged** — pre-commit hook runs ESLint and Prettier on
+- **Husky + lint-staged** - pre-commit hook runs ESLint and Prettier on
   staged TypeScript files only.
-- **GitHub Actions CI** (`.github/workflows/ci.yml`) — installs
+- **GitHub Actions CI** (`.github/workflows/ci.yml`) - installs
   dependencies, generates the Prisma client, lints, tests and builds on
   every push to `main`/`develop` and on every PR to `main`.
 
@@ -746,26 +828,26 @@ npm run test:e2e
 ## Roadmap
 
 The product catalog, identity and audit modules are shipped. Upcoming
-modules — already designed in the database schema — are:
+modules - already designed in the database schema - are:
 
-- [x] **Auth** — JWT login, global role guard, argon2 hashing (`CUSTOMER`,
+- [x] **Auth** - JWT login, global role guard, argon2 hashing (`CUSTOMER`,
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`). Refresh-token rotation
       and user registration still pending.
-- [x] **Audit** — `audit_logs` table, `AuditService` with metadata
+- [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port
       injected into `SignInUseCase` for `LOGIN_SUCCESS` / `LOGIN_FAILED`.
       Ready to be injected into future order / payment use cases.
-- [x] **Orders** — channel-aware `POST /api/orders` with decimal-string
+- [x] **Orders** - channel-aware `POST /api/orders` with decimal-string
       money, server-side total, server-side `unitPrice` validation against
       `BusinessUnitMenuItem.customPrice` / `Product.basePrice` (anti-tampering),
       `Product.isActive` enforcement (inactive products cannot be ordered),
       attendant role check via `OrderChannel` policies, and `customerId`
       nullable for anonymous totem orders. Item updates, status transitions,
       idempotent creation and order reads still pending.
-- [ ] **Payments** — gateway integration (mocked initially), refund flow
-- [ ] **Inventory** — stock, reservations, inventory transactions ledger
-- [ ] **Promotions** — percentage / fixed-amount / free-item discounts
-- [ ] **Loyalty** — points earning (`floor(totalAmount)` per order, conditional
+- [ ] **Payments** - gateway integration (mocked initially), refund flow
+- [ ] **Inventory** - stock, reservations, inventory transactions ledger
+- [ ] **Promotions** - percentage / fixed-amount / free-item discounts
+- [ ] **Loyalty** - points earning (`floor(totalAmount)` per order, conditional
       on a `LoyaltyAccount` with `consentGiven=true`), redemption with balance
       validation against `LoyaltyAccount.totalPoints`, and consent tracking
       (LGPD). The `pointsEarned` hook lives in `CreateOrderUseCase` already.
@@ -774,4 +856,4 @@ modules — already designed in the database schema — are:
 
 ## License
 
-Academic project — all rights reserved.
+Academic project - all rights reserved.

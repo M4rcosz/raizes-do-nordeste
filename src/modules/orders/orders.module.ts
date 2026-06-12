@@ -11,6 +11,8 @@ import { PrismaOrderProductLookup } from './infrastructure/persistence/prisma-or
 import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
 import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
 import { AuditModule } from '@modules/audit/audit.module';
+import { ORDER_FOR_PAYMENT } from './application/ports/order-for-payment.port';
+import { OrderForPaymentService } from './application/services/order-for-payment.service';
 
 @Module({
   imports: [AuditModule],
@@ -28,10 +30,15 @@ import { AuditModule } from '@modules/audit/audit.module';
       provide: TRANSACTION_RUNNER,
       useClass: PrismaTransactionRunner,
     },
+    {
+      provide: ORDER_FOR_PAYMENT,
+      useClass: OrderForPaymentService,
+    },
     CreateOrderUseCase,
     FindOrderByIdUseCase,
     ListOrdersUseCase,
     UpdateOrderStatusUseCase,
   ],
+  exports: [ORDER_FOR_PAYMENT],
 })
 export class OrdersModule {}

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import Big from 'big.js';
 import { ListOrdersUseCase } from './list-orders.use-case';
 import { OrdersFetchError } from '../errors/orders-fetch.error';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
@@ -14,6 +15,7 @@ const makeOrder = (id: string): Order =>
     null,
     0,
     0,
+    new Big(0),
     null,
     OrderChannel.APP,
     OrderStatus.PENDING,

@@ -1,7 +1,7 @@
 /**
  * Repository-level cursor pagination input.
  * `take` is the page size; `cursor` (when provided) marks the last item
- * of the previous page — results begin AFTER it.
+ * of the previous page - results begin AFTER it.
  */
 export interface CursorPaginationParams {
   cursor?: string;

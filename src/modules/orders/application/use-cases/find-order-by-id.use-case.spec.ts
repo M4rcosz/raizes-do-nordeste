@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import Big from 'big.js';
 import { FindOrderByIdUseCase } from './find-order-by-id.use-case';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
@@ -15,6 +16,7 @@ const makeOrder = (customerId: string | null): Order =>
     null,
     0,
     0,
+    new Big(0),
     null,
     OrderChannel.APP,
     OrderStatus.PENDING,

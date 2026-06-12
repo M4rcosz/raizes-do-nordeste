@@ -14,6 +14,7 @@ describe('OrderResponseDto.fromEntity', () => {
     null,
     0,
     5,
+    new Big('20'),
     'note',
     OrderChannel.APP,
     'PENDING',

@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 /**
  * Schema-only DTO: never instantiated at runtime. It exists so Swagger can
  * describe the `meta` envelope returned alongside cursor-paginated lists
- * (OpenAPI has no generics — a concrete class is needed). Keep its shape in
+ * (OpenAPI has no generics - a concrete class is needed). Keep its shape in
  * sync with `CursorPaginationMeta` in `pagination.ts`.
  */
 export class CursorPaginationMetaDto {

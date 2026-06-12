@@ -69,7 +69,7 @@ export class SignInUseCase {
     return { access_token: token };
   }
 
-  // Defense-in-depth: audit must never break the login outcome, regardless of impl.
+  // Audit must never break the login outcome, so failures here are swallowed.
   private async tryAudit(input: AuditLogInput): Promise<void> {
     try {
       await this.auditLogger.log(input);

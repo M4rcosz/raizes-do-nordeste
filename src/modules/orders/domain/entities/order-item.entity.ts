@@ -1,7 +1,7 @@
 import Big from 'big.js';
 
 export class OrderItem {
-  /** Line total (`quantity × unitPrice`), computed once at construction with `big.js` — never a float. */
+  /** Line total (`quantity x unitPrice`), computed once at construction with `big.js` - never a float. */
   public readonly subtotal: Big;
 
   constructor(
