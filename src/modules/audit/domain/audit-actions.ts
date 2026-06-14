@@ -8,6 +8,8 @@ export const AUDIT_ACTIONS = {
   PAYMENT_REFUSED: 'PAYMENT_REFUSED',
   /** Payment approved but the order could not be confirmed - needs manual reconciliation. */
   PAYMENT_RECONCILE_REQUIRED: 'PAYMENT_RECONCILE_REQUIRED',
+  /** A deduction left a product at or below its minQuantity threshold. */
+  STOCK_ALERT: 'STOCK_ALERT',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

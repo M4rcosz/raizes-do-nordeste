@@ -131,6 +131,16 @@ describe('Payments - critical flow A (e2e)', () => {
       },
     });
 
+    // Order creation deducts stock (RN-28): ample quantity so this suite never runs out.
+    await prisma.inventory.create({
+      data: {
+        businessUnitId: unit.id,
+        productId: product.id,
+        quantity: 1000,
+        minQuantity: 5,
+      },
+    });
+
     const hasher = new Argon2PasswordHasher();
     const passwordHash = await hasher.hash(password);
     const user = await prisma.user.create({
@@ -170,6 +180,16 @@ describe('Payments - critical flow A (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.inventoryTransaction.deleteMany({
+      where: { inventory: { businessUnitId: unitId } },
+    });
+    await prisma.inventory.deleteMany({ where: { businessUnitId: unitId } });
+    await prisma.loyaltyTransaction.deleteMany({
+      where: { loyaltyAccount: { customerId: { in: [customerId, otherCustomerId] } } },
+    });
+    await prisma.loyaltyAccount.deleteMany({
+      where: { customerId: { in: [customerId, otherCustomerId] } },
+    });
     await prisma.payment.deleteMany({ where: { order: { businessUnitId: unitId } } });
     await prisma.orderItem.deleteMany({ where: { order: { businessUnitId: unitId } } });
     await prisma.order.deleteMany({ where: { businessUnitId: unitId } });
@@ -366,5 +386,82 @@ describe('Payments - critical flow A (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect((confirmed.body as OrderBody).orderStatus).toBe('CONFIRMED');
+  });
+
+  describe('loyalty points (RN-31)', () => {
+    // Upsert: enrollment normally created the account on the first order, but this
+    // keeps the suite independent of the tests that ran before it.
+    const setConsent = async (consentGiven: boolean): Promise<void> => {
+      const consentDate = consentGiven ? new Date() : null;
+      await prisma.loyaltyAccount.upsert({
+        where: { customerId },
+        update: { consentGiven, consentDate },
+        create: { customerId, consentGiven, consentDate },
+      });
+    };
+
+    const payAndApprove = async (order: OrderBody): Promise<void> => {
+      const res = await request(server)
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ orderId: order.id, method: 'PIX' })
+        .expect(201);
+      const payment = res.body as PaymentBody;
+      await postWebhook({
+        extTransactionId: payment.extTransactionId as string,
+        status: 'APPROVED',
+        amount: payment.amount,
+      }).expect(200);
+    };
+
+    const earnedFor = async (orderId: string): Promise<{ points: number }[]> =>
+      prisma.loyaltyTransaction.findMany({ where: { orderId, type: 'EARN' } });
+
+    it('credits floor(R$25 / 10) = 2 points when an approved payment confirms the order', async () => {
+      // The account exists from earlier orders in this suite; opt the customer in.
+      await setConsent(true);
+      const before = await prisma.loyaltyAccount.findUniqueOrThrow({ where: { customerId } });
+
+      const order = await createOrder('12.50', 2); // 25.00
+      await payAndApprove(order);
+
+      const earns = await earnedFor(order.id);
+      expect(earns).toHaveLength(1);
+      expect(earns[0].points).toBe(2);
+
+      const after = await prisma.loyaltyAccount.findUniqueOrThrow({ where: { customerId } });
+      expect(after.totalPoints).toBe(before.totalPoints + 2);
+    });
+
+    it('credits nothing without consent (LGPD gate)', async () => {
+      await setConsent(false);
+
+      const order = await createOrder('12.50', 2);
+      await payAndApprove(order);
+
+      expect(await earnedFor(order.id)).toHaveLength(0);
+    });
+
+    it('credits nothing when the order was cancelled before the approval landed', async () => {
+      await setConsent(true);
+
+      const order = await createOrder('12.50', 2);
+      const res = await request(server)
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ orderId: order.id, method: 'PIX' })
+        .expect(201);
+      const payment = res.body as PaymentBody;
+
+      // The order moves on while the charge is in flight; the payment still settles.
+      await prisma.order.update({ where: { id: order.id }, data: { orderStatus: 'CANCELLED' } });
+      await postWebhook({
+        extTransactionId: payment.extTransactionId as string,
+        status: 'APPROVED',
+        amount: payment.amount,
+      }).expect(200);
+
+      expect(await earnedFor(order.id)).toHaveLength(0);
+    });
   });
 });

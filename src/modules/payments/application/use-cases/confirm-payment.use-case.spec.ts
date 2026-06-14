@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import Big from 'big.js';
 import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
 import type { PaymentRepository } from '../../domain/repositories/payment.repository';
-import type { OrderForPayment } from '@modules/orders/application/ports/order-for-payment.port';
+import type {
+  OrderForPayment,
+  OrderForPaymentView,
+} from '@modules/orders/application/ports/order-for-payment.port';
+import type { LoyaltyEarning } from '@modules/loyalty/application/ports/loyalty-earning.port';
 import type { AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import type { TransactionRunner } from '@shared/transaction/transaction-runner.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
@@ -29,7 +33,15 @@ describe('ConfirmPaymentUseCase', () => {
   let orders: jest.Mocked<OrderForPayment>;
   let transactions: TransactionRunner;
   let audit: { log: jest.Mock };
+  let loyalty: jest.Mocked<LoyaltyEarning>;
   let useCase: ConfirmPaymentUseCase;
+
+  const orderView = (customerId: string | null): OrderForPaymentView => ({
+    id: 'order-1',
+    isAwaitingPayment: true,
+    totalAmount: '25.00',
+    customerId,
+  });
 
   beforeEach(() => {
     payments = {
@@ -49,12 +61,18 @@ describe('ConfirmPaymentUseCase', () => {
       run: jest.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX)),
     } as unknown as TransactionRunner;
     audit = { log: jest.fn() };
+    loyalty = {
+      earnForOrder: jest.fn(),
+    } as unknown as jest.Mocked<LoyaltyEarning>;
+    // The RN-31 customer lookup runs before the tx on every approval path.
+    orders.findForPayment.mockResolvedValue(orderView('cust-1'));
 
     useCase = new ConfirmPaymentUseCase(
       payments,
       orders,
       transactions,
       audit as unknown as AuditLogger,
+      loyalty,
     );
   });
 
@@ -187,5 +205,68 @@ describe('ConfirmPaymentUseCase', () => {
     expect(result?.status).toBe(PaymentStatus.APPROVED);
     expect(orders.confirmAfterPayment).not.toHaveBeenCalled();
     expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  describe('loyalty earning (RN-31)', () => {
+    it('credits points in the settlement tx when the payment approves and the order confirms', async () => {
+      payments.findByExtTransactionId.mockResolvedValue(makePayment(PaymentStatus.PROCESSING));
+      payments.settle.mockResolvedValue(makePayment(PaymentStatus.APPROVED));
+      orders.confirmAfterPayment.mockResolvedValue('confirmed');
+
+      await useCase.execute({
+        extTransactionId: 'tx-1',
+        status: PaymentStatus.APPROVED,
+        amount: '25.00',
+      });
+
+      // payment.amount is the authoritative charged total handed to loyalty.
+      expect(loyalty.earnForOrder).toHaveBeenCalledWith(
+        { customerId: 'cust-1', orderId: 'order-1', totalAmount: '25.00' },
+        TX,
+      );
+    });
+
+    it('earns nothing when the order is no longer confirmable (e.g. cancelled)', async () => {
+      payments.findByExtTransactionId.mockResolvedValue(makePayment(PaymentStatus.PROCESSING));
+      payments.settle.mockResolvedValue(makePayment(PaymentStatus.APPROVED));
+      orders.confirmAfterPayment.mockResolvedValue('not_confirmed');
+
+      await useCase.execute({
+        extTransactionId: 'tx-1',
+        status: PaymentStatus.APPROVED,
+        amount: '25.00',
+      });
+
+      expect(loyalty.earnForOrder).not.toHaveBeenCalled();
+    });
+
+    it('earns nothing on a refused payment (and never looks the customer up)', async () => {
+      payments.findByExtTransactionId.mockResolvedValue(makePayment(PaymentStatus.PROCESSING));
+      payments.settle.mockResolvedValue(makePayment(PaymentStatus.REFUSED));
+
+      await useCase.execute({
+        extTransactionId: 'tx-1',
+        status: PaymentStatus.REFUSED,
+        amount: '25.00',
+      });
+
+      expect(orders.findForPayment).not.toHaveBeenCalled();
+      expect(loyalty.earnForOrder).not.toHaveBeenCalled();
+    });
+
+    it('earns nothing for an anonymous order (no customer attached)', async () => {
+      payments.findByExtTransactionId.mockResolvedValue(makePayment(PaymentStatus.PROCESSING));
+      payments.settle.mockResolvedValue(makePayment(PaymentStatus.APPROVED));
+      orders.confirmAfterPayment.mockResolvedValue('confirmed');
+      orders.findForPayment.mockResolvedValue(orderView(null));
+
+      await useCase.execute({
+        extTransactionId: 'tx-1',
+        status: PaymentStatus.APPROVED,
+        amount: '25.00',
+      });
+
+      expect(loyalty.earnForOrder).not.toHaveBeenCalled();
+    });
   });
 });
