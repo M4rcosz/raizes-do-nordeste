@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '@modules/audit/audit.module';
+import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
 import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
@@ -16,7 +17,7 @@ import { ExpireStalePaymentsUseCase } from './application/use-cases/expire-stale
 import { StalePaymentSweeper } from './infrastructure/scheduling/stale-payment.sweeper';
 
 @Module({
-  imports: [OrdersModule, AuditModule],
+  imports: [OrdersModule, AuditModule, LoyaltyModule],
   controllers: [PaymentsController],
   providers: [
     {

@@ -46,6 +46,8 @@ describe('Orders (e2e)', () => {
   let staffToken: string;
   let otherCustomerId: string;
   let otherToken: string;
+  let freshCustomerId: string;
+  let freshToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -97,6 +99,17 @@ describe('Orders (e2e)', () => {
       },
     });
 
+    // Order creation deducts stock (RN-28): ample quantity so the shared product
+    // never runs out or trips a STOCK_ALERT across the suite.
+    await prisma.inventory.create({
+      data: {
+        businessUnitId: unit.id,
+        productId: product.id,
+        quantity: 1000,
+        minQuantity: 5,
+      },
+    });
+
     const hasher = new Argon2PasswordHasher();
     const passwordHash = await hasher.hash(password);
     const user = await prisma.user.create({
@@ -145,10 +158,32 @@ describe('Orders (e2e)', () => {
     });
     otherCustomerId = other.id;
     otherToken = await login(otherUsername);
+
+    // A customer that never orders, to prove GET /loyalty/me 404s without an account.
+    const freshUsername = `e2e-fresh-${randomUUID()}`;
+    const fresh = await prisma.user.create({
+      data: {
+        name: 'E2E Fresh Customer',
+        username: freshUsername,
+        passwordHash,
+        role: 'CUSTOMER',
+        businessUnitId: unit.id,
+      },
+    });
+    freshCustomerId = fresh.id;
+    freshToken = await login(freshUsername);
   });
 
   afterAll(async () => {
-    const userIds = [customerId, staffId, otherCustomerId];
+    const userIds = [customerId, staffId, otherCustomerId, freshCustomerId];
+    await prisma.inventoryTransaction.deleteMany({
+      where: { inventory: { businessUnitId: unitId } },
+    });
+    await prisma.inventory.deleteMany({ where: { businessUnitId: unitId } });
+    await prisma.loyaltyTransaction.deleteMany({
+      where: { loyaltyAccount: { customerId: { in: userIds } } },
+    });
+    await prisma.loyaltyAccount.deleteMany({ where: { customerId: { in: userIds } } });
     await prisma.orderItem.deleteMany({ where: { order: { businessUnitId: unitId } } });
     await prisma.order.deleteMany({ where: { businessUnitId: unitId } });
     await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
@@ -443,6 +478,237 @@ describe('Orders (e2e)', () => {
       const dbOrder = await prisma.order.findUnique({ where: { id } });
       expect(dbOrder?.orderStatus).toBe('CONFIRMED');
       expect(dbOrder?.updatedById).toBe(staffId);
+    });
+  });
+
+  describe('inventory (RN-27/28/29)', () => {
+    // A dedicated product per test: stock checks must not race the shared product.
+    const createProductWithStock = async (
+      quantity: number,
+      minQuantity: number,
+    ): Promise<string> => {
+      const tag = randomUUID().slice(0, 8);
+      const product = await prisma.product.create({
+        data: {
+          name: `E2E Stock ${tag}`,
+          description: 'stock',
+          basePrice: '12.50',
+          imageUrl: 'https://example.com/stock.jpg',
+          categoryId,
+          menuItems: {
+            create: { businessUnitId: unitId, customPrice: '12.50', isAvailable: true },
+          },
+        },
+      });
+      await prisma.inventory.create({
+        data: { businessUnitId: unitId, productId: product.id, quantity, minQuantity },
+      });
+      return product.id;
+    };
+
+    const stockOf = async (stockProductId: string): Promise<number | undefined> => {
+      const row = await prisma.inventory.findUnique({
+        where: {
+          businessUnitId_productId: { businessUnitId: unitId, productId: stockProductId },
+        },
+      });
+      return row?.quantity;
+    };
+
+    const postOrder = (orderItems: { productId: string; quantity: number }[]): request.Test =>
+      request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: orderItems.map((item) => ({ ...item, unitPrice: '12.50' })),
+        });
+
+    it('rejects an order beyond the available stock with 422 and deducts nothing', async () => {
+      const stockProductId = await createProductWithStock(1, 0);
+
+      await postOrder([{ productId: stockProductId, quantity: 2 }]).expect(422);
+
+      expect(await stockOf(stockProductId)).toBe(1);
+      const movements = await prisma.inventoryTransaction.findMany({
+        where: { inventory: { productId: stockProductId } },
+      });
+      expect(movements).toHaveLength(0);
+    });
+
+    it('rejects an order for a product with no inventory row at the unit with 422', async () => {
+      const noStockProduct = await prisma.product.create({
+        data: {
+          name: `E2E NoStock ${randomUUID().slice(0, 8)}`,
+          description: 'no stock row',
+          basePrice: '12.50',
+          imageUrl: 'https://example.com/no-stock.jpg',
+          categoryId,
+          menuItems: {
+            create: { businessUnitId: unitId, customPrice: '12.50', isAvailable: true },
+          },
+        },
+      });
+
+      await postOrder([{ productId: noStockProduct.id, quantity: 1 }]).expect(422);
+    });
+
+    it('a valid order decrements the balance and records an OUT InventoryTransaction', async () => {
+      const stockProductId = await createProductWithStock(10, 2);
+
+      const res = await postOrder([{ productId: stockProductId, quantity: 3 }]).expect(201);
+      const orderId = (res.body as OrderResponseBody).id;
+
+      expect(await stockOf(stockProductId)).toBe(7);
+      const movements = await prisma.inventoryTransaction.findMany({
+        where: { inventory: { productId: stockProductId } },
+      });
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({
+        type: 'OUT',
+        quantity: 3,
+        orderId,
+        createdBy: customerId,
+      });
+    });
+
+    it('rolls back every deduction when a later item is out of stock (no partial outflow)', async () => {
+      const plentyId = await createProductWithStock(10, 0);
+      const scarceId = await createProductWithStock(1, 0);
+
+      await postOrder([
+        { productId: plentyId, quantity: 2 },
+        { productId: scarceId, quantity: 5 },
+      ]).expect(422);
+
+      // Item 1 had stock, but the tx rolled back: nothing went out anywhere.
+      expect(await stockOf(plentyId)).toBe(10);
+      expect(await stockOf(scarceId)).toBe(1);
+      const movements = await prisma.inventoryTransaction.findMany({
+        where: { inventory: { productId: { in: [plentyId, scarceId] } } },
+      });
+      expect(movements).toHaveLength(0);
+    });
+
+    it('audits a STOCK_ALERT when the deduction leaves the balance at or below minQuantity', async () => {
+      const stockProductId = await createProductWithStock(6, 5);
+
+      await postOrder([{ productId: stockProductId, quantity: 1 }]).expect(201);
+
+      const alerts = await prisma.auditLog.findMany({
+        where: { action: 'STOCK_ALERT', entity: 'Inventory', entityId: stockProductId },
+      });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].metadata).toMatchObject({
+        businessUnitId: unitId,
+        productId: stockProductId,
+        quantity: 5,
+        minQuantity: 5,
+      });
+    });
+
+    it('GET /inventory/:businessUnitId lists balances to staff and hides them from customers', async () => {
+      const res = await request(server)
+        .get(`/api/inventory/${unitId}`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(200);
+
+      const rows = res.body as { productId: string; quantity: number; minQuantity: number }[];
+      expect(rows.some((row) => row.productId === productId)).toBe(true);
+
+      await request(server)
+        .get(`/api/inventory/${unitId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    });
+
+    it('POST /inventory/:businessUnitId/adjust applies IN and rejects an OUT below zero', async () => {
+      const stockProductId = await createProductWithStock(4, 0);
+
+      const inRes = await request(server)
+        .post(`/api/inventory/${unitId}/adjust`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ productId: stockProductId, type: 'IN', quantity: 6, reason: 'restock delivery' })
+        .expect(201);
+      expect((inRes.body as { quantity: number }).quantity).toBe(10);
+
+      await request(server)
+        .post(`/api/inventory/${unitId}/adjust`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ productId: stockProductId, type: 'OUT', quantity: 99, reason: 'spoilage' })
+        .expect(422);
+
+      expect(await stockOf(stockProductId)).toBe(10);
+      const movements = await prisma.inventoryTransaction.findMany({
+        where: { inventory: { productId: stockProductId } },
+      });
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({
+        type: 'IN',
+        quantity: 6,
+        reason: 'restock delivery',
+        createdBy: staffId,
+        orderId: null,
+      });
+    });
+  });
+
+  describe('loyalty enrollment (RN-30)', () => {
+    it('creates the loyalty account on the first order and never duplicates it', async () => {
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(201);
+
+      const account = await prisma.loyaltyAccount.findUnique({ where: { customerId } });
+      expect(account).not.toBeNull();
+      expect(account?.totalPoints).toBe(0);
+      expect(account?.consentGiven).toBe(false);
+
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(201);
+
+      const accounts = await prisma.loyaltyAccount.findMany({ where: { customerId } });
+      expect(accounts).toHaveLength(1);
+    });
+
+    it('GET /loyalty/me returns the account to its customer', async () => {
+      const res = await request(server)
+        .get('/api/loyalty/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const body = res.body as { customerId: string; totalPoints: number; consentGiven: boolean };
+      expect(body.customerId).toBe(customerId);
+      expect(body.totalPoints).toBe(0);
+      expect(body.consentGiven).toBe(false);
+    });
+
+    it('GET /loyalty/me 404s for a customer that never ordered', async () => {
+      await request(server)
+        .get('/api/loyalty/me')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .expect(404);
+    });
+
+    it('GET /loyalty/me forbids staff with 403', async () => {
+      await request(server)
+        .get('/api/loyalty/me')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(403);
     });
   });
 });

@@ -236,6 +236,27 @@ async function main(): Promise<void> {
       isAvailable: true,
     },
   });
+
+  // =======================================================
+  // INVENTORY
+  // =======================================================
+  // One stock row per menu item: order creation deducts stock (RN-28), so a
+  // product without inventory at the unit cannot be ordered.
+  const stocks: { businessUnitId: string; productId: string }[] = [
+    { businessUnitId: unit1.id, productId: prod1.id },
+    { businessUnitId: unit1.id, productId: prod2.id },
+    { businessUnitId: unit2.id, productId: prod2.id },
+    { businessUnitId: unit2.id, productId: prod3.id },
+    { businessUnitId: unit2.id, productId: prod4.id },
+  ];
+
+  for (const stock of stocks) {
+    await prisma.inventory.upsert({
+      where: { businessUnitId_productId: stock },
+      update: {},
+      create: { ...stock, quantity: 100, minQuantity: 5 },
+    });
+  }
 }
 
 main()

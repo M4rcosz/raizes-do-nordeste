@@ -9,6 +9,8 @@ import { GlobalErrorFilter } from '@shared/filter/global-error.filter';
 import { AuditModule } from '@modules/audit/audit.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
+import { InventoryModule } from '@modules/inventory/inventory.module';
+import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { PaymentsModule } from '@modules/payments/payments.module';
     AuditModule,
     IdentityModule,
     BusinessUnitsModule,
+    InventoryModule,
+    LoyaltyModule,
     OrdersModule,
     PaymentsModule,
   ],

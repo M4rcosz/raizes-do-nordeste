@@ -17,6 +17,15 @@ import {
 } from '@shared/transaction/transaction-runner.port';
 import { AUDIT_LOGGER, type AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
+import {
+  STOCK_DEDUCTION,
+  type StockDeduction,
+} from '@modules/inventory/application/ports/stock-deduction.port';
+import { InsufficientStockError } from '@modules/inventory/domain/errors/insufficient-stock.error';
+import {
+  LOYALTY_ENROLLMENT,
+  type LoyaltyEnrollment,
+} from '@modules/loyalty/application/ports/loyalty-enrollment.port';
 
 describe('CreateOrderUseCase', () => {
   const txContext: unknown = Symbol('tx-context');
@@ -24,6 +33,8 @@ describe('CreateOrderUseCase', () => {
   let create: jest.MockedFunction<OrderRepository['create']>;
   let resolveLookup: jest.MockedFunction<OrderProductLookup['resolve']>;
   let logAudit: jest.MockedFunction<AuditLogger['log']>;
+  let deductForOrder: jest.MockedFunction<StockDeduction['deductForOrder']>;
+  let ensureAccount: jest.MockedFunction<LoyaltyEnrollment['ensureAccount']>;
 
   const command = (overrides: Partial<CreateOrderCommand> = {}): CreateOrderCommand => ({
     businessUnitId: 'bu-1',
@@ -61,6 +72,12 @@ describe('CreateOrderUseCase', () => {
     logAudit = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
     logAudit.mockResolvedValue(undefined);
 
+    deductForOrder = jest.fn() as jest.MockedFunction<StockDeduction['deductForOrder']>;
+    deductForOrder.mockResolvedValue({ lowStock: [] });
+
+    ensureAccount = jest.fn() as jest.MockedFunction<LoyaltyEnrollment['ensureAccount']>;
+    ensureAccount.mockResolvedValue(undefined);
+
     // Fake unit of work: runs the work immediately, handing it a sentinel tx
     // so tests can assert the same context reaches the repository.
     const transactions: TransactionRunner = { run: (work) => work(txContext) };
@@ -83,6 +100,14 @@ describe('CreateOrderUseCase', () => {
           useValue: { resolve: resolveLookup } satisfies OrderProductLookup,
         },
         { provide: TRANSACTION_RUNNER, useValue: transactions },
+        {
+          provide: STOCK_DEDUCTION,
+          useValue: { deductForOrder } satisfies StockDeduction,
+        },
+        {
+          provide: LOYALTY_ENROLLMENT,
+          useValue: { ensureAccount } satisfies LoyaltyEnrollment,
+        },
       ],
     }).compile();
 
@@ -232,6 +257,113 @@ describe('CreateOrderUseCase', () => {
       );
 
       expect(create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('stock deduction (RN-28/29)', () => {
+    it('deducts stock for every item inside the same transaction, linked to the order', async () => {
+      await useCase.execute(
+        command({
+          orderItems: [
+            { productId: 'p-1', quantity: 2, unitPrice: '10.00' },
+            { productId: 'p-1', quantity: 1, unitPrice: '10.00' },
+          ],
+        }),
+        { id: 'u-1', canAttend: false },
+      );
+
+      expect(deductForOrder).toHaveBeenCalledWith(
+        {
+          businessUnitId: 'bu-1',
+          orderId: 'o-1',
+          actorId: 'u-1',
+          items: [
+            { productId: 'p-1', quantity: 2 },
+            { productId: 'p-1', quantity: 1 },
+          ],
+        },
+        txContext,
+      );
+    });
+
+    it('rejects with InsufficientStockError and never audits when an item is out of stock', async () => {
+      deductForOrder.mockRejectedValue(new InsufficientStockError('not enough'));
+
+      await expect(
+        useCase.execute(command(), { id: 'u-1', canAttend: false }),
+      ).rejects.toBeInstanceOf(InsufficientStockError);
+
+      // The fake tx runner cannot roll back, but nothing post-commit may run.
+      expect(logAudit).not.toHaveBeenCalled();
+    });
+
+    it('emits one STOCK_ALERT audit per item left at or below minQuantity (post-commit)', async () => {
+      deductForOrder.mockResolvedValue({
+        lowStock: [{ productId: 'p-1', quantity: 1, minQuantity: 5 }],
+      });
+
+      await useCase.execute(command(), { id: 'u-1', canAttend: false });
+
+      expect(logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AUDIT_ACTIONS.STOCK_ALERT,
+          entity: 'Inventory',
+          entityId: 'p-1',
+          metadata: { businessUnitId: 'bu-1', productId: 'p-1', quantity: 1, minQuantity: 5 },
+        }),
+      );
+    });
+
+    it('emits no STOCK_ALERT when every balance stays above the threshold', async () => {
+      await useCase.execute(command(), { id: 'u-1', canAttend: false });
+
+      const actions = logAudit.mock.calls.map(([input]) => input.action);
+      expect(actions).toEqual([AUDIT_ACTIONS.ORDER_CREATED]);
+    });
+  });
+
+  describe('loyalty enrollment (RN-30)', () => {
+    const persistedWithCustomer = new Order(
+      'o-1',
+      'bu-1',
+      'c-1',
+      null,
+      0,
+      0,
+      new Big(0),
+      null,
+      OrderChannel.APP,
+      'PENDING',
+      new Date(),
+      new Date(),
+      null,
+      [],
+    );
+
+    it('ensures a loyalty account post-commit when the order has a customer', async () => {
+      create.mockResolvedValue(persistedWithCustomer);
+
+      await useCase.execute(command(), { id: 'c-1', canAttend: false });
+
+      expect(ensureAccount).toHaveBeenCalledWith('c-1');
+    });
+
+    it('skips enrollment when the order has no customer (anonymous channel)', async () => {
+      await useCase.execute(command({ orderChannel: OrderChannel.TOTEM }), {
+        id: 'u-1',
+        canAttend: false,
+      });
+
+      expect(ensureAccount).not.toHaveBeenCalled();
+    });
+
+    it('a failing enrollment never breaks the created order (best-effort)', async () => {
+      create.mockResolvedValue(persistedWithCustomer);
+      ensureAccount.mockRejectedValue(new Error('loyalty db down'));
+
+      const order = await useCase.execute(command(), { id: 'c-1', canAttend: false });
+
+      expect(order).toBe(persistedWithCustomer);
     });
   });
 });

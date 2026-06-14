@@ -11,11 +11,13 @@ import { PrismaOrderProductLookup } from './infrastructure/persistence/prisma-or
 import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
 import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
 import { AuditModule } from '@modules/audit/audit.module';
+import { InventoryModule } from '@modules/inventory/inventory.module';
+import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
 import { ORDER_FOR_PAYMENT } from './application/ports/order-for-payment.port';
 import { OrderForPaymentService } from './application/services/order-for-payment.service';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, InventoryModule, LoyaltyModule],
   controllers: [OrdersController],
   providers: [
     {

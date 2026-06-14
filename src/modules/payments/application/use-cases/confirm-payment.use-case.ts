@@ -20,6 +20,10 @@ import {
   PAYMENT_REPOSITORY,
   type PaymentRepository,
 } from '../../domain/repositories/payment.repository';
+import {
+  LOYALTY_EARNING,
+  type LoyaltyEarning,
+} from '@modules/loyalty/application/ports/loyalty-earning.port';
 export interface ConfirmPaymentCommand {
   extTransactionId: string;
   status: typeof PaymentStatus.APPROVED | typeof PaymentStatus.REFUSED;
@@ -40,6 +44,8 @@ export class ConfirmPaymentUseCase {
     private readonly transactions: TransactionRunner,
     @Inject(AUDIT_LOGGER)
     private readonly audit: AuditLogger,
+    @Inject(LOYALTY_EARNING)
+    private readonly loyalty: LoyaltyEarning,
   ) {}
 
   async execute(command: ConfirmPaymentCommand): Promise<Payment | null> {
@@ -83,6 +89,12 @@ export class ConfirmPaymentUseCase {
 
     const approved = command.status === PaymentStatus.APPROVED;
 
+    // RN-31 needs the order's customer; read it up front so the transaction below
+    // only writes. A missing view (order deleted) just means no points.
+    const customerId = approved
+      ? ((await this.orders.findForPayment(payment.orderId))?.customerId ?? null)
+      : null;
+
     // Settle the payment and advance the order in one transaction. The order confirm is
     // best-effort: if it loses the optimistic lock the payment still settles, and we log
     // it for reconciliation below.
@@ -96,6 +108,17 @@ export class ConfirmPaymentUseCase {
       const confirmed = approved
         ? (await this.orders.confirmAfterPayment(payment.orderId, tx)) === 'confirmed'
         : false;
+
+      // RN-31: points only for a confirmed order (a cancelled one settles but earns
+      // nothing), credited atomically with the settlement. payment.amount is the
+      // authoritative charged total. No account/consent is a no-op inside earnForOrder.
+      if (confirmed && customerId) {
+        await this.loyalty.earnForOrder(
+          { customerId, orderId: payment.orderId, totalAmount: payment.amount.toFixed(2) },
+          tx,
+        );
+      }
+
       return { settled: true as const, payment: next, orderConfirmed: confirmed };
     });
 

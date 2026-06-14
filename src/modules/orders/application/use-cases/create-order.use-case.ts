@@ -9,7 +9,7 @@ import {
   channelRequiresAttendant,
   OrderChannel,
 } from '@modules/orders/domain/value-objects/order-channel';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import Big from 'big.js';
 import { AttendantRequiredError } from '../errors/attendant-required.error';
 import { PriceMismatchError } from '../errors/price-mismatch.error';
@@ -24,6 +24,15 @@ import {
 } from '@shared/transaction/transaction-runner.port';
 import { AUDIT_LOGGER, type AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
+import {
+  STOCK_DEDUCTION,
+  type StockDeduction,
+  type StockDeductionResult,
+} from '@modules/inventory/application/ports/stock-deduction.port';
+import {
+  LOYALTY_ENROLLMENT,
+  type LoyaltyEnrollment,
+} from '@modules/loyalty/application/ports/loyalty-enrollment.port';
 
 /** Who is performing the operation, resolved from the auth token by the HTTP layer. */
 export interface Actor {
@@ -52,6 +61,8 @@ export interface CreateOrderCommand {
 
 @Injectable()
 export class CreateOrderUseCase {
+  private readonly logger = new Logger(CreateOrderUseCase.name);
+
   constructor(
     @Inject(ORDER_REPOSITORY)
     private readonly orders: OrderRepository,
@@ -61,6 +72,10 @@ export class CreateOrderUseCase {
     private readonly transactions: TransactionRunner,
     @Inject(AUDIT_LOGGER)
     private readonly audit: AuditLogger,
+    @Inject(STOCK_DEDUCTION)
+    private readonly stock: StockDeduction,
+    @Inject(LOYALTY_ENROLLMENT)
+    private readonly enrollment: LoyaltyEnrollment,
   ) {}
 
   async execute(command: CreateOrderCommand, actor: Actor): Promise<Order> {
@@ -76,7 +91,7 @@ export class CreateOrderUseCase {
 
     // Validate and insert in one transaction, so the menu/product state can't change
     // between the read and the order insert.
-    const order = await this.transactions.run(async (tx) => {
+    const { order, deduction } = await this.transactions.run(async (tx) => {
       await this.assertOrderableProducts(command, tx);
 
       const orderItems = rawOrderItems.map((item) => ({
@@ -92,10 +107,12 @@ export class CreateOrderUseCase {
       const discountAmount = new Big(0);
       const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toString();
 
-      // TODO(loyalty): also set pointsEarned = floor(totalAmount) only when the customer
-      // has a LoyaltyAccount with consent. For now it stays at the DB default (0).
+      // TODO(loyalty): pointsEarned stays at the DB default (0) on creation. Points
+      // (1 per R$10 of the paid amount, gated by LoyaltyAccount consent) are credited
+      // by the loyalty module when the payment is approved; LoyaltyTransaction is the
+      // source of truth.
 
-      return this.orders.create(
+      const created = await this.orders.create(
         {
           businessUnitId,
           orderChannel,
@@ -108,6 +125,20 @@ export class CreateOrderUseCase {
         },
         tx,
       );
+
+      // Stock goes out in the same transaction: any item without enough stock
+      // throws and rolls back the order plus every deduction already applied.
+      const deducted = await this.stock.deductForOrder(
+        {
+          businessUnitId,
+          orderId: created.id,
+          actorId: actor.id,
+          items: rawOrderItems.map(({ productId, quantity }) => ({ productId, quantity })),
+        },
+        tx,
+      );
+
+      return { order: created, deduction: deducted };
     });
 
     // Best-effort audit after the order is committed; failures here never roll it back.
@@ -119,7 +150,45 @@ export class CreateOrderUseCase {
       metadata: { orderChannel, totalAmount: order.totalAmount.toFixed(2) },
     });
 
+    await this.alertLowStock(businessUnitId, actor.id, deduction);
+
+    // RN-30: the customer's loyalty account appears on their first order. Post-commit
+    // and best-effort like the audit - loyalty must never fail or roll back an order.
+    if (order.customerId) {
+      try {
+        await this.enrollment.ensureAccount(order.customerId);
+      } catch (err) {
+        this.logger.error(`Failed to ensure loyalty account for customer ${order.customerId}`, err);
+      }
+    }
+
     return order;
+  }
+
+  /**
+   * RN-29: a STOCK_ALERT audit per item the order left at or below minQuantity.
+   * Emitted after commit, like every audit here - inside the tx it could record
+   * an alert for a deduction that rolls back.
+   */
+  private async alertLowStock(
+    businessUnitId: string,
+    actorId: string,
+    deduction: StockDeductionResult,
+  ): Promise<void> {
+    for (const item of deduction.lowStock) {
+      await this.audit.log({
+        userId: actorId,
+        action: AUDIT_ACTIONS.STOCK_ALERT,
+        entity: 'Inventory',
+        entityId: item.productId,
+        metadata: {
+          businessUnitId,
+          productId: item.productId,
+          quantity: item.quantity,
+          minQuantity: item.minQuantity,
+        },
+      });
+    }
   }
 
   /**
