@@ -3,6 +3,7 @@ import { GetMyLoyaltyAccountUseCase } from './get-my-loyalty-account.use-case';
 import type { LoyaltyRepository } from '../../domain/repositories/loyalty.repository';
 import { LoyaltyAccount } from '../../domain/entities/loyalty-account.entity';
 import { LoyaltyAccountNotFoundError } from '../errors/loyalty-account-not-found.error';
+import { LoyaltyFetchError } from '../errors/loyalty-fetch.error';
 
 describe('GetMyLoyaltyAccountUseCase', () => {
   let findByCustomerId: jest.MockedFunction<LoyaltyRepository['findByCustomerId']>;
@@ -30,5 +31,11 @@ describe('GetMyLoyaltyAccountUseCase', () => {
     findByCustomerId.mockResolvedValue(null);
 
     await expect(useCase.execute('c-1')).rejects.toBeInstanceOf(LoyaltyAccountNotFoundError);
+  });
+
+  it('wraps a persistence failure as LoyaltyFetchError', async () => {
+    findByCustomerId.mockRejectedValue(new Error('db down'));
+
+    await expect(useCase.execute('c-1')).rejects.toBeInstanceOf(LoyaltyFetchError);
   });
 });
