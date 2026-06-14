@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     },
   });
 
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { username: 'davi151413' },
     update: {},
     create: {
@@ -241,7 +241,10 @@ async function main(): Promise<void> {
   // INVENTORY
   // =======================================================
   // One stock row per menu item: order creation deducts stock (RN-28), so a
-  // product without inventory at the unit cannot be ordered.
+  // product without inventory at the unit cannot be ordered. Each row opens with
+  // an IN ledger entry, so the InventoryTransaction history reconciles to the
+  // stored balance instead of starting from a phantom 100 with no movement.
+  const OPENING_QUANTITY = 100;
   const stocks: { businessUnitId: string; productId: string }[] = [
     { businessUnitId: unit1.id, productId: prod1.id },
     { businessUnitId: unit1.id, productId: prod2.id },
@@ -251,10 +254,26 @@ async function main(): Promise<void> {
   ];
 
   for (const stock of stocks) {
-    await prisma.inventory.upsert({
+    // Find-or-create, not upsert: the opening ledger entry must land exactly once,
+    // so a re-seed of an existing row never doubles the recorded movement.
+    const existing = await prisma.inventory.findUnique({
       where: { businessUnitId_productId: stock },
-      update: {},
-      create: { ...stock, quantity: 100, minQuantity: 5 },
+    });
+    if (existing) {
+      continue;
+    }
+
+    const inventory = await prisma.inventory.create({
+      data: { ...stock, quantity: OPENING_QUANTITY, minQuantity: 5 },
+    });
+    await prisma.inventoryTransaction.create({
+      data: {
+        inventoryId: inventory.id,
+        createdBy: admin.id,
+        type: 'IN',
+        quantity: OPENING_QUANTITY,
+        reason: 'Opening balance (seed)',
+      },
     });
   }
 }
