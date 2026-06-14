@@ -65,6 +65,34 @@ describe('DeductStockForOrderUseCase', () => {
     expect(result.lowStock).toEqual([]);
   });
 
+  it('collapses repeated products into one OUT for the summed quantity', async () => {
+    applyMovement.mockResolvedValueOnce(buildInventory('p-1', 7, 5));
+
+    const result = await useCase.deductForOrder(
+      {
+        businessUnitId: 'bu-1',
+        orderId: 'o-1',
+        actorId: 'u-1',
+        items: [
+          { productId: 'p-1', quantity: 2 },
+          { productId: 'p-1', quantity: 1 },
+        ],
+      },
+      TX,
+    );
+
+    expect(applyMovement).toHaveBeenCalledTimes(1);
+    expect(applyMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productId: 'p-1',
+        quantity: 3,
+        type: InventoryTransactionType.OUT,
+      }),
+      TX,
+    );
+    expect(result.lowStock).toEqual([]);
+  });
+
   it('collects every item the deduction left at or below minQuantity', async () => {
     applyMovement
       .mockResolvedValueOnce(buildInventory('p-1', 2, 5))

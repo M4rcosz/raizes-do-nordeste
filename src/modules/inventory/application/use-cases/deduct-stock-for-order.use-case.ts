@@ -9,6 +9,7 @@ import type {
   LowStockItem,
   StockDeduction,
   StockDeductionInput,
+  StockDeductionItem,
   StockDeductionResult,
 } from '../ports/stock-deduction.port';
 
@@ -31,7 +32,9 @@ export class DeductStockForOrderUseCase implements StockDeduction {
   ): Promise<StockDeductionResult> {
     const lowStock: LowStockItem[] = [];
 
-    for (const item of input.items) {
+    // An order can list the same product on several lines; collapse them so each
+    // product gets one guarded OUT (and at most one STOCK_ALERT), not one per line.
+    for (const item of this.aggregateByProduct(input.items)) {
       const inventory = await this.inventories.applyMovement(
         {
           businessUnitId: input.businessUnitId,
@@ -55,5 +58,14 @@ export class DeductStockForOrderUseCase implements StockDeduction {
     }
 
     return { lowStock };
+  }
+
+  /** Sums quantities per product, keeping first-seen order (Map preserves insertion). */
+  private aggregateByProduct(items: StockDeductionItem[]): StockDeductionItem[] {
+    const totals = new Map<string, number>();
+    for (const { productId, quantity } of items) {
+      totals.set(productId, (totals.get(productId) ?? 0) + quantity);
+    }
+    return [...totals].map(([productId, quantity]) => ({ productId, quantity }));
   }
 }
