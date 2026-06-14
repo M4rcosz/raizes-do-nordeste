@@ -18,14 +18,16 @@ export interface ApplyMovementInput {
 export interface InventoryRepository {
   findByUnit(businessUnitId: string): Promise<Inventory[]>;
   /**
-   * Atomically applies the balance change and records the InventoryTransaction.
-   * The OUT decrement is guarded (`quantity >= amount` in the WHERE), so a
-   * concurrent movement can never drive the balance below zero. Throws
-   * `InsufficientStockError` when an OUT cannot be satisfied (also when the
-   * product has no inventory row - zero stock) and `InventoryNotFoundError`
+   * Applies the balance change and records the InventoryTransaction as one atomic
+   * unit. `tx` is required: the update, re-read and ledger insert must share the
+   * caller's transaction, so a movement can never land with its ledger entry
+   * missing (or vice versa). The OUT decrement is guarded (`quantity >= amount`
+   * in the WHERE), so a concurrent movement can never drive the balance below
+   * zero. Throws `InsufficientStockError` when an OUT cannot be satisfied (also
+   * when the product has no inventory row - zero stock) and `InventoryNotFoundError`
    * when an IN targets a missing row. Returns the post-movement inventory.
    */
-  applyMovement(input: ApplyMovementInput, tx?: TransactionContext): Promise<Inventory>;
+  applyMovement(input: ApplyMovementInput, tx: TransactionContext): Promise<Inventory>;
 }
 
 export const INVENTORY_REPOSITORY = Symbol('InventoryRepository');

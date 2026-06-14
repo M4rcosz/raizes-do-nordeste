@@ -385,6 +385,11 @@ model LoyaltyTransaction {
   loyaltyAccount LoyaltyAccount @relation(fields: [loyaltyAccountId], references: [id])
   order          Order?         @relation(fields: [orderId], references: [id])
 
+  // One transaction of each type per order: makes EARN idempotent at the DB level
+  // (a duplicate credit fails closed instead of silently double-crediting). orderId
+  // is nullable and Postgres treats NULLs as distinct, so manual movements with no
+  // order (ADJUSTMENT/EXPIRE) are not constrained.
+  @@unique([orderId, type])
   @@index([loyaltyAccountId])
   @@index([orderId])
   @@map("loyalty_transactions")

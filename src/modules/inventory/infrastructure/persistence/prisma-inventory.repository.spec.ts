@@ -72,15 +72,18 @@ describe('PrismaInventoryRepository', () => {
       prisma.inventory.findUnique.mockResolvedValue({ ...rawInventory, quantity: 6 });
       prisma.inventoryTransaction.create.mockResolvedValue({});
 
-      const result = await repo.applyMovement({
-        businessUnitId: 'bu-1',
-        productId: 'p-1',
-        type: InventoryTransactionType.OUT,
-        quantity: 2,
-        reason: 'order',
-        createdBy: 'u-1',
-        orderId: 'o-1',
-      });
+      const result = await repo.applyMovement(
+        {
+          businessUnitId: 'bu-1',
+          productId: 'p-1',
+          type: InventoryTransactionType.OUT,
+          quantity: 2,
+          reason: 'order',
+          createdBy: 'u-1',
+          orderId: 'o-1',
+        },
+        prisma,
+      );
 
       expect(prisma.inventory.updateMany).toHaveBeenCalledWith({
         where: { businessUnitId: 'bu-1', productId: 'p-1', quantity: { gte: 2 } },
@@ -94,15 +97,18 @@ describe('PrismaInventoryRepository', () => {
       prisma.inventory.findUnique.mockResolvedValue({ ...rawInventory, quantity: 6 });
       prisma.inventoryTransaction.create.mockResolvedValue({});
 
-      await repo.applyMovement({
-        businessUnitId: 'bu-1',
-        productId: 'p-1',
-        type: InventoryTransactionType.OUT,
-        quantity: 2,
-        reason: 'Stock deducted for order o-1',
-        createdBy: 'u-1',
-        orderId: 'o-1',
-      });
+      await repo.applyMovement(
+        {
+          businessUnitId: 'bu-1',
+          productId: 'p-1',
+          type: InventoryTransactionType.OUT,
+          quantity: 2,
+          reason: 'Stock deducted for order o-1',
+          createdBy: 'u-1',
+          orderId: 'o-1',
+        },
+        prisma,
+      );
 
       expect(prisma.inventoryTransaction.create).toHaveBeenCalledWith({
         data: {
@@ -121,14 +127,17 @@ describe('PrismaInventoryRepository', () => {
       prisma.inventory.findUnique.mockResolvedValue({ ...rawInventory, quantity: 13 });
       prisma.inventoryTransaction.create.mockResolvedValue({});
 
-      const result = await repo.applyMovement({
-        businessUnitId: 'bu-1',
-        productId: 'p-1',
-        type: InventoryTransactionType.IN,
-        quantity: 5,
-        reason: 'restock',
-        createdBy: 'u-1',
-      });
+      const result = await repo.applyMovement(
+        {
+          businessUnitId: 'bu-1',
+          productId: 'p-1',
+          type: InventoryTransactionType.IN,
+          quantity: 5,
+          reason: 'restock',
+          createdBy: 'u-1',
+        },
+        prisma,
+      );
 
       expect(prisma.inventory.updateMany).toHaveBeenCalledWith({
         where: { businessUnitId: 'bu-1', productId: 'p-1' },
@@ -144,14 +153,17 @@ describe('PrismaInventoryRepository', () => {
       prisma.inventory.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(
-        repo.applyMovement({
-          businessUnitId: 'bu-1',
-          productId: 'p-1',
-          type: InventoryTransactionType.OUT,
-          quantity: 99,
-          reason: 'order',
-          createdBy: 'u-1',
-        }),
+        repo.applyMovement(
+          {
+            businessUnitId: 'bu-1',
+            productId: 'p-1',
+            type: InventoryTransactionType.OUT,
+            quantity: 99,
+            reason: 'order',
+            createdBy: 'u-1',
+          },
+          prisma,
+        ),
       ).rejects.toBeInstanceOf(InsufficientStockError);
       expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
     });
@@ -160,14 +172,17 @@ describe('PrismaInventoryRepository', () => {
       prisma.inventory.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(
-        repo.applyMovement({
-          businessUnitId: 'bu-1',
-          productId: 'p-x',
-          type: InventoryTransactionType.IN,
-          quantity: 5,
-          reason: 'restock',
-          createdBy: 'u-1',
-        }),
+        repo.applyMovement(
+          {
+            businessUnitId: 'bu-1',
+            productId: 'p-x',
+            type: InventoryTransactionType.IN,
+            quantity: 5,
+            reason: 'restock',
+            createdBy: 'u-1',
+          },
+          prisma,
+        ),
       ).rejects.toBeInstanceOf(InventoryNotFoundError);
       expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
     });

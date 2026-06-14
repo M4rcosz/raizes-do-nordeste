@@ -21,9 +21,10 @@ export interface LoyaltyRepository {
   /**
    * Credits points atomically: inserts the EARN LoyaltyTransaction and increments
    * `totalPoints`, both on the caller's `tx` (LoyaltyTransaction is the source of
-   * truth; the counter is a running total).
+   * truth; the counter is a running total). `tx` is required so the insert and the
+   * increment can never land apart.
    */
-  earn(input: EarnPointsInput, tx?: TransactionContext): Promise<void>;
+  earn(input: EarnPointsInput, tx: TransactionContext): Promise<void>;
 }
 
 export const LOYALTY_REPOSITORY = Symbol('LoyaltyRepository');

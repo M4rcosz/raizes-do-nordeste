@@ -103,12 +103,15 @@ describe('PrismaLoyaltyRepository', () => {
       prisma.loyaltyTransaction.create.mockResolvedValue({});
       prisma.loyaltyAccount.update.mockResolvedValue(rawAccount);
 
-      await repo.earn({
-        loyaltyAccountId: 'la-1',
-        orderId: 'o-1',
-        points: 2,
-        description: 'Points earned for order o-1',
-      });
+      await repo.earn(
+        {
+          loyaltyAccountId: 'la-1',
+          orderId: 'o-1',
+          points: 2,
+          description: 'Points earned for order o-1',
+        },
+        prisma,
+      );
 
       expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
         data: {

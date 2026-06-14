@@ -23,8 +23,8 @@ export class PrismaInventoryRepository implements InventoryRepository {
     return raws.map((raw) => this.toEntity(raw));
   }
 
-  async applyMovement(input: ApplyMovementInput, tx?: TransactionContext): Promise<Inventory> {
-    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
+  async applyMovement(input: ApplyMovementInput, tx: TransactionContext): Promise<Inventory> {
+    const db = tx as Prisma.TransactionClient;
     const isOut = input.type === InventoryTransactionType.OUT;
 
     // Guarded atomic update: an OUT only lands while the row still holds enough

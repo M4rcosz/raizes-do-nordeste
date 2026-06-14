@@ -36,9 +36,14 @@ export class PrismaLoyaltyRepository implements LoyaltyRepository {
     }
   }
 
-  async earn(input: EarnPointsInput, tx?: TransactionContext): Promise<void> {
-    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
+  async earn(input: EarnPointsInput, tx: TransactionContext): Promise<void> {
+    const db = tx as Prisma.TransactionClient;
 
+    // The (orderId, type) unique index makes EARN idempotent at the DB level: a
+    // duplicate credit for the same order hits P2002 and rolls back this tx (fail
+    // closed) instead of double-crediting. We do not swallow it - inside the
+    // settlement tx a constraint violation aborts the transaction anyway, and the
+    // settle() guard upstream already prevents the normal double-call.
     await db.loyaltyTransaction.create({
       data: {
         loyaltyAccountId: input.loyaltyAccountId,
