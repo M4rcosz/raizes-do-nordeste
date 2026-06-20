@@ -2,9 +2,11 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
+import { parseTrustProxy } from '@shared/config/env';
 
 function readAppVersion(): string {
   const raw: unknown = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
@@ -21,11 +23,21 @@ function readAppVersion(): string {
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
   app.enableCors(); // TODO: Configure CORS properly for production
   app.enableShutdownHooks();
+
+  // Trust proxy is off by default. Enable it ONLY when a trusted reverse proxy
+  // sits in front of us, otherwise a client can spoof X-Forwarded-For and forge
+  // its IP, which would poison the access log and the rate limiter tracker.
+  // TRUST_PROXY accepts 'true'/'false' or a number of trusted hops. A present
+  // but invalid value throws here and crashes the boot instead of silently
+  // leaving the proxy untrusted.
+  if (process.env.TRUST_PROXY !== undefined) {
+    app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
+  }
 
   const port = Number(process.env.PORT) || 3000;
 

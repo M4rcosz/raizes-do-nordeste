@@ -30,6 +30,7 @@ import { PaymentWebhookAckDto } from '../dto/payment-webhook-ack.dto';
 import { OrderPaymentParamDto } from '../dto/payment-params.dto';
 import { PaymentResponseDto } from '../dto/payment-response.dto';
 import { PaymentWebhookGuard } from '../guards/payment-webhook.guard';
+import { SkipThrottle } from '@nestjs/throttler';
 
 @ApiTags('payments')
 @Controller()
@@ -58,6 +59,9 @@ export class PaymentsController {
     return PaymentResponseDto.fromEntity(payment);
   }
 
+  // Gateway callbacks are authenticated by HMAC and can legitimately burst on
+  // retries, so they are exempt from the rate limiter.
+  @SkipThrottle()
   @Post('payments/webhook')
   @Public()
   @UseGuards(PaymentWebhookGuard)
