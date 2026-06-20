@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { FindPaymentByOrderUseCase } from './find-payment-by-order.use-case';
 import type { PaymentRepository } from '../../domain/repositories/payment.repository';
 import type { OrderForPayment } from '@modules/orders/application/ports/order-for-payment.port';
@@ -13,7 +13,7 @@ const makePayment = (): Payment =>
   new Payment(
     'pay-1',
     'order-1',
-    new Big('25.00'),
+    Money.fromDecimalString('25.00'),
     PaymentMethod.PIX,
     PaymentStatus.APPROVED,
     'tx-1',

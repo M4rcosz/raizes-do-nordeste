@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import {
   ORDER_FOR_PAYMENT,
   type OrderForPayment,
@@ -71,7 +71,7 @@ export class ConfirmPaymentUseCase {
 
     // Integrity: never settle on an amount that differs from what we charged. Flag it for
     // reconciliation (tampering, or a gateway/our-side bug) and ack without settling.
-    if (!payment.amount.eq(new Big(command.amount))) {
+    if (!payment.amount.equals(Money.fromDecimalString(command.amount))) {
       await this.logBestEffort({
         userId: null,
         action: AUDIT_ACTIONS.PAYMENT_RECONCILE_REQUIRED,
@@ -80,7 +80,7 @@ export class ConfirmPaymentUseCase {
         metadata: {
           orderId: payment.orderId,
           reason: 'webhook amount does not match the charged amount',
-          expected: payment.amount.toFixed(2),
+          expected: payment.amount.toDecimalString(),
           received: command.amount,
         },
       });
@@ -114,7 +114,7 @@ export class ConfirmPaymentUseCase {
       // authoritative charged total. No account/consent is a no-op inside earnForOrder.
       if (confirmed && customerId) {
         await this.loyalty.earnForOrder(
-          { customerId, orderId: payment.orderId, totalAmount: payment.amount.toFixed(2) },
+          { customerId, orderId: payment.orderId, totalAmount: payment.amount.toDecimalString() },
           tx,
         );
       }

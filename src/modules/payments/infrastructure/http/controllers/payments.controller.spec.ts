@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { PaymentsController } from './payments.controller';
 import { CreatePaymentUseCase } from '@modules/payments/application/use-cases/create-payment.use-case';
 import { ConfirmPaymentUseCase } from '@modules/payments/application/use-cases/confirm-payment.use-case';
@@ -14,7 +14,7 @@ const makePayment = (status: PaymentStatus = PaymentStatus.PROCESSING): Payment 
   new Payment(
     'pay-1',
     'order-1',
-    new Big('25.00'),
+    Money.fromDecimalString('25.00'),
     PaymentMethod.PIX,
     status,
     'tx-1',
