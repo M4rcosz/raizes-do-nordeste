@@ -33,6 +33,11 @@ import {
   LOYALTY_ENROLLMENT,
   type LoyaltyEnrollment,
 } from '@modules/loyalty/application/ports/loyalty-enrollment.port';
+import {
+  LOYALTY_REDEMPTION,
+  type LoyaltyRedemption,
+} from '@modules/loyalty/application/ports/loyalty-redemption.port';
+import { PointsRedemptionRequiresCustomerError } from '../errors/points-redemption-requires-customer.error';
 
 /** Who is performing the operation, resolved from the auth token by the HTTP layer. */
 export interface Actor {
@@ -76,6 +81,8 @@ export class CreateOrderUseCase {
     private readonly stock: StockDeduction,
     @Inject(LOYALTY_ENROLLMENT)
     private readonly enrollment: LoyaltyEnrollment,
+    @Inject(LOYALTY_REDEMPTION)
+    private readonly redemption: LoyaltyRedemption,
   ) {}
 
   async execute(command: CreateOrderCommand, actor: Actor): Promise<Order> {
@@ -89,6 +96,15 @@ export class CreateOrderUseCase {
 
     const { attendantId, customerId } = this.resolveParties(command, actor);
 
+    const redeems = (pointsRedeemed ?? 0) > 0;
+    // Points belong to a loyalty account: redeeming with no resolved customer has
+    // nobody to debit. Reject before opening the tx (422).
+    if (redeems && !customerId) {
+      throw new PointsRedemptionRequiresCustomerError(
+        'Cannot redeem loyalty points on an order without a customer.',
+      );
+    }
+
     // Validate and insert in one transaction, so the menu/product state can't change
     // between the read and the order insert.
     const { order, deduction } = await this.transactions.run(async (tx) => {
@@ -101,16 +117,29 @@ export class CreateOrderUseCase {
 
       const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
 
-      // TODO(loyalty): when the loyalty module ships, derive this discount from
-      // pointsRedeemed (points -> money at the loyalty rate) instead of 0. The discount
-      // rule (total = subtotal - discount) already lives in Order.computeTotal.
-      const discountAmount = new Big(0);
+      // The redeem discount needs the orderId for its REDEEM transaction row, but the
+      // id is DB-generated at create. So we quote the discount first (read-only, sets
+      // the authoritative total), create the order, then debit the points keyed to that
+      // id - all inside this tx, so any later failure (stock) rolls the debit back with
+      // the order. Loyalty rules and the rate stay behind the port; orders never reads
+      // the loyalty domain. The discount is deterministic, so quote and debit agree.
+      const discountAmount = redeems
+        ? new Big(
+            await this.redemption.quoteDiscount(
+              {
+                customerId: customerId as string,
+                points: pointsRedeemed as number,
+                subtotal: itemsSubtotal.toFixed(2),
+              },
+              tx,
+            ),
+          )
+        : new Big(0);
       const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toString();
 
-      // TODO(loyalty): pointsEarned stays at the DB default (0) on creation. Points
-      // (1 per R$10 of the paid amount, gated by LoyaltyAccount consent) are credited
-      // by the loyalty module when the payment is approved; LoyaltyTransaction is the
-      // source of truth.
+      // pointsEarned stays at the DB default (0) on creation. Points (1 per R$10 of the
+      // paid amount, gated by LoyaltyAccount consent) are credited by the loyalty module
+      // when the payment is approved; LoyaltyTransaction is the source of truth.
 
       const created = await this.orders.create(
         {
@@ -125,6 +154,23 @@ export class CreateOrderUseCase {
         },
         tx,
       );
+
+      if (redeems) {
+        // Debit the points in the same tx. Insufficient balance (INVALID) or a
+        // concurrent debit (CONFLICT) propagates and rolls back the order - redemption
+        // is not best-effort. customerId is non-null here (guarded above).
+        // TODO(loyalty-refund): when order cancellation/refund ships, credit the
+        // redeemed points back with a compensating transaction.
+        await this.redemption.redeemForOrder(
+          {
+            customerId: customerId as string,
+            orderId: created.id,
+            points: pointsRedeemed as number,
+            subtotal: itemsSubtotal.toFixed(2),
+          },
+          tx,
+        );
+      }
 
       // Stock goes out in the same transaction: any item without enough stock
       // throws and rolls back the order plus every deduction already applied.

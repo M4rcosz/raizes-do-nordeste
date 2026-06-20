@@ -6,8 +6,10 @@ import { LoyaltyAccount } from '@modules/loyalty/domain/entities/loyalty-account
 import {
   EarnPointsInput,
   LoyaltyRepository,
+  RedeemPointsInput,
 } from '@modules/loyalty/domain/repositories/loyalty.repository';
 import { LoyaltyTransactionType } from '@modules/loyalty/domain/value-objects/loyalty-transaction-type';
+import { PointsRedemptionConflictError } from '@modules/loyalty/application/errors/points-redemption-conflict.error';
 
 @Injectable()
 export class PrismaLoyaltyRepository implements LoyaltyRepository {
@@ -57,6 +59,47 @@ export class PrismaLoyaltyRepository implements LoyaltyRepository {
       where: { id: input.loyaltyAccountId },
       data: { totalPoints: { increment: input.points } },
     });
+  }
+
+  async redeem(input: RedeemPointsInput, tx: TransactionContext): Promise<void> {
+    const db = tx as Prisma.TransactionClient;
+
+    // Insert first: the (orderId, type) unique index makes REDEEM idempotent at the
+    // DB level. A second redemption for the same order hits P2002, which we surface
+    // as CONFLICT (the tx rolls back, so no partial debit lands).
+    try {
+      await db.loyaltyTransaction.create({
+        data: {
+          loyaltyAccountId: input.loyaltyAccountId,
+          orderId: input.orderId,
+          type: LoyaltyTransactionType.REDEEM,
+          points: input.points,
+          description: input.description,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new PointsRedemptionConflictError(
+          `Order ${input.orderId} already has a points redemption.`,
+          { cause: err },
+        );
+      }
+      throw err;
+    }
+
+    // Optimistic concurrency: the where clause (totalPoints >= points) is the guard.
+    // updateMany reports the affected count, so a concurrent redemption that drained
+    // the balance after our read leaves count = 0 - we throw CONFLICT instead of
+    // letting the balance go negative. No SELECT FOR UPDATE.
+    const { count } = await db.loyaltyAccount.updateMany({
+      where: { id: input.loyaltyAccountId, totalPoints: { gte: input.points } },
+      data: { totalPoints: { decrement: input.points } },
+    });
+    if (count === 0) {
+      throw new PointsRedemptionConflictError(
+        `Insufficient points to redeem ${input.points} for account ${input.loyaltyAccountId} (concurrent debit).`,
+      );
+    }
   }
 
   private toEntity(raw: LoyaltyAccountModel): LoyaltyAccount {
