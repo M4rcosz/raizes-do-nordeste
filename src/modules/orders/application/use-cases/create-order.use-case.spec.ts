@@ -26,6 +26,80 @@ import {
   LOYALTY_ENROLLMENT,
   type LoyaltyEnrollment,
 } from '@modules/loyalty/application/ports/loyalty-enrollment.port';
+import {
+  LOYALTY_REDEMPTION,
+  type LoyaltyRedemption,
+  type QuoteDiscountInput,
+  type RedeemForOrderInput,
+} from '@modules/loyalty/application/ports/loyalty-redemption.port';
+import { LoyaltyAccount } from '@modules/loyalty/domain/entities/loyalty-account.entity';
+import { PointsRedemptionRequiresCustomerError } from '../errors/points-redemption-requires-customer.error';
+import { InsufficientPointsError } from '@modules/loyalty/domain/errors/insufficient-points.error';
+
+/**
+ * Fake of the two loyalty ports the orders context consumes, backed by an in-memory
+ * balance per customer. It applies the real redeem rate and ceiling rule (via the
+ * loyalty domain) and really debits points on redeemForOrder, so the order's total
+ * and the post-debit balance are exercised end-to-end - not asserted as mock calls.
+ * ensureAccount records the enrolled customer; failures are simulated with failNext.
+ */
+class FakeLoyalty implements LoyaltyRedemption, LoyaltyEnrollment {
+  private readonly balanceByCustomer = new Map<string, number>();
+  readonly enrolled: string[] = [];
+  private enrollmentError: Error | null = null;
+
+  seedBalance(customerId: string, points: number): void {
+    this.balanceByCustomer.set(customerId, points);
+  }
+
+  balanceOf(customerId: string): number | undefined {
+    return this.balanceByCustomer.get(customerId);
+  }
+
+  failEnrollmentOnce(error: Error): void {
+    this.enrollmentError = error;
+  }
+
+  quoteDiscount(input: QuoteDiscountInput): Promise<string> {
+    return Promise.resolve(this.resolveDiscount(input));
+  }
+
+  redeemForOrder(input: RedeemForOrderInput): Promise<string> {
+    const discount = this.resolveDiscount(input);
+    this.balanceByCustomer.set(
+      input.customerId,
+      (this.balanceByCustomer.get(input.customerId) ?? 0) - input.points,
+    );
+    return Promise.resolve(discount);
+  }
+
+  ensureAccount(customerId: string): Promise<void> {
+    if (this.enrollmentError) {
+      const error = this.enrollmentError;
+      this.enrollmentError = null;
+      return Promise.reject(error);
+    }
+    this.enrolled.push(customerId);
+    return Promise.resolve();
+  }
+
+  /** Mirrors RedeemPointsUseCase: consent/balance/ceiling guard then the deterministic rate. */
+  private resolveDiscount(input: QuoteDiscountInput): string {
+    const balance = this.balanceByCustomer.get(input.customerId) ?? 0;
+    if (!Number.isInteger(input.points) || input.points <= 0 || balance < input.points) {
+      throw new InsufficientPointsError(
+        `Customer ${input.customerId} cannot redeem ${input.points} points.`,
+      );
+    }
+    const discount = LoyaltyAccount.discountForPoints(input.points);
+    if (new Big(discount).gt(new Big(input.subtotal))) {
+      throw new InsufficientPointsError(
+        `Redeeming ${input.points} points exceeds the order subtotal R$${input.subtotal}.`,
+      );
+    }
+    return discount;
+  }
+}
 
 describe('CreateOrderUseCase', () => {
   const txContext: unknown = Symbol('tx-context');
@@ -34,7 +108,7 @@ describe('CreateOrderUseCase', () => {
   let resolveLookup: jest.MockedFunction<OrderProductLookup['resolve']>;
   let logAudit: jest.MockedFunction<AuditLogger['log']>;
   let deductForOrder: jest.MockedFunction<StockDeduction['deductForOrder']>;
-  let ensureAccount: jest.MockedFunction<LoyaltyEnrollment['ensureAccount']>;
+  let loyalty: FakeLoyalty;
 
   const command = (overrides: Partial<CreateOrderCommand> = {}): CreateOrderCommand => ({
     businessUnitId: 'bu-1',
@@ -75,8 +149,7 @@ describe('CreateOrderUseCase', () => {
     deductForOrder = jest.fn() as jest.MockedFunction<StockDeduction['deductForOrder']>;
     deductForOrder.mockResolvedValue({ lowStock: [] });
 
-    ensureAccount = jest.fn() as jest.MockedFunction<LoyaltyEnrollment['ensureAccount']>;
-    ensureAccount.mockResolvedValue(undefined);
+    loyalty = new FakeLoyalty();
 
     // Fake unit of work: runs the work immediately, handing it a sentinel tx
     // so tests can assert the same context reaches the repository.
@@ -104,10 +177,8 @@ describe('CreateOrderUseCase', () => {
           provide: STOCK_DEDUCTION,
           useValue: { deductForOrder } satisfies StockDeduction,
         },
-        {
-          provide: LOYALTY_ENROLLMENT,
-          useValue: { ensureAccount } satisfies LoyaltyEnrollment,
-        },
+        { provide: LOYALTY_ENROLLMENT, useValue: loyalty satisfies LoyaltyEnrollment },
+        { provide: LOYALTY_REDEMPTION, useValue: loyalty satisfies LoyaltyRedemption },
       ],
     }).compile();
 
@@ -345,7 +416,7 @@ describe('CreateOrderUseCase', () => {
 
       await useCase.execute(command(), { id: 'c-1', canAttend: false });
 
-      expect(ensureAccount).toHaveBeenCalledWith('c-1');
+      expect(loyalty.enrolled).toEqual(['c-1']);
     });
 
     it('skips enrollment when the order has no customer (anonymous channel)', async () => {
@@ -354,16 +425,68 @@ describe('CreateOrderUseCase', () => {
         canAttend: false,
       });
 
-      expect(ensureAccount).not.toHaveBeenCalled();
+      expect(loyalty.enrolled).toEqual([]);
     });
 
     it('a failing enrollment never breaks the created order (best-effort)', async () => {
       create.mockResolvedValue(persistedWithCustomer);
-      ensureAccount.mockRejectedValue(new Error('loyalty db down'));
+      loyalty.failEnrollmentOnce(new Error('loyalty db down'));
 
       const order = await useCase.execute(command(), { id: 'c-1', canAttend: false });
 
       expect(order).toBe(persistedWithCustomer);
+    });
+  });
+
+  describe('loyalty redemption', () => {
+    it('quotes the discount, persists the discounted total and debits points inside the tx', async () => {
+      // Subtotal is 2 * 10.00 = 20.00; 50 points price to a 5.00 discount, total 15.
+      loyalty.seedBalance('c-1', 80);
+
+      await useCase.execute(command({ pointsRedeemed: 50 }), { id: 'c-1', canAttend: false });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalAmount: '15', pointsRedeemed: 50 }),
+        txContext,
+      );
+      // The points were actually debited (80 - 50), proving redeemForOrder ran.
+      expect(loyalty.balanceOf('c-1')).toBe(30);
+    });
+
+    it('applies no discount and never touches the redemption port when no points are redeemed', async () => {
+      loyalty.seedBalance('c-1', 80);
+
+      await useCase.execute(command({ pointsRedeemed: 0 }), { id: 'c-1', canAttend: false });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalAmount: '20' }),
+        txContext,
+      );
+      // Untouched balance: no quote and no debit happened.
+      expect(loyalty.balanceOf('c-1')).toBe(80);
+    });
+
+    it('rejects with 422 and never opens the tx when points are redeemed without a customer', async () => {
+      await expect(
+        useCase.execute(command({ orderChannel: OrderChannel.TOTEM, pointsRedeemed: 50 }), {
+          id: 'u-1',
+          canAttend: false,
+        }),
+      ).rejects.toBeInstanceOf(PointsRedemptionRequiresCustomerError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('propagates an insufficient-balance error from the quote and never persists', async () => {
+      // 10 points on hand, asking for 50: the quote rejects before any insert.
+      loyalty.seedBalance('c-1', 10);
+
+      await expect(
+        useCase.execute(command({ pointsRedeemed: 50 }), { id: 'c-1', canAttend: false }),
+      ).rejects.toBeInstanceOf(InsufficientPointsError);
+
+      expect(create).not.toHaveBeenCalled();
+      expect(logAudit).not.toHaveBeenCalled();
     });
   });
 });

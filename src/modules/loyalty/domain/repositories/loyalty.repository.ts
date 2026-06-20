@@ -9,6 +9,14 @@ export interface EarnPointsInput {
   description: string;
 }
 
+export interface RedeemPointsInput {
+  loyaltyAccountId: string;
+  orderId: string;
+  /** Points to debit; always positive (sign convention mirrors EARN). */
+  points: number;
+  description: string;
+}
+
 export interface LoyaltyRepository {
   /** Pass `tx` to read inside an open transaction (read + later write share one snapshot). */
   findByCustomerId(customerId: string, tx?: TransactionContext): Promise<LoyaltyAccount | null>;
@@ -25,6 +33,16 @@ export interface LoyaltyRepository {
    * increment can never land apart.
    */
   earn(input: EarnPointsInput, tx: TransactionContext): Promise<void>;
+  /**
+   * Debits points atomically on the caller's `tx`: inserts the REDEEM
+   * LoyaltyTransaction (points positive) and decrements `totalPoints` with a
+   * conditional UPDATE (totalPoints >= points). The condition is the optimistic
+   * concurrency check: if a concurrent redemption already drained the balance the
+   * decrement matches no row and this throws CONFLICT instead of going negative.
+   * A duplicate REDEEM for the same order (P2002 on orderId+type) also throws
+   * CONFLICT. `tx` is required so the insert and the decrement never land apart.
+   */
+  redeem(input: RedeemPointsInput, tx: TransactionContext): Promise<void>;
 }
 
 export const LOYALTY_REPOSITORY = Symbol('LoyaltyRepository');
