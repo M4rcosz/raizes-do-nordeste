@@ -1,4 +1,4 @@
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { canTransition, type OrderStatus } from '../value-objects/order-status';
 import type { OrderChannel } from '../value-objects/order-channel';
 import { OrderItem } from './order-item.entity';
@@ -7,9 +7,9 @@ import { InvalidOrderTotalError } from '../errors/invalid-order-total.error';
 
 export class Order {
   /** Gross sum of the line subtotals, before any discount. */
-  public readonly itemsSubtotal: Big;
+  public readonly itemsSubtotal: Money;
   /** Amount knocked off the gross subtotal (itemsSubtotal - totalAmount); 0 when nothing was discounted. */
-  public readonly discountAmount: Big;
+  public readonly discountAmount: Money;
 
   constructor(
     public readonly id: string,
@@ -19,7 +19,7 @@ export class Order {
     public readonly pointsRedeemed: number,
     public readonly pointsEarned: number,
     /** Authoritative amount charged, net of discount. Supplied by persistence, never recomputed here. */
-    public readonly totalAmount: Big,
+    public readonly totalAmount: Money,
     public readonly notes: string | null,
     public readonly orderChannel: OrderChannel,
     public readonly orderStatus: OrderStatus,
@@ -35,8 +35,11 @@ export class Order {
   }
 
   /** Sums the line subtotals into the gross amount, before any discount. */
-  static calculateItemsSubtotal(subtotals: ReadonlyArray<Big | string>): Big {
-    return subtotals.reduce<Big>((acc, curr) => acc.plus(new Big(curr)), new Big(0));
+  static calculateItemsSubtotal(subtotals: ReadonlyArray<Money | string>): Money {
+    return subtotals.reduce<Money>(
+      (acc, curr) => acc.plus(typeof curr === 'string' ? Money.fromDecimalString(curr) : curr),
+      Money.zero(),
+    );
   }
 
   /**
@@ -45,17 +48,15 @@ export class Order {
    * than the subtotal. Throws {@link InvalidOrderTotalError} otherwise. Callers pass 0
    * today; the loyalty module will supply the points-based discount.
    */
-  static computeTotal(itemsSubtotal: Big, discountAmount: Big): Big {
+  static computeTotal(itemsSubtotal: Money, discountAmount: Money): Money {
     Order.assertDiscountWithinBand(discountAmount, itemsSubtotal);
     return itemsSubtotal.minus(discountAmount);
   }
 
-  private static assertDiscountWithinBand(discountAmount: Big, itemsSubtotal: Big): void {
-    if (discountAmount.lt(0) || discountAmount.gt(itemsSubtotal)) {
+  private static assertDiscountWithinBand(discountAmount: Money, itemsSubtotal: Money): void {
+    if (discountAmount.isNegative() || discountAmount.greaterThan(itemsSubtotal)) {
       throw new InvalidOrderTotalError(
-        `Discount ${discountAmount.toFixed(2)} is outside the allowed range [0, ${itemsSubtotal.toFixed(
-          2,
-        )}].`,
+        `Discount ${discountAmount.toDecimalString()} is outside the allowed range [0, ${itemsSubtotal.toDecimalString()}].`,
       );
     }
   }

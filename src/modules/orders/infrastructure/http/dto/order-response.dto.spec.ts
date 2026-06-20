@@ -1,12 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { OrderResponseDto } from './order-response.dto';
 import { Order } from '@modules/orders/domain/entities/order.entity';
 import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 
 describe('OrderResponseDto.fromEntity', () => {
-  const item = new OrderItem('i-1', 'o-1', 'p-1', 2, new Big('10'), null);
+  const item = new OrderItem('i-1', 'o-1', 'p-1', 2, Money.fromDecimalString('10'), null);
   const order = new Order(
     'o-1',
     'bu-1',
@@ -14,7 +14,7 @@ describe('OrderResponseDto.fromEntity', () => {
     null,
     0,
     5,
-    new Big('20'),
+    Money.fromDecimalString('20'),
     'note',
     OrderChannel.APP,
     'PENDING',

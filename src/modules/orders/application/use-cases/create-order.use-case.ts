@@ -10,7 +10,7 @@ import {
   OrderChannel,
 } from '@modules/orders/domain/value-objects/order-channel';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { AttendantRequiredError } from '../errors/attendant-required.error';
 import { PriceMismatchError } from '../errors/price-mismatch.error';
 import { ProductInactiveError } from '../errors/product-inactive.error';
@@ -112,7 +112,7 @@ export class CreateOrderUseCase {
 
       const orderItems = rawOrderItems.map((item) => ({
         ...item,
-        subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toString(),
+        subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toDecimalString(),
       }));
 
       const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
@@ -124,18 +124,18 @@ export class CreateOrderUseCase {
       // the order. Loyalty rules and the rate stay behind the port; orders never reads
       // the loyalty domain. The discount is deterministic, so quote and debit agree.
       const discountAmount = redeems
-        ? new Big(
+        ? Money.fromDecimalString(
             await this.redemption.quoteDiscount(
               {
                 customerId: customerId as string,
                 points: pointsRedeemed as number,
-                subtotal: itemsSubtotal.toFixed(2),
+                subtotal: itemsSubtotal.toDecimalString(),
               },
               tx,
             ),
           )
-        : new Big(0);
-      const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toString();
+        : Money.zero();
+      const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toDecimalString();
 
       // pointsEarned stays at the DB default (0) on creation. Points (1 per R$10 of the
       // paid amount, gated by LoyaltyAccount consent) are credited by the loyalty module
@@ -166,7 +166,7 @@ export class CreateOrderUseCase {
             customerId: customerId as string,
             orderId: created.id,
             points: pointsRedeemed as number,
-            subtotal: itemsSubtotal.toFixed(2),
+            subtotal: itemsSubtotal.toDecimalString(),
           },
           tx,
         );
@@ -193,7 +193,7 @@ export class CreateOrderUseCase {
       action: AUDIT_ACTIONS.ORDER_CREATED,
       entity: 'Order',
       entityId: order.id,
-      metadata: { orderChannel, totalAmount: order.totalAmount.toFixed(2) },
+      metadata: { orderChannel, totalAmount: order.totalAmount.toDecimalString() },
     });
 
     await this.alertLowStock(businessUnitId, actor.id, deduction);
@@ -267,11 +267,9 @@ export class CreateOrderUseCase {
           `Product ${item.productId} is currently unavailable at this business unit.`,
         );
       }
-      if (!resolved.price.eq(new Big(item.unitPrice))) {
+      if (!resolved.price.equals(Money.fromDecimalString(item.unitPrice))) {
         throw new PriceMismatchError(
-          `Unit price ${item.unitPrice} does not match the authoritative price ${resolved.price.toFixed(
-            2,
-          )} for product ${item.productId} at this business unit.`,
+          `Unit price ${item.unitPrice} does not match the authoritative price ${resolved.price.toDecimalString()} for product ${item.productId} at this business unit.`,
         );
       }
     }

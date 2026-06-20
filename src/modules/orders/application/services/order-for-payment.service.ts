@@ -32,7 +32,7 @@ export class OrderForPaymentService implements OrderForPayment {
     return {
       id: order.id,
       isAwaitingPayment: order.orderStatus === OrderStatus.PENDING,
-      totalAmount: order.totalAmount.toFixed(2),
+      totalAmount: order.totalAmount.toDecimalString(),
       customerId: order.customerId,
     };
   }

@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { Test } from '@nestjs/testing';
 import { OrdersController } from './orders.controller';
 import { CreateOrderUseCase } from '@modules/orders/application/use-cases/create-order.use-case';
@@ -22,7 +22,7 @@ const buildOrder = (id = 'o-1', status: OrderStatus = OrderStatus.PENDING): Orde
     null,
     0,
     0,
-    new Big(0),
+    Money.zero(),
     null,
     OrderChannel.APP,
     status,

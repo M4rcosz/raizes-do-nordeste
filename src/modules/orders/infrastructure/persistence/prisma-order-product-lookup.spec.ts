@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Prisma } from '@prisma/client';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { PrismaOrderProductLookup } from './prisma-order-product-lookup';
 import type { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 
@@ -49,7 +49,7 @@ describe('PrismaOrderProductLookup', () => {
 
     const result = await lookup.resolve('bu-1', ['p-1']);
 
-    expect(result.get('p-1')?.price.eq(new Big('9.99'))).toBe(true);
+    expect(result.get('p-1')?.price.equals(Money.fromDecimalString('9.99'))).toBe(true);
     expect(result.get('p-1')?.isActive).toBe(true);
     expect(result.get('p-1')?.isAvailable).toBe(true);
   });
@@ -97,7 +97,7 @@ describe('PrismaOrderProductLookup', () => {
     const result = await lookup.resolve('bu-1', ['p-1', 'p-not-on-menu']);
 
     expect(result.has('p-not-on-menu')).toBe(false);
-    expect(result.get('p-1')?.price.eq(new Big('9.99'))).toBe(true);
+    expect(result.get('p-1')?.price.equals(Money.fromDecimalString('9.99'))).toBe(true);
   });
 
   it('scopes the menu lookup to the requested business unit and products', async () => {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Prisma } from '@prisma/client';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import type { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import type { CreateOrderInput } from '@modules/orders/domain/repositories/order.repository';
@@ -143,9 +143,9 @@ describe('PrismaOrderRepository', () => {
 
       expect(order).toBeInstanceOf(Order);
       expect(order.id).toBe('order-1');
-      expect(order.totalAmount.eq(new Big('25.00'))).toBe(true);
+      expect(order.totalAmount.equals(Money.fromDecimalString('25.00'))).toBe(true);
       expect(order.orderItems).toHaveLength(2);
-      expect(order.orderItems[0].subtotal.eq(new Big('20'))).toBe(true);
+      expect(order.orderItems[0].subtotal.equals(Money.fromDecimalString('20'))).toBe(true);
     });
 
     it('translates a P2003 foreign-key violation into OrderReferenceNotFoundError, chaining the cause', async () => {
