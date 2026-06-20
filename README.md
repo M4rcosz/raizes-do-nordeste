@@ -10,9 +10,12 @@ customer loyalty program - across multiple business units (franchises).
 > is the product catalog (public browsing + role-gated creation), identity
 > (JWT login + argon2 hashing + global role guard), a cross-cutting audit
 > log wired into the login flow, **orders** (channel-aware creation, reads,
-> status state machine), and **payments** (gateway charge + webhook
-> confirmation that advances the order). Inventory, promotions and loyalty
-> are planned (see [Roadmap](#roadmap)).
+> status state machine), **payments** (gateway charge + HMAC-signed webhook
+> confirmation that advances the order, plus a stale-payment sweeper),
+> **inventory** (stock deducted atomically on order creation, manual
+> adjustments, low-stock alerts) and **loyalty** (auto-enrolment on the first
+> order, consent-gated points credited on approved payments). Promotions are
+> the only context still pending (see [Roadmap](#roadmap)).
 
 ---
 
@@ -267,29 +270,43 @@ src/
     │   ├── domain/               ← User entity, repo + hasher/signer ports, UserRole
     │   ├── application/          ← SignInUseCase + app-layer errors
     │   └── infrastructure/       ← Argon2 hasher, JWT signer, auth controller/DTO
-    ├── orders/                   ← Channel-aware order creation
+    ├── orders/                   ← Channel-aware creation, reads, status state machine
     │   ├── orders.module.ts
-    │   ├── domain/               ← Order/OrderItem entities, OrderChannel/Status VOs (channel policies), OrderRepository, NOT_FOUND errors
-    │   ├── application/          ← Use cases + OrderForPayment port (published to payments) + errors
+    │   ├── domain/               ← Order/OrderItem entities, OrderChannel/Status VOs (channel policies + transitions), OrderRepository, errors
+    │   ├── application/          ← Use cases (create/find/list/update-status), OrderForPayment + OrderProductLookup ports, errors
     │   └── infrastructure/       ← PrismaOrderRepository, OrdersController, request/response DTOs
-    └── payments/                 ← Gateway charge + webhook confirmation
-        ├── payments.module.ts
-        ├── domain/               ← Payment entity, PaymentStatus/PaymentMethod VOs, PaymentRepository
-        ├── application/          ← CreatePayment/ConfirmPayment/FindPaymentByOrder, PaymentGateway port, errors
-        └── infrastructure/       ← MockPaymentGateway, PrismaPaymentRepository, PaymentsController, webhook guard, DTOs
+    ├── payments/                 ← Gateway charge + HMAC-signed webhook confirmation
+    │   ├── payments.module.ts
+    │   ├── domain/               ← Payment entity, PaymentStatus/PaymentMethod VOs, PaymentRepository
+    │   ├── application/          ← CreatePayment/ConfirmPayment/FindPaymentByOrder/ExpireStalePayments, PaymentGateway port, errors
+    │   └── infrastructure/       ← MockPaymentGateway, PrismaPaymentRepository, PaymentsController, webhook signature guard, DTOs
+    ├── inventory/                ← Stock balances + transaction ledger
+    │   ├── inventory.module.ts
+    │   ├── domain/               ← Inventory entity, InventoryTransactionType VO, InventoryRepository, errors
+    │   ├── application/          ← GetInventory/AdjustInventory/DeductStockForOrder, StockDeduction port (consumed by orders), errors
+    │   └── infrastructure/       ← PrismaInventoryRepository, InventoryController, DTOs
+    └── loyalty/                  ← Customer points program (LGPD consent-gated)
+        ├── loyalty.module.ts
+        ├── domain/               ← LoyaltyAccount/LoyaltyTransaction entities, VOs, repository
+        ├── application/          ← EnrollCustomer/EarnPoints/GetMyLoyaltyAccount, LoyaltyEnrollment + LoyaltyEarning ports, errors
+        └── infrastructure/       ← PrismaLoyaltyRepository, LoyaltyController, DTOs
 prisma/
 ├── schema.prisma                 ← Single source of truth for the database
 ├── seed.ts                       ← Idempotent seed for local dev
 └── migrations/                   ← Versioned migration history
+docs/
+└── TESTS.md                      ← Smoke-test scenarios (positive + negative)
 test/
 ├── app.e2e-spec.ts               ← Product HTTP e2e
 ├── auth-audit.e2e-spec.ts        ← Login + audit_logs persistence e2e
 ├── validation-pipe.e2e-spec.ts   ← Global ValidationPipe e2e
-└── global-error-filter.e2e-spec.ts ← Error envelope e2e (full pipeline)
+├── global-error-filter.e2e-spec.ts ← Error envelope e2e (full pipeline)
+├── orders.e2e-spec.ts            ← Orders + inventory + loyalty enrolment e2e
+└── payments.e2e-spec.ts          ← Critical flow A (order → pay → webhook → confirm) e2e
 ```
 
-> Remaining contexts (`inventory`, `promotions`, `loyalty`) will follow the
-> same internal shape under `src/modules/`.
+> `promotions` is the only remaining context; it will follow the same
+> internal shape under `src/modules/`.
 
 ---
 
@@ -326,6 +343,7 @@ NODE_ENV=development
 PORT=3000
 
 JWT_SECRET_KEY=replace-with-a-strong-random-secret
+PAYMENT_WEBHOOK_SECRET=replace-with-a-strong-random-secret
 ```
 
 > `DATABASE_URL` uses `localhost` for local development. The full-stack
@@ -339,6 +357,11 @@ JWT_SECRET_KEY=replace-with-a-strong-random-secret
 > ```bash
 > node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 > ```
+>
+> `PAYMENT_WEBHOOK_SECRET` signs the payment webhook (HMAC-SHA256). The guard
+> fails closed if it is unset, so `POST /api/payments/webhook` returns `401`
+> until it is configured. Any caller posting a webhook (a test, a Postman
+> collection, or a real gateway adapter) must sign with the same value.
 
 ### 3. Install dependencies and generate the Prisma client
 
@@ -423,6 +446,8 @@ npm run devs
 | `DATABASE_URL`      | Full connection string consumed by Prisma | `postgresql://...`           |
 | `NODE_ENV`          | Runtime environment                       | `development` / `production` |
 | `PORT`              | HTTP server port                          | `3000`                       |
+| `JWT_SECRET_KEY`    | Signing secret for access tokens. **Required** - the app exits on boot if missing (`getOrThrow`). | `a-strong-random-secret` |
+| `PAYMENT_WEBHOOK_SECRET` | HMAC secret the payment webhook is signed with. If unset, the webhook guard **fails closed** (every callback returns `401`). | `dev-webhook-secret` |
 
 ---
 
@@ -441,11 +466,10 @@ npm run devs
 | Promotions        | `promotions`, `order_promotions`                                       |
 | Loyalty           | `loyalty_accounts`, `loyalty_transactions`                             |
 
-> Of the domains above, **Identity, Business Units, Audit and Orders**
-> (creation only) have application code shipped. The remaining tables
-> (Inventory, Payments, Promotions, Loyalty) exist in the schema as
-> forward-looking infrastructure - there are no use cases, controllers or
-> repositories for them yet.
+> Of the domains above, **Identity, Business Units, Audit, Orders, Payments,
+> Inventory and Loyalty** have application code shipped. Only **Promotions**
+> (`promotions`, `order_promotions`) exists in the schema as forward-looking
+> infrastructure - it has no use cases, controllers or repositories yet.
 
 ### Design Decisions
 
@@ -491,13 +515,14 @@ returned by `POST /api/auth/login` directly into the "Authorize" dialog.
 ### Authentication
 
 A global `AuthGuard` protects every route by default; routes opt out with
-`@Public()`. The read endpoints shipped so far are public; **writes are
-protected** - `POST /api/products` requires a `Bearer` JWT in the
-`Authorization` header and the `ADMIN` or `MANAGER` role (via `@Roles()`).
-`POST /api/orders` also requires a Bearer JWT, but the required role is not
-fixed on the route: it is enforced per request by the `orderChannel` policy
-(see [Orders](#orders)). A protected route returns `401` when the JWT is
-missing or invalid and `403` when the role is insufficient.
+`@Public()`. Only the **product reads** and the **payment webhook** are public;
+everything else needs a `Bearer` JWT in the `Authorization` header. Some routes
+additionally require a role via `@Roles()` - `POST /api/products` needs
+`ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, order listing/status needs
+staff, and `loyalty/me` needs `CUSTOMER`. `POST /api/orders` needs a JWT but no
+fixed role: the requirement is enforced per request by the `orderChannel` policy
+(see [Orders](#orders)). A protected route returns `401` when the JWT is missing
+or invalid and `403` when the role is insufficient.
 
 | Method | Path              | Auth   | Description                                 |
 | ------ | ----------------- | ------ | ------------------------------------------- |
@@ -567,9 +592,12 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 
 ### Orders
 
-| Method | Path          | Auth   | Description                                                                                            |
-| ------ | ------------- | ------ | ------------------------------------------------------------------------------------------------------ |
-| `POST` | `/api/orders` | Bearer | Create an order. Behavior is driven by the `orderChannel` policy (customer source + role requirement). |
+| Method  | Path                      | Auth        | Description                                                                                            |
+| ------- | ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `POST`  | `/api/orders`             | Bearer      | Create an order. Behavior is driven by the `orderChannel` policy (customer source + role requirement). |
+| `GET`   | `/api/orders`             | Staff       | List orders (cursor-paginated) with optional `businessUnitId`/`orderChannel`/`orderStatus` filters. `CUSTOMER` is rejected with `403`. |
+| `GET`   | `/api/orders/:id`         | Bearer      | Get one order. A `CUSTOMER` only sees their own; otherwise `404`.                                      |
+| `PATCH` | `/api/orders/:id/status`  | Staff       | Advance an order's status. The state machine rejects invalid transitions with `422`; a concurrent change loses the optimistic lock with `409`. |
 
 #### Channel policies
 
@@ -604,12 +632,12 @@ write reaches the database. The `OrderPricing` port returns `{ price, isActive }
 per product; the Prisma implementation batches the product + menu-item
 fetches in parallel.
 
-`pointsEarned` is **not** accepted from the client either. It is reserved for
-the future loyalty module: once `LoyaltyAccount` is built, an order whose
-customer has an account with `consentGiven=true` will earn `floor(totalAmount)`
-points (1 point per real). Until then every order persists `pointsEarned = 0`
-(the schema default). A `TODO(loyalty)` marker lives in
-`CreateOrderUseCase.execute` at the point where this computation will be added.
+`pointsEarned` is **not** accepted from the client either, and stays `0` on the
+order at creation time. Loyalty points are credited later by the loyalty module,
+when the payment is **approved**: `floor(paidAmount / 10)` points (1 per R$10),
+gated by the customer's `LoyaltyAccount` consent and recorded as a
+`LoyaltyTransaction` (the source of truth). The account is created automatically
+on the customer's first order. See [Loyalty](#loyalty).
 
 ```json
 {
@@ -662,12 +690,27 @@ translates Prisma's `P2003` into a typed domain error and inspects
 (`customer`, `business unit`, `product`, `attendant`) instead of grouping all
 foreign-key failures under one generic label.
 
+#### Order status transitions
+
+`PATCH /api/orders/:id/status` enforces a forward-only state machine
+(`OrderStatus` VO). Allowed moves:
+
+- `PENDING` -> `CONFIRMED` | `CANCELLED`
+- `CONFIRMED` -> `PREPARING` | `CANCELLED`
+- `PREPARING` -> `READY` | `CANCELLED`
+- `READY` -> `DELIVERED`
+- `DELIVERED` and `CANCELLED` are terminal
+
+An invalid transition returns `422`; an unknown order returns `404`; a
+concurrent transition that loses the optimistic lock returns `409`. An
+approved payment advances `PENDING -> CONFIRMED` automatically (see below).
+
 ### Payments
 
 | Method | Path                           | Auth           | Description                                                    |
 | ------ | ------------------------------ | -------------- | -------------------------------------------------------------- |
 | `POST` | `/api/payments`                | Bearer         | Create a payment for an order and charge the gateway.          |
-| `POST` | `/api/payments/webhook`        | Webhook secret | Gateway callback: settle a payment and advance its order.      |
+| `POST` | `/api/payments/webhook`        | HMAC signature | Gateway callback: settle a payment and advance its order.      |
 | `GET`  | `/api/orders/:orderId/payment` | Bearer         | Get the payment of an order. Customers may only see their own. |
 
 #### The webhook is the source of truth
@@ -701,12 +744,22 @@ the concurrent double-payment race).
 
 #### Request body - `PaymentWebhookDto` (`POST /api/payments/webhook`)
 
-The request must carry the shared secret in the **`x-webhook-secret`** header
-(stand-in for gateway signature verification); a missing/invalid secret returns
-`401`. `status` is the settled outcome the gateway reports.
+The callback is verified by an HMAC-SHA256 signature (not a static shared
+secret), so a captured request cannot be replayed and the body cannot be
+tampered. The caller sends two headers:
+
+- **`x-webhook-timestamp`** - Unix seconds; rejected if more than 300s from now
+  (anti-replay window).
+- **`x-webhook-signature`** - hex HMAC-SHA256, keyed with `PAYMENT_WEBHOOK_SECRET`,
+  over the canonical string `timestamp.extTransactionId.status.amount`.
+
+A missing/invalid signature, a stale timestamp, or an unset server secret all
+return `401`. `status` is the settled outcome (`APPROVED` / `REFUSED`) and
+`amount` must match what was charged. The signing helper `buildWebhookSignature`
+is exported from the webhook guard for tests and future PSP adapters.
 
 ```json
-{ "extTransactionId": "mock_4f1c...", "status": "APPROVED" }
+{ "extTransactionId": "mock_4f1c...", "status": "APPROVED", "amount": "25.00" }
 ```
 
 #### Response - `PaymentResponseDto`
@@ -738,6 +791,71 @@ rounding on the client.
 > acceptance. `PENDING -> CONFIRMED` was already a valid transition, so the state
 > machine was not changed.
 
+### Inventory
+
+| Method | Path                                | Auth            | Description                                              |
+| ------ | ----------------------------------- | --------------- | ------------------------------------------------------- |
+| `GET`  | `/api/inventory/:businessUnitId`    | MANAGER / ADMIN | List stock balances for a business unit.                |
+| `POST` | `/api/inventory/:businessUnitId/adjust` | MANAGER / ADMIN | Apply a manual `IN`/`OUT` stock movement.           |
+
+Stock is a management concern: `ATTENDANT`, `KITCHEN` and `CUSTOMER` are
+rejected with `403`. Every balance change is recorded as an
+`InventoryTransaction` (the balance is never mutated blind).
+
+#### Stock is deducted when an order is created
+
+`POST /api/orders` deducts stock for each item **in the same transaction** as
+the order insert. An item without an inventory row at the unit, or without
+enough on hand, fails the whole order with `422` and rolls back every deduction
+already applied (no partial outflow). When a deduction leaves the balance at or
+below `minQuantity`, a `STOCK_ALERT` is written to the audit log.
+
+#### Request body - `AdjustInventoryDto` (`POST /api/inventory/:businessUnitId/adjust`)
+
+`type` is `IN` (restock) or `OUT` (manual removal). An `IN` for a product with
+no inventory row at the unit returns `404`; an `OUT` that would drive the
+balance below zero returns `422`.
+
+```json
+{ "productId": "cebe6acf-...", "type": "IN", "quantity": 10, "reason": "Weekly restock delivery." }
+```
+
+#### Response - `InventoryResponseDto`
+
+```json
+{
+  "id": "a1b2...",
+  "businessUnitId": "e36e29da-...",
+  "productId": "cebe6acf-...",
+  "quantity": 110,
+  "minQuantity": 5,
+  "updatedAt": "2026-06-14T12:00:00.000Z"
+}
+```
+
+### Loyalty
+
+| Method | Path              | Auth     | Description                                          |
+| ------ | ----------------- | -------- | --------------------------------------------------- |
+| `GET`  | `/api/loyalty/me` | CUSTOMER | Get the authenticated customer's loyalty account.   |
+
+A customer's `LoyaltyAccount` is created automatically on their **first order**
+(with `consentGiven = false`). `GET /api/loyalty/me` returns `404` for a
+customer who has never ordered, and `403` for staff. Points are credited only
+when a payment is **approved**, only if the account has `consentGiven = true`
+(LGPD gate): `floor(paidAmount / 10)` points (1 point per R$10), recorded as a
+`LoyaltyTransaction` of type `EARN`. Redemption is not implemented yet.
+
+#### Response - `LoyaltyAccountResponseDto`
+
+```json
+{
+  "customerId": "f3b7...",
+  "totalPoints": 12,
+  "consentGiven": true
+}
+```
+
 ### Error responses
 
 Every error passes through the global exception filter and is returned with a
@@ -757,7 +875,7 @@ are logged server-side but never sent to the client:
 | Status | When                                                                                                                  |
 | ------ | --------------------------------------------------------------------------------------------------------------------- |
 | `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                                                  |
-| `401`  | Invalid login credentials, missing/invalid JWT, or a webhook with a missing/invalid secret                            |
+| `401`  | Invalid login credentials, missing/invalid JWT, or a webhook with a missing/invalid/stale signature                   |
 | `403`  | Authenticated but the role is not allowed (e.g. a `CUSTOMER` creating a `COUNTER` order)                              |
 | `404`  | Requested product/order/payment does not exist, or an order references a missing reference                            |
 | `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                                             |
@@ -794,19 +912,29 @@ npm run test:e2e
 ### Testing strategy
 
 - **Unit tests** substitute the repository interfaces (`ProductRepository`,
-  `UserRepository`, `OrderRepository`) with test doubles, so use cases and the
-  `AuthGuard` are validated without any database. Entities, value objects,
-  DTOs and the global exception filter are tested in isolation.
-- **e2e tests** boot the full Nest application against the development
-  database and exercise the HTTP surface - products
-  (`app.e2e-spec.ts`), login + audit-log persistence
-  (`auth-audit.e2e-spec.ts`), global validation rejection
-  (`validation-pipe.e2e-spec.ts`), and the global error envelope via a
-  throwing repository (`global-error-filter.e2e-spec.ts`).
-- Each test asserts both **success paths** and **failure paths** - including
-  `ProductNotFoundError` propagation, domain errors surfacing from the create
-  use case (`ProductAlreadyExistsError`), and `ProductsFetchError` wrapping
-  with `Error.cause`.
+  `UserRepository`, `OrderRepository`, `PaymentRepository`, `InventoryRepository`,
+  `LoyaltyRepository`) with test doubles, so use cases and the `AuthGuard` are
+  validated without any database. Entities, value objects, DTOs and the global
+  exception filter are tested in isolation.
+- **e2e tests** boot the full Nest application against the development database
+  and exercise the HTTP surface - products (`app.e2e-spec.ts`), login +
+  audit-log persistence (`auth-audit.e2e-spec.ts`), global validation rejection
+  (`validation-pipe.e2e-spec.ts`), the global error envelope via a throwing
+  repository (`global-error-filter.e2e-spec.ts`), orders + stock deduction +
+  loyalty enrolment (`orders.e2e-spec.ts`), and critical flow A - order, pay,
+  webhook, confirm - with the points and reconciliation paths
+  (`payments.e2e-spec.ts`).
+- Each test asserts both **success paths** and **failure paths**.
+
+### Manual / smoke tests
+
+[`docs/TESTS.md`](docs/TESTS.md) documents the smoke-test scenarios (6 positive,
+4 negative) covering login, order creation, payment + webhook, status
+transitions, the menu listing and stock deduction. Each scenario maps to a
+request in the Postman collection; run it with the Postman Runner or
+`newman run <collection>.json -e <env>.json` - the app must be up, the seed
+loaded, and `PAYMENT_WEBHOOK_SECRET` set to the same value the collection signs
+with.
 
 ---
 
@@ -827,30 +955,31 @@ npm run test:e2e
 
 ## Roadmap
 
-The product catalog, identity and audit modules are shipped. Upcoming
-modules - already designed in the database schema - are:
+The catalog, identity, audit, orders, payments, inventory and loyalty modules
+are shipped. Remaining work:
 
 - [x] **Auth** - JWT login, global role guard, argon2 hashing (`CUSTOMER`,
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`). Refresh-token rotation
       and user registration still pending.
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
-      sanitization (password/token/CPF redaction), `AuditLogger` port
-      injected into `SignInUseCase` for `LOGIN_SUCCESS` / `LOGIN_FAILED`.
-      Ready to be injected into future order / payment use cases.
-- [x] **Orders** - channel-aware `POST /api/orders` with decimal-string
-      money, server-side total, server-side `unitPrice` validation against
-      `BusinessUnitMenuItem.customPrice` / `Product.basePrice` (anti-tampering),
-      `Product.isActive` enforcement (inactive products cannot be ordered),
-      attendant role check via `OrderChannel` policies, and `customerId`
-      nullable for anonymous totem orders. Item updates, status transitions,
-      idempotent creation and order reads still pending.
-- [ ] **Payments** - gateway integration (mocked initially), refund flow
-- [ ] **Inventory** - stock, reservations, inventory transactions ledger
+      sanitization (password/token/CPF redaction), `AuditLogger` port injected
+      into the login, order, payment and inventory flows.
+- [x] **Orders** - channel-aware creation, cursor-paginated reads, owner-scoped
+      single read, and a status state machine (optimistic-locked transitions).
+      Decimal-string money, server-side total, `unitPrice` anti-tampering and
+      `Product.isActive` enforcement. Item updates and idempotent creation
+      still pending.
+- [x] **Payments** - mock gateway charge, HMAC-signed webhook that confirms the
+      order in the same transaction, and a sweeper that expires stale
+      `PROCESSING` payments. Refunds still pending.
+- [x] **Inventory** - per-unit stock, an `InventoryTransaction` ledger, atomic
+      deduction on order creation, manual `IN`/`OUT` adjustments, and a
+      `STOCK_ALERT` audit on low balance. Reservations still pending.
 - [ ] **Promotions** - percentage / fixed-amount / free-item discounts
-- [ ] **Loyalty** - points earning (`floor(totalAmount)` per order, conditional
-      on a `LoyaltyAccount` with `consentGiven=true`), redemption with balance
-      validation against `LoyaltyAccount.totalPoints`, and consent tracking
-      (LGPD). The `pointsEarned` hook lives in `CreateOrderUseCase` already.
+- [x] **Loyalty** - auto-enrolment on the first order, consent tracking (LGPD),
+      and `floor(paidAmount / 10)` points credited on approved payments.
+      Redemption (balance validation against `LoyaltyAccount.totalPoints`)
+      still pending.
 
 ---
 
