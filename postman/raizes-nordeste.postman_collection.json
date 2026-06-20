@@ -1,0 +1,1237 @@
+{
+  "info": {
+    "_postman_id": "13db659f-adbb-4881-a8f6-eb895cd9c993",
+    "name": "Raizes do Nordeste - Smoke Tests",
+    "description": "Smoke tests autossuficientes (collection variables, sem environment externo).\n\nPastas: Setup, Positivos (9 cenarios), Negativos (12 cenarios) e Rota A (fluxo critico scriptado, ja validado).\n\nAntes de rodar: db migrado+seed, PAYMENT_WEBHOOK_SECRET=dev-webhook-secret no .env do servidor, servidor de pe.\n\nRodar na ordem (de cima pra baixo): Setup e P1 populam os tokens que o resto usa.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup",
+      "description": "Pre-condicoes + login de staff. Roda primeiro: salva staffToken (ADMIN davi151413) usado pelas rotas de staff (trocar status de pedido, ler estoque). Requer db migrado+seed, PAYMENT_WEBHOOK_SECRET=dev-webhook-secret no servidor (igual a variavel webhookSecret) e servidor de pe.",
+      "item": [
+        {
+          "name": "Setup - Login staff (ADMIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('staffToken', json.access_token);",
+                  "pm.test('tem access_token', function () { pm.expect(json.access_token).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"davi151413\",\n    \"password\": \"password2\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Positivos",
+      "description": "Cenarios do fluxo esperado. Rode de cima pra baixo: P1 salva customerToken e os pedidos/pagamentos encadeiam por collection variables. Cobre login (P1), criar pedido (P2), pagar com webhook auto-assinado (P3a-c), ler pagamento (P4), fidelidade (P5), trocar status como staff (P6a-b), cardapio paginado (P7), filtro por canal (P8) e baixa de estoque (P9a-c).",
+      "item": [
+        {
+          "name": "P1 - Login (customer) com credenciais validas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('customerToken', json.access_token);",
+                  "pm.test('tem access_token', function () { pm.expect(json.access_token).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"customer1\",\n    \"password\": \"password4\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P2 - Criar pedido valido (APP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('orderId', json.id);",
+                  "pm.collectionVariables.set('paymentAmount', json.totalAmount);",
+                  "pm.test('pedido PENDING', function () { pm.expect(json.orderStatus).to.eql('PENDING'); });",
+                  "pm.test('total 22.30', function () { pm.expect(json.totalAmount).to.eql('22.30'); });",
+                  "pm.test('tem customerId', function () { pm.expect(json.customerId).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P3a - Criar pagamento (PIX)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('extTransactionId', json.extTransactionId);",
+                  "pm.collectionVariables.set('paymentAmount', json.amount);",
+                  "pm.test('pagamento PROCESSING', function () { pm.expect(json.status).to.eql('PROCESSING'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"orderId\": \"{{orderId}}\",\n    \"method\": \"PIX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P3b - Webhook do gateway (APPROVED)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// assina o webhook com o mesmo HMAC que o guard verifica: ts.extId.status.amount",
+                  "var ts = String(Math.floor(Date.now() / 1000));",
+                  "var status = 'APPROVED';",
+                  "var extId = pm.collectionVariables.get('extTransactionId');",
+                  "var amount = pm.collectionVariables.get('paymentAmount');",
+                  "var secret = pm.collectionVariables.get('webhookSecret');",
+                  "var canonical = ts + '.' + extId + '.' + status + '.' + amount;",
+                  "var sig = CryptoJS.HmacSHA256(canonical, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.collectionVariables.set('webhookTimestamp', ts);",
+                  "pm.collectionVariables.set('webhookSignature', sig);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('recebido', function () { pm.expect(pm.response.json()).to.eql({ received: true }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-webhook-signature", "value": "{{webhookSignature}}" },
+              { "key": "x-webhook-timestamp", "value": "{{webhookTimestamp}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"extTransactionId\": \"{{extTransactionId}}\",\n    \"status\": \"APPROVED\",\n    \"amount\": \"{{paymentAmount}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P3c - Conferir pedido CONFIRMED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('pedido CONFIRMED', function () { pm.expect(pm.response.json().orderStatus).to.eql('CONFIRMED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P4 - Ler pagamento do pedido (APPROVED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('pagamento APPROVED', function () { pm.expect(json.status).to.eql('APPROVED'); });",
+                  "pm.test('pagamento da ordem', function () { pm.expect(json.orderId).to.eql(pm.collectionVariables.get('orderId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}", "payment"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P5 - Conta de fidelidade do customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('tem customerId', function () { pm.expect(json.customerId).to.be.a('string'); });",
+                  "pm.test('totalPoints e numero', function () { pm.expect(json.totalPoints).to.be.a('number'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/loyalty/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["loyalty", "me"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P6a - Criar pedido para troca de status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('orderId2', json.id);",
+                  "pm.test('pedido PENDING', function () { pm.expect(json.orderStatus).to.eql('PENDING'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P6b - Atualizar status (PENDING para CONFIRMED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('pedido CONFIRMED', function () { pm.expect(pm.response.json().orderStatus).to.eql('CONFIRMED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"orderStatus\": \"CONFIRMED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId2}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId2}}", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P7 - Listar cardapio por unidade (paginado)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('data e array', function () { pm.expect(pm.response.json().data).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/by-business-unit/{{businessUnitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "by-business-unit", "{{businessUnitId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P8 - Listar pedidos filtrando por canal (staff)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('data e array', function () { pm.expect(json.data).to.be.an('array'); });",
+                  "pm.test('todos do canal APP', function () { json.data.forEach(function (o) { pm.expect(o.orderChannel).to.eql('APP'); }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/orders?orderChannel=APP",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"],
+              "query": [{ "key": "orderChannel", "value": "APP" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P9a - Estoque antes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var row = rows.find(function (r) { return r.productId === pm.collectionVariables.get('productId'); });",
+                  "pm.test('produto tem linha de estoque', function () { pm.expect(row).to.be.an('object'); });",
+                  "pm.collectionVariables.set('stockBefore', row.quantity);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{businessUnitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{businessUnitId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P9b - Criar pedido (baixa estoque)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('orderId3', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "P9c - Estoque depois (saldo - 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var row = rows.find(function (r) { return r.productId === pm.collectionVariables.get('productId'); });",
+                  "var before = Number(pm.collectionVariables.get('stockBefore'));",
+                  "pm.test('saldo caiu 1', function () { pm.expect(row.quantity).to.eql(before - 1); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/{{businessUnitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "{{businessUnitId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Negativos",
+      "description": "Cenarios de erro/regra. Depende de Setup + P1 (tokens ja populados ao rodar de cima pra baixo). Cobre 401 (senha errada / sem token / webhook mal assinado), 400 (validacao: senha curta, canalPedido ausente, quantidade invalida), 404 (produto fora do cardapio), 422 (preco divergente, estoque insuficiente, pagar duas vezes), 403 (customer em rota de staff) e pagamento recusado (pedido continua PENDING). Obs: estoque insuficiente responde 422 (DomainError kind=invalid), equivalente ao 409 do roteiro.",
+      "item": [
+        {
+          "name": "N1 - Login com senha errada (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 401', function () { pm.response.to.have.status(401); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"customer1\",\n    \"password\": \"senhaerrada\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N2 - Login com senha curta (400 validacao)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 400', function () { pm.response.to.have.status(400); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"customer1\",\n    \"password\": \"123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N3 - Criar pedido sem JWT (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 401', function () { pm.response.to.have.status(401); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N4 - Criar pedido sem orderChannel (400 validacao)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 400', function () { pm.response.to.have.status(400); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N5 - Criar pedido com quantidade invalida (400 validacao)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 400', function () { pm.response.to.have.status(400); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 0, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N6 - Produto inexistente no pedido (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 404', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"11111111-1111-4111-8111-111111111111\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N7 - Preco divergente do cardapio (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 422', function () { pm.response.to.have.status(422); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"1.00\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N8 - Estoque insuficiente (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 422', function () { pm.response.to.have.status(422); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 999999, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N9 - Customer em rota de staff (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 403', function () { pm.response.to.have.status(403); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N10a - Criar pedido para pagar duas vezes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('orderDoublePayId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N10b - Pagar pedido (1a vez, 201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 201', function () { pm.response.to.have.status(201); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"orderId\": \"{{orderDoublePayId}}\",\n    \"method\": \"PIX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N10c - Pagar de novo (mesma ordem, 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 422', function () { pm.response.to.have.status(422); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"orderId\": \"{{orderDoublePayId}}\",\n    \"method\": \"PIX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N11 - Webhook com assinatura invalida (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 401', function () { pm.response.to.have.status(401); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-webhook-signature", "value": "deadbeef" },
+              { "key": "x-webhook-timestamp", "value": "1700000000" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"extTransactionId\": \"{{extTransactionId}}\",\n    \"status\": \"APPROVED\",\n    \"amount\": \"{{paymentAmount}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N12a - Criar pedido para pagamento recusado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('orderRefusedId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N12b - Criar pagamento (PIX)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('extTransactionRefusedId', json.extTransactionId);",
+                  "pm.collectionVariables.set('paymentAmount', json.amount);",
+                  "pm.test('pagamento PROCESSING', function () { pm.expect(json.status).to.eql('PROCESSING'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"orderId\": \"{{orderRefusedId}}\",\n    \"method\": \"PIX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N12c - Webhook do gateway (REFUSED)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// mesmo HMAC do guard, agora com status REFUSED",
+                  "var ts = String(Math.floor(Date.now() / 1000));",
+                  "var status = 'REFUSED';",
+                  "var extId = pm.collectionVariables.get('extTransactionRefusedId');",
+                  "var amount = pm.collectionVariables.get('paymentAmount');",
+                  "var secret = pm.collectionVariables.get('webhookSecret');",
+                  "var canonical = ts + '.' + extId + '.' + status + '.' + amount;",
+                  "var sig = CryptoJS.HmacSHA256(canonical, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.collectionVariables.set('webhookTimestamp', ts);",
+                  "pm.collectionVariables.set('webhookSignature', sig);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('recebido', function () { pm.expect(pm.response.json()).to.eql({ received: true }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-webhook-signature", "value": "{{webhookSignature}}" },
+              { "key": "x-webhook-timestamp", "value": "{{webhookTimestamp}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"extTransactionId\": \"{{extTransactionRefusedId}}\",\n    \"status\": \"REFUSED\",\n    \"amount\": \"{{paymentAmount}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "N12d - Pedido continua PENDING (nao confirmou)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('pedido ainda PENDING', function () { pm.expect(pm.response.json().orderStatus).to.eql('PENDING'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderRefusedId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderRefusedId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Rota A - Fluxo critico (login, pedido, pagamento)",
+      "description": "Fluxo critico P1 a P3, scripted: roda de cima pra baixo no Runner.\n\nCada request captura o que o proximo precisa nas collection variables; o webhook se autoassina (HMAC com webhookSecret).\n\nPre-condicoes: db seedado, PAYMENT_WEBHOOK_SECRET=dev-webhook-secret no servidor (igual a variavel webhookSecret), servidor de pe.",
+      "item": [
+        {
+          "name": "A1 - Login (customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('customerToken', json.access_token);",
+                  "pm.test('tem access_token', function () { pm.expect(json.access_token).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"customer1\",\n    \"password\": \"password4\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "A2 - Criar pedido (APP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('orderId', json.id);",
+                  "pm.collectionVariables.set('paymentAmount', json.totalAmount);",
+                  "pm.test('pedido PENDING', function () { pm.expect(json.orderStatus).to.eql('PENDING'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"businessUnitId\": \"{{businessUnitId}}\",\n    \"orderChannel\": \"APP\",\n    \"orderItems\": [\n        { \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": \"{{unitPrice}}\" }\n    ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "A3a - Criar pagamento (PIX)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('extTransactionId', json.extTransactionId);",
+                  "pm.collectionVariables.set('paymentAmount', json.amount);",
+                  "pm.test('pagamento PROCESSING', function () { pm.expect(json.status).to.eql('PROCESSING'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"orderId\": \"{{orderId}}\",\n    \"method\": \"PIX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "A3b - Webhook do gateway (APPROVED)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// assina o webhook com o mesmo HMAC que o guard verifica: ts.extId.status.amount",
+                  "var ts = String(Math.floor(Date.now() / 1000));",
+                  "var status = 'APPROVED';",
+                  "var extId = pm.collectionVariables.get('extTransactionId');",
+                  "var amount = pm.collectionVariables.get('paymentAmount');",
+                  "var secret = pm.collectionVariables.get('webhookSecret');",
+                  "var canonical = ts + '.' + extId + '.' + status + '.' + amount;",
+                  "var sig = CryptoJS.HmacSHA256(canonical, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.collectionVariables.set('webhookTimestamp', ts);",
+                  "pm.collectionVariables.set('webhookSignature', sig);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('recebido', function () { pm.expect(pm.response.json()).to.eql({ received: true }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-webhook-signature", "value": "{{webhookSignature}}" },
+              { "key": "x-webhook-timestamp", "value": "{{webhookTimestamp}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"extTransactionId\": \"{{extTransactionId}}\",\n    \"status\": \"APPROVED\",\n    \"amount\": \"{{paymentAmount}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "webhook"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "A3c - Conferir pedido CONFIRMED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('pedido CONFIRMED', function () { pm.expect(pm.response.json().orderStatus).to.eql('CONFIRMED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "webhookSecret", "value": "dev-webhook-secret" },
+    { "key": "businessUnitId", "value": "e36e29da-52ae-49af-ab40-5f1e8b61c8a1" },
+    { "key": "productId", "value": "cebe6acf-e54e-4842-a8ec-eda9a439ceb5" },
+    { "key": "unitPrice", "value": "22.30" },
+    { "key": "customerToken", "value": "" },
+    { "key": "staffToken", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "orderId2", "value": "" },
+    { "key": "orderId3", "value": "" },
+    { "key": "orderDoublePayId", "value": "" },
+    { "key": "orderRefusedId", "value": "" },
+    { "key": "extTransactionId", "value": "" },
+    { "key": "extTransactionRefusedId", "value": "" },
+    { "key": "paymentAmount", "value": "" },
+    { "key": "stockBefore", "value": "" },
+    { "key": "webhookSignature", "value": "" },
+    { "key": "webhookTimestamp", "value": "" }
+  ]
+}
