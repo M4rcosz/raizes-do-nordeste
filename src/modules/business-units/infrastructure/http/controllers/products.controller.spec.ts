@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { ProductsController } from './products.controller';
 import { GetActiveProductsUseCase } from '../../../application/use-cases/get-active-products.use-case';
 import { GetProductsByBusinessUnitUseCase } from '../../../application/use-cases/get-products-by-business-unit.use-case';
@@ -24,7 +24,7 @@ describe('ProductsController', () => {
       id,
       'Açaí',
       null,
-      new Big('12.50'),
+      Money.fromDecimalString('12.50'),
       true,
       'category-uuid-1',
       new Date('2026-01-01T00:00:00Z'),
@@ -171,7 +171,7 @@ describe('ProductsController', () => {
 
       const body: ProductCreateDto = {
         name: product.name,
-        price: product.price.toString(),
+        price: product.price.toDecimalString(),
         categoryId: product.categoryId,
         imageUrl: product.imageUrl,
       };
@@ -181,7 +181,7 @@ describe('ProductsController', () => {
       expect(createProduct.execute).toHaveBeenCalledWith(body);
       expect(response).toBeInstanceOf(ProductResponseDto);
       expect(response.id).toBe('uuid-43');
-      expect(response.price).toBe(12.5);
+      expect(response.price).toBe('12.50');
     });
   });
 });

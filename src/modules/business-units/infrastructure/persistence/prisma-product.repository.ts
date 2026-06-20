@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Product as PrismaProduct, Prisma } from '@prisma/client';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
+import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
+import { CorruptPersistedMoneyError } from '@shared/errors/infrastructure/corrupt-persisted-money.error';
 import type {
   CreateProductInput,
   FindProductsByBusinessUnitInput,
@@ -65,7 +67,7 @@ export class PrismaProductRepository implements ProductRepository {
     });
 
     return items.map((item) => {
-      const price = new Big((item.customPrice ?? item.product.basePrice).toString());
+      const price = this.toMoney(item.customPrice ?? item.product.basePrice);
       return new Product(
         item.product.id,
         item.product.name,
@@ -130,12 +132,26 @@ export class PrismaProductRepository implements ProductRepository {
       raw.id,
       raw.name,
       raw.description,
-      new Big(raw.basePrice.toString()),
+      this.toMoney(raw.basePrice),
       raw.isActive,
       raw.categoryId,
       raw.createdAt,
       raw.updatedAt,
       raw.imageUrl,
     );
+  }
+
+  // Read-path Money parse. A persisted value big.js rejects means corrupt DB data
+  // (server fault), so we rethrow as infra error -> HTTP 500 generic, raw value
+  // stays in the cause for logs only, never echoed to the client.
+  private toMoney(raw: { toString(): string }): Money {
+    try {
+      return Money.fromDecimalString(raw.toString());
+    } catch (err) {
+      if (err instanceof InvalidMoneyError) {
+        throw new CorruptPersistedMoneyError({ cause: err });
+      }
+      throw err;
+    }
   }
 }

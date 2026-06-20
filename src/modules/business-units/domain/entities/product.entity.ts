@@ -1,4 +1,4 @@
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 
 export class Product {
   constructor(
@@ -6,7 +6,7 @@ export class Product {
     public readonly name: string,
     public readonly description: string | null,
     /** Effective price in context: customPrice if fetched by business unit, base price otherwise. */
-    public readonly price: Big,
+    public readonly price: Money,
     public readonly isActive: boolean,
     public readonly categoryId: string,
     public readonly createdAt: Date,

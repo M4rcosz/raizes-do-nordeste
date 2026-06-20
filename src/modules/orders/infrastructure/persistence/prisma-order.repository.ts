@@ -8,7 +8,9 @@ import {
 } from '@modules/orders/domain/repositories/order.repository';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
+import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
+import { CorruptPersistedMoneyError } from '@shared/errors/infrastructure/corrupt-persisted-money.error';
 import { Prisma } from '@prisma/client';
 import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
@@ -166,7 +168,7 @@ export class PrismaOrderRepository implements OrderRepository {
       raw.attendantId,
       raw.pointsRedeemed,
       raw.pointsEarned,
-      new Big(raw.totalAmount.toString()),
+      this.toMoney(raw.totalAmount),
       raw.notes,
       raw.orderChannel,
       raw.orderStatus,
@@ -180,10 +182,24 @@ export class PrismaOrderRepository implements OrderRepository {
             item.orderId,
             item.productId,
             item.quantity,
-            new Big(item.unitPrice.toString()),
+            this.toMoney(item.unitPrice),
             item.notes,
           ),
       ),
     );
+  }
+
+  // Read-path Money parse. A persisted value big.js rejects means corrupt DB data
+  // (server fault), so we rethrow as infra error -> HTTP 500 generic, raw value
+  // stays in the cause for logs only, never echoed to the client.
+  private toMoney(raw: { toString(): string }): Money {
+    try {
+      return Money.fromDecimalString(raw.toString());
+    } catch (err) {
+      if (err instanceof InvalidMoneyError) {
+        throw new CorruptPersistedMoneyError({ cause: err });
+      }
+      throw err;
+    }
   }
 }

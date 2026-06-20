@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
 import { OrderStatusConflictError } from '../errors/order-status-conflict.error';
@@ -19,7 +19,7 @@ const makeOrder = (status: OrderStatus): Order =>
     null,
     0,
     0,
-    new Big(0),
+    Money.zero(),
     null,
     OrderChannel.APP,
     status,

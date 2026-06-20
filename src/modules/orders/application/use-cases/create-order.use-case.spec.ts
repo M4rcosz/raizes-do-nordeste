@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { CreateOrderUseCase, type CreateOrderCommand } from './create-order.use-case';
 import { ORDER_REPOSITORY, type OrderRepository } from '../../domain/repositories/order.repository';
 import { OrderChannel } from '../../domain/value-objects/order-channel';
@@ -92,7 +92,7 @@ class FakeLoyalty implements LoyaltyRedemption, LoyaltyEnrollment {
       );
     }
     const discount = LoyaltyAccount.discountForPoints(input.points);
-    if (new Big(discount).gt(new Big(input.subtotal))) {
+    if (Money.fromDecimalString(discount).greaterThan(Money.fromDecimalString(input.subtotal))) {
       throw new InsufficientPointsError(
         `Redeeming ${input.points} points exceeds the order subtotal R$${input.subtotal}.`,
       );
@@ -124,7 +124,7 @@ describe('CreateOrderUseCase', () => {
     null,
     0,
     0,
-    new Big(0),
+    Money.zero(),
     null,
     OrderChannel.APP,
     'PENDING',
@@ -140,7 +140,9 @@ describe('CreateOrderUseCase', () => {
 
     resolveLookup = jest.fn() as jest.MockedFunction<OrderProductLookup['resolve']>;
     resolveLookup.mockResolvedValue(
-      new Map([['p-1', { price: new Big('10.00'), isActive: true, isAvailable: true }]]),
+      new Map([
+        ['p-1', { price: Money.fromDecimalString('10.00'), isActive: true, isAvailable: true }],
+      ]),
     );
 
     logAudit = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
@@ -194,8 +196,8 @@ describe('CreateOrderUseCase', () => {
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalAmount: '20',
-        orderItems: [expect.objectContaining({ subtotal: '20' })],
+        totalAmount: '20.00',
+        orderItems: [expect.objectContaining({ subtotal: '20.00' })],
       }),
       txContext,
     );
@@ -264,7 +266,9 @@ describe('CreateOrderUseCase', () => {
   describe('orderable products validation', () => {
     it('rejects with PriceMismatchError when unitPrice in body diverges from the authoritative price', async () => {
       resolveLookup.mockResolvedValue(
-        new Map([['p-1', { price: new Big('11.00'), isActive: true, isAvailable: true }]]),
+        new Map([
+          ['p-1', { price: Money.fromDecimalString('11.00'), isActive: true, isAvailable: true }],
+        ]),
       );
 
       await expect(
@@ -291,7 +295,9 @@ describe('CreateOrderUseCase', () => {
 
     it('rejects with ProductInactiveError when the product is on the menu but flagged inactive', async () => {
       resolveLookup.mockResolvedValue(
-        new Map([['p-1', { price: new Big('10.00'), isActive: false, isAvailable: true }]]),
+        new Map([
+          ['p-1', { price: Money.fromDecimalString('10.00'), isActive: false, isAvailable: true }],
+        ]),
       );
 
       await expect(
@@ -305,7 +311,9 @@ describe('CreateOrderUseCase', () => {
 
     it('rejects with ProductUnavailableError when the menu item is currently unavailable', async () => {
       resolveLookup.mockResolvedValue(
-        new Map([['p-1', { price: new Big('10.00'), isActive: true, isAvailable: false }]]),
+        new Map([
+          ['p-1', { price: Money.fromDecimalString('10.00'), isActive: true, isAvailable: false }],
+        ]),
       );
 
       await expect(
@@ -319,7 +327,9 @@ describe('CreateOrderUseCase', () => {
 
     it('accepts when unitPrice matches even when the authoritative value is written with extra decimal precision', async () => {
       resolveLookup.mockResolvedValue(
-        new Map([['p-1', { price: new Big('10.00'), isActive: true, isAvailable: true }]]),
+        new Map([
+          ['p-1', { price: Money.fromDecimalString('10.00'), isActive: true, isAvailable: true }],
+        ]),
       );
 
       await useCase.execute(
@@ -401,7 +411,7 @@ describe('CreateOrderUseCase', () => {
       null,
       0,
       0,
-      new Big(0),
+      Money.zero(),
       null,
       OrderChannel.APP,
       'PENDING',
@@ -446,7 +456,7 @@ describe('CreateOrderUseCase', () => {
       await useCase.execute(command({ pointsRedeemed: 50 }), { id: 'c-1', canAttend: false });
 
       expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ totalAmount: '15', pointsRedeemed: 50 }),
+        expect.objectContaining({ totalAmount: '15.00', pointsRedeemed: 50 }),
         txContext,
       );
       // The points were actually debited (80 - 50), proving redeemForOrder ran.
@@ -459,7 +469,7 @@ describe('CreateOrderUseCase', () => {
       await useCase.execute(command({ pointsRedeemed: 0 }), { id: 'c-1', canAttend: false });
 
       expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ totalAmount: '20' }),
+        expect.objectContaining({ totalAmount: '20.00' }),
         txContext,
       );
       // Untouched balance: no quote and no debit happened.

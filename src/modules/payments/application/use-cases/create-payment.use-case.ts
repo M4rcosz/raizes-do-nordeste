@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import {
   ORDER_FOR_PAYMENT,
@@ -86,7 +86,7 @@ export class CreatePaymentUseCase {
 
     let result: ChargeResult;
     try {
-      result = await this.gateway.charge(new Big(order.totalAmount), {
+      result = await this.gateway.charge(Money.fromDecimalString(order.totalAmount), {
         orderId: command.orderId,
         idempotencyKey: reserved.id,
       });

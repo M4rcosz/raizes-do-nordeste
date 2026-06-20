@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { LoyaltyAccount } from '../../domain/entities/loyalty-account.entity';
 import { InsufficientPointsError } from '../../domain/errors/insufficient-points.error';
@@ -68,7 +68,7 @@ export class RedeemPointsUseCase implements LoyaltyRedemption {
     // Ceiling: points may not buy more than the order is worth. Order.computeTotal
     // also clamps to [0, subtotal] as a net, but rejecting here gives a precise
     // INVALID instead of letting an over-redemption slip toward the order total.
-    if (new Big(discount).gt(new Big(input.subtotal))) {
+    if (Money.fromDecimalString(discount).greaterThan(Money.fromDecimalString(input.subtotal))) {
       throw new InsufficientPointsError(
         `Redeeming ${input.points} points (R$${discount}) exceeds the order subtotal R$${input.subtotal}.`,
       );

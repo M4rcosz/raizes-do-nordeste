@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Prisma } from '@prisma/client';
 import { PrismaPaymentRepository } from './prisma-payment.repository';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
+import { CorruptPersistedMoneyError } from '@shared/errors/infrastructure/corrupt-persisted-money.error';
+import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
 import { PaymentMethod } from '@modules/payments/domain/value-objects/payment-method';
 import { PaymentStatus } from '@modules/payments/domain/value-objects/payment-status';
 import { OrderNotPayableError } from '@modules/payments/application/errors/order-not-payable.error';
@@ -52,7 +54,7 @@ describe('PrismaPaymentRepository', () => {
     repo = new PrismaPaymentRepository(prisma as unknown as PrismaService);
   });
 
-  it('persists a payment and maps it to a domain entity with Big amount', async () => {
+  it('persists a payment and maps it to a domain entity with a Money amount', async () => {
     prisma.payment.create.mockResolvedValue(rawPayment);
 
     const result = await repo.create({
@@ -65,7 +67,24 @@ describe('PrismaPaymentRepository', () => {
 
     expect(prisma.payment.create).toHaveBeenCalledTimes(1);
     expect(result.id).toBe('pay-1');
-    expect(result.amount.toFixed(2)).toBe('25.00');
+    expect(result.amount.toDecimalString()).toBe('25.00');
+  });
+
+  it('rethrows a corrupt persisted amount as CorruptPersistedMoneyError without leaking the raw value', async () => {
+    // A row whose amount big.js cannot parse stands in for corrupt DB data. The token is
+    // distinctive so we can assert it never surfaces in the client-facing message.
+    prisma.payment.findUnique.mockResolvedValue({
+      ...rawPayment,
+      amount: { toString: () => 'RAW_LEAK_TOKEN' },
+    });
+
+    const error = await repo.findByExtTransactionId('tx-1').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(CorruptPersistedMoneyError);
+    if (error instanceof Error) {
+      expect(error.message).not.toContain('RAW_LEAK_TOKEN');
+      expect(error.cause).toBeInstanceOf(InvalidMoneyError);
+    }
   });
 
   it('maps a unique-violation (P2002) to OrderNotPayableError', async () => {

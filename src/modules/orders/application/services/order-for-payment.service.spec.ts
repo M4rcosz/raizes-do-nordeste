@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { OrderForPaymentService } from './order-for-payment.service';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
 import type { UpdateOrderStatusUseCase } from '../use-cases/update-order-status.use-case';
@@ -19,14 +19,14 @@ const makeOrder = (status: OrderStatus, customerId: string | null = 'c-1'): Orde
     null,
     0,
     0,
-    new Big('25'),
+    Money.fromDecimalString('25'),
     null,
     OrderChannel.APP,
     status,
     new Date(),
     new Date(),
     null,
-    [new OrderItem('i-1', 'o-1', 'p-1', 1, new Big('25'), null)],
+    [new OrderItem('i-1', 'o-1', 'p-1', 1, Money.fromDecimalString('25'), null)],
   );
 
 describe('OrderForPaymentService', () => {

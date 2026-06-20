@@ -118,14 +118,16 @@ into response DTOs (`ProductResponseDto`) before sending them over HTTP.
 ORM models never leak across layer boundaries.
 
 **5. Decimal-safe monetary values**
-Money is represented as [`big.js`](https://github.com/MikeMcl/big.js) inside
-the domain (avoiding IEEE-754 rounding errors) and as `Decimal(10, 2)` in
-PostgreSQL. Newer modules (starting with **orders**) serialize money as a
-**decimal string** at the HTTP edge (e.g. `"12.50"`) so JSON cannot
-reintroduce float rounding on the client. The legacy product response still
-emits a `number` and will be aligned over time. Inbound monetary fields are
-likewise validated as decimal strings (`@IsDecimal`) and never coerced via
-`@Type(() => Number)`.
+Money is modeled as a `Money` value object wrapping
+[`big.js`](https://github.com/MikeMcl/big.js) (avoiding IEEE-754 rounding
+errors) inside the domain, and stored as `Decimal(10, 2)` in PostgreSQL. Money
+is serialized as a **decimal string** at the HTTP edge (e.g. `"12.50"`) so JSON
+cannot reintroduce float rounding on the client; the product response now emits
+`price` as a string too. `Product` already uses the `Money` VO; the remaining
+money-bearing entities (`Order`, `OrderItem`, `Payment`, `LoyaltyAccount`)
+still use `big.js` raw and are being migrated slice by slice. Inbound monetary
+fields are likewise validated as decimal strings (`@IsDecimal`) and never
+coerced via `@Type(() => Number)`.
 
 **6. Errors model intent, not transport**
 
@@ -581,7 +583,7 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
   "id": "cebe6acf-e54e-4842-a8ec-eda9a439ceb5",
   "name": "Açaí Fitness",
   "description": null,
-  "price": 20.5,
+  "price": "20.50",
   "isActive": true,
   "categoryId": "5b8f...",
   "createdAt": "2026-01-01T12:00:00.000Z",

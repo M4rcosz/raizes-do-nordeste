@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { CreatePaymentUseCase } from './create-payment.use-case';
 import type { PaymentRepository } from '../../domain/repositories/payment.repository';
 import type { PaymentGateway } from '../ports/payment-gateway.port';
@@ -19,7 +19,7 @@ const makePayment = (status: PaymentStatus): Payment =>
   new Payment(
     'pay-1',
     'order-1',
-    new Big('25.00'),
+    Money.fromDecimalString('25.00'),
     PaymentMethod.PIX,
     status,
     status === PaymentStatus.PENDING ? null : 'tx-1',
@@ -86,11 +86,11 @@ describe('CreatePaymentUseCase', () => {
       }),
     );
     // Amount is the order's total; the attempt id is the idempotency key.
-    expect(gateway.charge).toHaveBeenCalledWith(expect.any(Big), {
+    expect(gateway.charge).toHaveBeenCalledWith(expect.any(Money), {
       orderId: 'order-1',
       idempotencyKey: 'pay-1',
     });
-    expect(gateway.charge.mock.calls[0][0].toFixed(2)).toBe('25.00');
+    expect(gateway.charge.mock.calls[0][0].toDecimalString()).toBe('25.00');
     expect(payments.markCharged).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'pay-1',

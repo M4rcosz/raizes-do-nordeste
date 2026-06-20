@@ -18,8 +18,12 @@ export class ProductResponseDto {
   })
   public readonly description: string | null;
 
-  @ApiProperty({ example: 18.5, description: 'Price in BRL' })
-  public readonly price: number;
+  @ApiProperty({
+    example: '18.50',
+    type: String,
+    description: 'Price in BRL, decimal string with 2 places',
+  })
+  public readonly price: string;
 
   @ApiProperty({ example: true })
   public readonly isActive: boolean;
@@ -43,7 +47,7 @@ export class ProductResponseDto {
     id: string,
     name: string,
     description: string | null,
-    price: number,
+    price: string,
     isActive: boolean,
     categoryId: string,
     createdAt: Date,
@@ -66,7 +70,7 @@ export class ProductResponseDto {
       product.id,
       product.name,
       product.description,
-      product.price.toNumber(),
+      product.price.toDecimalString(),
       product.isActive,
       product.categoryId,
       product.createdAt,

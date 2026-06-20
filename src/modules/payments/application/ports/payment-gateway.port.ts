@@ -1,4 +1,4 @@
-import type Big from 'big.js';
+import type { Money } from '@shared/domain/value-objects/money';
 import type { PaymentStatus } from '../../domain/value-objects/payment-status';
 
 export const PAYMENT_GATEWAY = Symbol('PaymentGateway');
@@ -26,7 +26,7 @@ export interface ChargeResult {
 }
 
 export interface PaymentGateway {
-  charge(amount: Big, request: ChargeRequest): Promise<ChargeResult>;
+  charge(amount: Money, request: ChargeRequest): Promise<ChargeResult>;
 }
 
 /**

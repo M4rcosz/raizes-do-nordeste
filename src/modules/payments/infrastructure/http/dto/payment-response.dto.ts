@@ -32,7 +32,7 @@ export class PaymentResponseDto {
     return Object.assign(new PaymentResponseDto(), {
       id: payment.id,
       orderId: payment.orderId,
-      amount: payment.amount.toFixed(2),
+      amount: payment.amount.toDecimalString(),
       method: payment.method,
       status: payment.status,
       extTransactionId: payment.extTransactionId,
