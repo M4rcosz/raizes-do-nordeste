@@ -1,18 +1,18 @@
 import { describe, expect, it } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { Product } from '../../../domain/entities/product.entity';
 import { ProductResponseDto } from './product-response.dto';
 
 describe('ProductResponseDto', () => {
   describe('fromEntity', () => {
-    it('should map a Product entity to its response DTO and convert Big to number', () => {
+    it('should map a Product entity to its response DTO and serialize Money as a decimal string', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');
       const updatedAt = new Date('2026-01-02T00:00:00Z');
       const product = new Product(
         'uuid-1',
         'Açaí',
         'Refreshing fruit pulp',
-        new Big('12.50'),
+        Money.fromDecimalString('12.50'),
         true,
         'category-uuid-1',
         createdAt,
@@ -27,7 +27,7 @@ describe('ProductResponseDto', () => {
         id: 'uuid-1',
         name: 'Açaí',
         description: 'Refreshing fruit pulp',
-        price: 12.5,
+        price: '12.50',
         isActive: true,
         categoryId: 'category-uuid-1',
         createdAt,
@@ -41,7 +41,7 @@ describe('ProductResponseDto', () => {
         'uuid-1',
         'Açaí',
         null,
-        new Big('10'),
+        Money.fromDecimalString('10'),
         true,
         'category-uuid-1',
         new Date(),

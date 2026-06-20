@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { Product } from './product.entity';
 
 describe('Product', () => {
@@ -8,7 +8,7 @@ describe('Product', () => {
       'uuid-1',
       'Açaí',
       'Refreshing fruit pulp',
-      new Big('12.50'),
+      Money.fromDecimalString('12.50'),
       isActive,
       'category-uuid-1',
       new Date('2026-01-01T00:00:00Z'),
@@ -30,7 +30,7 @@ describe('Product', () => {
     it('should preserve all immutable fields', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');
       const updatedAt = new Date('2026-01-02T00:00:00Z');
-      const price = new Big('12.50');
+      const price = Money.fromDecimalString('12.50');
       const product = new Product(
         'uuid-1',
         'Açaí',

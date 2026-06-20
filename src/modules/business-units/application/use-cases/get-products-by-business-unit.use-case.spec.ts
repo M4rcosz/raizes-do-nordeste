@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { GetProductsByBusinessUnitUseCase } from './get-products-by-business-unit.use-case';
 import {
   ProductRepository,
@@ -18,7 +18,7 @@ describe('GetProductsByBusinessUnitUseCase', () => {
       id,
       `Product ${id}`,
       null,
-      new Big('10.00'),
+      Money.fromDecimalString('10.00'),
       true,
       'category-1',
       new Date(),

@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import {
   type CreateProductInput,
   ProductRepository,
@@ -49,7 +49,7 @@ describe('CreateProductUseCase', () => {
         'uuid-1',
         input.name,
         input.description ?? null,
-        new Big(input.price),
+        Money.fromDecimalString(input.price),
         true,
         input.categoryId,
         new Date(),

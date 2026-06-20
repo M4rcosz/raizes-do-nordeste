@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Prisma, type Product as PrismaProduct } from '@prisma/client';
-import Big from 'big.js';
+import { Money } from '@shared/domain/value-objects/money';
 import { PrismaProductRepository } from './prisma-product.repository';
 import type { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import type { CreateProductInput } from '../../domain/repositories/product.repository';
 import { Product } from '../../domain/entities/product.entity';
 import { ProductAlreadyExistsError } from '../../domain/errors/product-already-exists.error';
 import { CategoryNotFoundError } from '../../domain/errors/category-not-found.error';
+import { CorruptPersistedMoneyError } from '@shared/errors/infrastructure/corrupt-persisted-money.error';
+import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
 
 type ProductCreateFn = (args: unknown) => Promise<PrismaProduct>;
+type ProductFindUniqueFn = (args: unknown) => Promise<PrismaProduct | null>;
 
 const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
   new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
@@ -19,6 +22,7 @@ const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
 
 describe('PrismaProductRepository', () => {
   let create: jest.MockedFunction<ProductCreateFn>;
+  let findUnique: jest.MockedFunction<ProductFindUniqueFn>;
   let repo: PrismaProductRepository;
 
   const input: CreateProductInput = {
@@ -43,7 +47,8 @@ describe('PrismaProductRepository', () => {
 
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<ProductCreateFn>;
-    const prisma = { product: { create } } as unknown as PrismaService;
+    findUnique = jest.fn() as jest.MockedFunction<ProductFindUniqueFn>;
+    const prisma = { product: { create, findUnique } } as unknown as PrismaService;
     repo = new PrismaProductRepository(prisma);
   });
 
@@ -69,8 +74,8 @@ describe('PrismaProductRepository', () => {
       });
       expect(product).toBeInstanceOf(Product);
       expect(product.id).toBe('uuid-1');
-      expect(product.price).toBeInstanceOf(Big);
-      expect(product.price.eq(new Big('12.50'))).toBe(true);
+      expect(product.price).toBeInstanceOf(Money);
+      expect(product.price.equals(Money.fromDecimalString('12.50'))).toBe(true);
       expect(product.imageUrl).toBe(input.imageUrl);
     });
 
@@ -102,6 +107,49 @@ describe('PrismaProductRepository', () => {
       create.mockRejectedValue(genericError);
 
       await expect(repo.create(input)).rejects.toBe(genericError);
+    });
+  });
+
+  describe('findById read-path Money parsing', () => {
+    // A corrupt basePrice whose toString() returns something big.js rejects.
+    const corruptValue = 'NaN';
+    const corruptRow = {
+      ...persistedRow,
+      basePrice: { toString: () => corruptValue },
+    } as unknown as PrismaProduct;
+
+    it('maps a healthy persisted row to a domain Product', async () => {
+      findUnique.mockResolvedValue(persistedRow);
+
+      const product = await repo.findById('uuid-1');
+
+      expect(product).toBeInstanceOf(Product);
+      expect(product?.price.equals(Money.fromDecimalString('12.50'))).toBe(true);
+    });
+
+    it('rethrows a corrupt persisted price as CorruptPersistedMoneyError, not the raw InvalidMoneyError', async () => {
+      findUnique.mockResolvedValue(corruptRow);
+
+      await expect(repo.findById('uuid-1')).rejects.toBeInstanceOf(CorruptPersistedMoneyError);
+      await expect(repo.findById('uuid-1')).rejects.not.toBeInstanceOf(InvalidMoneyError);
+    });
+
+    it('preserves the parse failure as cause for server-side logs', async () => {
+      findUnique.mockResolvedValue(corruptRow);
+
+      const error = await repo.findById('uuid-1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(CorruptPersistedMoneyError);
+      expect((error as CorruptPersistedMoneyError).cause).toBeInstanceOf(InvalidMoneyError);
+    });
+
+    it('never leaks the raw corrupt value in the client-facing message', async () => {
+      findUnique.mockResolvedValue(corruptRow);
+
+      const error = await repo.findById('uuid-1').catch((e: unknown) => e);
+
+      expect((error as Error).message).toBe('A persisted monetary value is corrupt.');
+      expect((error as Error).message).not.toContain(corruptValue);
     });
   });
 });
