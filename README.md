@@ -148,7 +148,7 @@ likewise validated as decimal strings (`@IsDecimal`) and never coerced via
 
 **7. `shared/` is the cross-context kernel**
 Anything reused across two or more contexts (Prisma client lifecycle,
-pagination primitives, future `Money`/`Email` value objects, global guards
+pagination primitives, the `Money` value object (and future `Email`/`Id` VOs), global guards
 and interceptors) lives in `src/shared/`. If something is used by only one
 context, it stays inside that context.
 
