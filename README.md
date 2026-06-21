@@ -858,7 +858,10 @@ A customer's `LoyaltyAccount` is created automatically on their **first order**
 customer who has never ordered, and `403` for staff. Points are credited only
 when a payment is **approved**, only if the account has `consentGiven = true`
 (LGPD gate): `floor(paidAmount / 10)` points (1 point per R$10), recorded as a
-`LoyaltyTransaction` of type `EARN`. Redemption is not implemented yet.
+`LoyaltyTransaction` of type `EARN`. Redemption runs at order creation: the
+client sends `pointsRedeemed` on the order, each point is worth `R$0.10` off the
+total, and the balance is validated and debited (optimistically) in the same
+transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 
 #### Response - `LoyaltyAccountResponseDto`
 
@@ -1036,9 +1039,9 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
       coupon codes and a unique `(orderId, promotionId)` index are out of MVP
       scope.
 - [x] **Loyalty** - auto-enrolment on the first order, consent tracking (LGPD),
-      and `floor(paidAmount / 10)` points credited on approved payments.
-      Redemption (balance validation against `LoyaltyAccount.totalPoints`)
-      still pending.
+      `floor(paidAmount / 10)` points credited on approved payments, and
+      redemption at order creation (1 point = `R$0.10` discount), balance-validated
+      and debited in the same transaction.
 
 ---
 
