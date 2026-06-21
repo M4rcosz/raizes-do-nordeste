@@ -44,7 +44,11 @@ export class SignInUseCase {
 
     const isValid = await User.verifyPasswordOrDecoy(user, plainPassword, this.passwordHasher);
 
-    if (!isValid || !user) {
+    // Reject bad credentials, unknown user, and inactive accounts with the SAME
+    // error so an inactive account is indistinguishable from a wrong password
+    // (no account-status leak). The password is still verified first to keep
+    // timing constant against enumeration.
+    if (!isValid || !user || !user.canLogIn()) {
       await this.tryAudit({
         userId: user?.id ?? null,
         action: AUDIT_ACTIONS.LOGIN_FAILED,

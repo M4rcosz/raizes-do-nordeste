@@ -11,7 +11,8 @@ customer loyalty program - across multiple business units (franchises).
 
 > **Status:** the project is being built incrementally. The shipped surface
 > is the product catalog (public browsing + role-gated creation), identity
-> (JWT login + argon2 hashing + global role guard), a cross-cutting audit
+> (JWT login + argon2 hashing + global role guard, public customer
+> self-registration, role-gated user creation and deactivation), a cross-cutting audit
 > log wired into the login flow, **orders** (channel-aware creation, reads,
 > status state machine), **payments** (gateway charge + HMAC-signed webhook
 > confirmation that advances the order, plus a stale-payment sweeper),
@@ -272,11 +273,11 @@ src/
     │       └── http/
     │           ├── controllers/  ← NestJS controllers
     │           └── dto/          ← Request + response DTOs
-    ├── identity/                 ← Users, JWT auth, login, roles
+    ├── identity/                 ← Users, JWT auth, login, registration, roles
     │   ├── identity.module.ts
-    │   ├── domain/               ← User entity, repo + hasher/signer ports, UserRole
-    │   ├── application/          ← SignInUseCase + app-layer errors
-    │   └── infrastructure/       ← Argon2 hasher, JWT signer, auth controller/DTO
+    │   ├── domain/               ← User entity, repo + hasher/signer ports, UserRole, UserCreationPolicy
+    │   ├── application/          ← SignIn/RegisterCustomer/CreateUser/DeactivateUser use cases + app-layer errors
+    │   └── infrastructure/       ← Argon2 hasher, JWT signer, auth + users controllers/DTOs
     ├── orders/                   ← Channel-aware creation, reads, status state machine
     │   ├── orders.module.ts
     │   ├── domain/               ← Order/OrderItem entities, OrderChannel/Status VOs (channel policies + transitions), OrderRepository, errors
@@ -526,7 +527,8 @@ returned by `POST /api/auth/login` directly into the "Authorize" dialog.
 ### Authentication
 
 A global `AuthGuard` protects every route by default; routes opt out with
-`@Public()`. Only the **product reads** and the **payment webhook** are public;
+`@Public()`. Only the **product reads**, the **payment webhook** and
+**customer self-registration** (`POST /api/users/register`) are public;
 everything else needs a `Bearer` JWT in the `Authorization` header. Some routes
 additionally require a role via `@Roles()` - `POST /api/products` needs
 `ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all promotion routes need
@@ -560,6 +562,68 @@ action). Metadata is defensively sanitized: any key matching
 `password` / `token` / `cpf` / `authorization` / `secret` (case-insensitive,
 recursive) is stored as `[REDACTED]`. Audit persistence failures are
 swallowed so they cannot break the login outcome.
+
+### Users
+
+| Method  | Path                          | Auth            | Description                                                            |
+| ------- | ----------------------------- | --------------- | --------------------------------------------------------------------- |
+| `POST`  | `/api/users/register`         | Public          | Self-register as a `CUSTOMER`. The role is forced server-side - the body has no role field, so a client cannot grant itself a privileged role. Rate-limited to 5 requests/min. |
+| `POST`  | `/api/users`                  | ADMIN / MANAGER | Create a staff or admin user. The target role is gated by a domain policy (see below). |
+| `PATCH` | `/api/users/:id/deactivate`   | ADMIN / MANAGER | Deactivate a user (`is_active = false`, not a soft-delete). Returns `200`. |
+
+#### Who may create / deactivate whom (`UserCreationPolicy`)
+
+`@Roles()` is only the coarse gate; the actual target-role check is a pure
+domain policy applied inside the use case:
+
+- **ADMIN** may create or deactivate **any** role (including ADMIN).
+- **MANAGER** may create or deactivate only **ATTENDANT** and **KITCHEN**.
+- Everyone else may create/deactivate nothing.
+
+A disallowed combination returns `403` (`UserCreationForbiddenError`). No one
+may deactivate **their own** account - self-deactivation returns `403` even for
+an ADMIN (anti-lockout). Deactivating an unknown id returns `404`. A duplicate
+`username` / `email` / `phone` on creation returns `409`.
+
+An inactive user can no longer log in: `POST /api/auth/login` rejects an
+account with `is_active = false` using the **same** `401` as a wrong password,
+so account status is not leaked.
+
+#### Request body - `RegisterCustomerDto` (`POST /api/users/register`)
+
+`name` (<= 120), `username` (3-50 chars, lowercase `a-z0-9._-`), `password`
+(>= 8 chars) are required; `email` and `phone` (<= 20) are optional. No `role`
+field.
+
+```json
+{ "name": "Maria Souza", "username": "maria.souza", "password": "min-8-chars", "email": "maria@example.com" }
+```
+
+#### Request body - `CreateUserDto` (`POST /api/users`)
+
+Same fields as registration plus a required `role` (`CUSTOMER` / `ATTENDANT` /
+`KITCHEN` / `MANAGER` / `ADMIN`) and an optional `businessUnitId` (uuid).
+
+```json
+{ "name": "João Atendente", "username": "joao.atendente", "password": "min-8-chars", "role": "ATTENDANT" }
+```
+
+#### Response - `UserResponseDto`
+
+The password hash is never serialized.
+
+```json
+{
+  "id": "cebe6acf-...",
+  "username": "maria.souza",
+  "name": "Maria Souza",
+  "email": "maria@example.com",
+  "phone": null,
+  "role": "CUSTOMER",
+  "businessUnitId": null,
+  "isActive": true
+}
+```
 
 ### Products
 
@@ -936,9 +1000,9 @@ are logged server-side but never sent to the client:
 | ------ | --------------------------------------------------------------------------------------------------------------------- |
 | `400`  | Request body fails validation (`class-validator` + `ValidationPipe`)                                                  |
 | `401`  | Invalid login credentials, missing/invalid JWT, or a webhook with a missing/invalid/stale signature                   |
-| `403`  | Authenticated but the role is not allowed (e.g. a `CUSTOMER` creating a `COUNTER` order)                              |
+| `403`  | Authenticated but the role is not allowed (e.g. a `CUSTOMER` creating a `COUNTER` order, or a role creating/deactivating a user it may not - `UserCreationForbiddenError`) |
 | `404`  | Requested product/order/payment does not exist, or an order references a missing reference                            |
-| `409`  | A product with the same name already exists (`ProductAlreadyExistsError`)                                             |
+| `409`  | A unique field already exists - a product name (`ProductAlreadyExistsError`) or a user's username/email/phone (`UserAlreadyExistsError`) |
 | `422`  | An order references an inactive product / mismatched `unitPrice`, or an order is not payable (`OrderNotPayableError`) |
 | `503`  | Repository / database failure (`ProductsFetchError`)                                                                  |
 
@@ -1019,8 +1083,9 @@ The catalog, identity, audit, orders, payments, inventory, loyalty and
 promotions modules are shipped. Remaining work (per-module follow-ups below):
 
 - [x] **Auth** - JWT login, global role guard, argon2 hashing (`CUSTOMER`,
-      `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`). Refresh-token rotation
-      and user registration still pending.
+      `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`), public customer
+      self-registration, policy-gated user creation/deactivation, and an
+      inactive-account login block. Refresh-token rotation still pending.
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port injected
       into the login, order, payment and inventory flows.

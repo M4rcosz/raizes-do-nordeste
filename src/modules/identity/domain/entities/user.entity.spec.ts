@@ -52,6 +52,93 @@ describe('User', () => {
     });
   });
 
+  describe('register', () => {
+    it('should build an active user with a generated uuid and timestamps', () => {
+      const before = Date.now();
+      const user = User.register({
+        name: 'Maria Souza',
+        username: 'maria.souza',
+        passwordHash: 'hashed',
+        role: 'CUSTOMER',
+        email: 'maria@example.com',
+        phone: '34988887777',
+        businessUnitId: 'bu-1',
+      });
+      const after = Date.now();
+
+      expect(user.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      expect(user.isActive).toBe(true);
+      expect(user.updatedBy).toBeNull();
+      expect(user.role).toBe('CUSTOMER');
+      expect(user.email).toBe('maria@example.com');
+      expect(user.phone).toBe('34988887777');
+      expect(user.businessUnitId).toBe('bu-1');
+      expect(user.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(user.createdAt.getTime()).toBeLessThanOrEqual(after);
+      expect(user.updatedAt.getTime()).toBe(user.createdAt.getTime());
+    });
+
+    it('should default optional fields to null', () => {
+      const user = User.register({
+        name: 'No Contact',
+        username: 'no.contact',
+        passwordHash: 'hashed',
+        role: 'CUSTOMER',
+      });
+
+      expect(user.email).toBeNull();
+      expect(user.phone).toBeNull();
+      expect(user.businessUnitId).toBeNull();
+    });
+
+    it('should produce a distinct id per call', () => {
+      const a = User.register({ name: 'A', username: 'a', passwordHash: 'h', role: 'CUSTOMER' });
+      const b = User.register({ name: 'B', username: 'b', passwordHash: 'h', role: 'CUSTOMER' });
+
+      expect(a.id).not.toBe(b.id);
+    });
+
+    it('should expose the hash only through toCreateInput, not a public field', () => {
+      const user = User.register({
+        name: 'Maria',
+        username: 'maria',
+        passwordHash: 'secret-hash',
+        role: 'CUSTOMER',
+      });
+
+      expect(user.toCreateInput().passwordHash).toBe('secret-hash');
+      // The hash is a private member: TypeScript blocks access through the public type.
+      // @ts-expect-error passwordHash is not part of the public surface.
+      const _typeGuard: unknown = user.passwordHash;
+      expect(_typeGuard).toBeDefined();
+    });
+  });
+
+  describe('canLogIn', () => {
+    it('should be true for an active user', () => {
+      expect(buildUser().canLogIn()).toBe(true);
+    });
+
+    it('should be false for an inactive user', () => {
+      const inactive = new User(
+        'uuid-1',
+        'bu-1',
+        'panic',
+        'Pedro Panic',
+        'panic@example.com',
+        'real-hash',
+        '34999999999',
+        new Date(),
+        new Date(),
+        null,
+        'KITCHEN',
+        false,
+      );
+
+      expect(inactive.canLogIn()).toBe(false);
+    });
+  });
+
   describe('verifyPasswordOrDecoy', () => {
     let verify: jest.MockedFunction<PasswordHasher['verify']>;
     let hasher: PasswordHasher;

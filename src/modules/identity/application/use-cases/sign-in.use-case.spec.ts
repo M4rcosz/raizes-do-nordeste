@@ -17,7 +17,11 @@ describe('SignInUseCase', () => {
   let sign: jest.MockedFunction<TokenSigner['sign']>;
   let auditLog: jest.MockedFunction<AuditLogger['log']>;
 
-  const buildUser = (overrides?: { id?: string; passwordHash?: string }): User =>
+  const buildUser = (overrides?: {
+    id?: string;
+    passwordHash?: string;
+    isActive?: boolean;
+  }): User =>
     new User(
       overrides?.id ?? 'user-1',
       'bu-1',
@@ -30,7 +34,7 @@ describe('SignInUseCase', () => {
       new Date('2026-01-02T00:00:00Z'),
       null,
       'KITCHEN',
-      true,
+      overrides?.isActive ?? true,
     );
 
   beforeAll(async () => {
@@ -39,7 +43,12 @@ describe('SignInUseCase', () => {
     sign = jest.fn() as jest.MockedFunction<TokenSigner['sign']>;
     auditLog = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
 
-    const userRepo: jest.Mocked<UserRepository> = { findByUsername };
+    const userRepo: jest.Mocked<UserRepository> = {
+      findByUsername,
+      findById: jest.fn() as jest.MockedFunction<UserRepository['findById']>,
+      create: jest.fn() as jest.MockedFunction<UserRepository['create']>,
+      deactivateIfRole: jest.fn() as jest.MockedFunction<UserRepository['deactivateIfRole']>,
+    };
     const passwordHasher: jest.Mocked<PasswordHasher> = {
       hash: jest.fn() as jest.MockedFunction<PasswordHasher['hash']>,
       verify,
@@ -103,6 +112,32 @@ describe('SignInUseCase', () => {
       expect(verify).toHaveBeenCalledTimes(1);
       expect(verify).toHaveBeenCalledWith(null, 'whatever');
       expect(sign).not.toHaveBeenCalled();
+    });
+
+    it('should reject an inactive user with the same InvalidCredentialsError (no status leak)', async () => {
+      findByUsername.mockResolvedValue(buildUser({ id: 'user-9', isActive: false }));
+      verify.mockResolvedValue(true);
+
+      await expect(useCase.execute('panic', 'right-password')).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
+      expect(sign).not.toHaveBeenCalled();
+    });
+
+    it('should log LOGIN_FAILED for an inactive user', async () => {
+      findByUsername.mockResolvedValue(buildUser({ id: 'user-9', isActive: false }));
+      verify.mockResolvedValue(true);
+
+      await expect(useCase.execute('panic', 'right-password')).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
+      expect(auditLog).toHaveBeenCalledWith({
+        userId: 'user-9',
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entity: 'User',
+        entityId: 'user-9',
+        metadata: { username: 'panic' },
+      });
     });
 
     it('should wrap repository failure in UsersFetchError with cause', async () => {
