@@ -1,6 +1,9 @@
 # Raízes do Nordeste - Backend API
 
 [![CI](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml/badge.svg)](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml)
+[![version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/M4rcosz/raizes-do-nordeste/releases/tag/v1.0.0)
+
+Repository: <https://github.com/M4rcosz/raizes-do-nordeste>
 
 REST API for a multi-unit restaurant ordering system. The platform powers menu
 browsing, order management, payment processing, inventory control and a
