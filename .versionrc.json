@@ -1,0 +1,16 @@
+{
+  "types": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactoring" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "build", "section": "Build System" },
+    { "type": "ci", "section": "CI" },
+    { "type": "test", "hidden": true },
+    { "type": "chore", "hidden": true },
+    { "type": "style", "hidden": true }
+  ],
+  "commitUrlFormat": "https://github.com/M4rcosz/raizes-do-nordeste/commit/{{hash}}",
+  "compareUrlFormat": "https://github.com/M4rcosz/raizes-do-nordeste/compare/{{previousTag}}...{{currentTag}}"
+}

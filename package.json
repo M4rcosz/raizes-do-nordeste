@@ -27,7 +27,12 @@
     "db:seed": "prisma db seed",
     "dev": "npm run db:up && nest start --watch",
     "devs": "npm run db:down && npm run db:generate && npm run db:up && npm run db:migrate && npm run db:seed && nest start --watch",
-    "fl": "npm run format && npm run lint"
+    "fl": "npm run format && npm run lint",
+    "release": "commit-and-tag-version",
+    "release:dry": "commit-and-tag-version --dry-run",
+    "release:patch": "commit-and-tag-version --release-as patch",
+    "release:minor": "commit-and-tag-version --release-as minor",
+    "release:major": "commit-and-tag-version --release-as major"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -61,6 +66,7 @@
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
     "chokidar": "^5.0.0",
+    "commit-and-tag-version": "^12.7.3",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
