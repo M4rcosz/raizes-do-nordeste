@@ -33,8 +33,47 @@ import {
   type RedeemForOrderInput,
 } from '@modules/loyalty/application/ports/loyalty-redemption.port';
 import { LoyaltyAccount } from '@modules/loyalty/domain/entities/loyalty-account.entity';
+import {
+  PROMOTION_APPLICATION,
+  type AppliedPromotion,
+  type ApplyPromotionInput,
+  type PromotionApplication,
+  type QuotePromotionInput,
+} from '@modules/promotions/application/ports/promotion-application.port';
 import { PointsRedemptionRequiresCustomerError } from '../errors/points-redemption-requires-customer.error';
 import { InsufficientPointsError } from '@modules/loyalty/domain/errors/insufficient-points.error';
+
+/**
+ * Fake of the PROMOTION_APPLICATION port. Holds at most one promotion (MVP stacking) and
+ * records the OrderPromotion the apply pass would write, so the order's total and the
+ * recorded promo parcel are exercised end-to-end rather than asserted as mock calls.
+ * quote and apply return the same AppliedPromotion (deterministic).
+ */
+class FakePromotionApplication implements PromotionApplication {
+  private applied: AppliedPromotion | null = null;
+  readonly recorded: { orderId: string; promotionId: string; discount: string }[] = [];
+
+  /** Seed the single promotion this order would receive (null = no promotion). */
+  setApplied(applied: AppliedPromotion | null): void {
+    this.applied = applied;
+  }
+
+  quoteDiscount(_input: QuotePromotionInput): Promise<AppliedPromotion | null> {
+    void _input;
+    return Promise.resolve(this.applied);
+  }
+
+  applyForOrder(input: ApplyPromotionInput): Promise<AppliedPromotion | null> {
+    if (this.applied) {
+      this.recorded.push({
+        orderId: input.orderId,
+        promotionId: this.applied.promotionId,
+        discount: this.applied.discount,
+      });
+    }
+    return Promise.resolve(this.applied);
+  }
+}
 
 /**
  * Fake of the two loyalty ports the orders context consumes, backed by an in-memory
@@ -109,6 +148,7 @@ describe('CreateOrderUseCase', () => {
   let logAudit: jest.MockedFunction<AuditLogger['log']>;
   let deductForOrder: jest.MockedFunction<StockDeduction['deductForOrder']>;
   let loyalty: FakeLoyalty;
+  let promotions: FakePromotionApplication;
 
   const command = (overrides: Partial<CreateOrderCommand> = {}): CreateOrderCommand => ({
     businessUnitId: 'bu-1',
@@ -152,6 +192,7 @@ describe('CreateOrderUseCase', () => {
     deductForOrder.mockResolvedValue({ lowStock: [] });
 
     loyalty = new FakeLoyalty();
+    promotions = new FakePromotionApplication();
 
     // Fake unit of work: runs the work immediately, handing it a sentinel tx
     // so tests can assert the same context reaches the repository.
@@ -181,6 +222,7 @@ describe('CreateOrderUseCase', () => {
         },
         { provide: LOYALTY_ENROLLMENT, useValue: loyalty satisfies LoyaltyEnrollment },
         { provide: LOYALTY_REDEMPTION, useValue: loyalty satisfies LoyaltyRedemption },
+        { provide: PROMOTION_APPLICATION, useValue: promotions satisfies PromotionApplication },
       ],
     }).compile();
 
@@ -497,6 +539,66 @@ describe('CreateOrderUseCase', () => {
 
       expect(create).not.toHaveBeenCalled();
       expect(logAudit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('promotions', () => {
+    it('applies a promotion discount on the gross subtotal and records the OrderPromotion', async () => {
+      // Subtotal 2 * 10.00 = 20.00; promo grants 5.00 -> total 15.00.
+      promotions.setApplied({ promotionId: 'promo-1', discount: '5.00' });
+
+      await useCase.execute(command(), { id: 'u-1', canAttend: false });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalAmount: '15.00' }),
+        txContext,
+      );
+      expect(promotions.recorded).toEqual([
+        { orderId: 'o-1', promotionId: 'promo-1', discount: '5.00' },
+      ]);
+    });
+
+    it('does not record an OrderPromotion when no promotion applies', async () => {
+      promotions.setApplied(null);
+
+      await useCase.execute(command(), { id: 'u-1', canAttend: false });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalAmount: '20.00' }),
+        txContext,
+      );
+      expect(promotions.recorded).toEqual([]);
+    });
+
+    it('composes promo then loyalty: loyalty prices on the net (subtotal - promo) and the total is both', async () => {
+      // Subtotal 20.00. Promo 5.00 -> net 15.00. 50 points = 5.00, within net.
+      // Final discount 5.00 + 5.00 = 10.00 -> total 10.00.
+      promotions.setApplied({ promotionId: 'promo-1', discount: '5.00' });
+      loyalty.seedBalance('c-1', 80);
+
+      await useCase.execute(command({ pointsRedeemed: 50 }), { id: 'c-1', canAttend: false });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ totalAmount: '10.00', pointsRedeemed: 50 }),
+        txContext,
+      );
+      // Only the promo parcel is recorded as an OrderPromotion, not the loyalty parcel.
+      expect(promotions.recorded).toEqual([
+        { orderId: 'o-1', promotionId: 'promo-1', discount: '5.00' },
+      ]);
+      expect(loyalty.balanceOf('c-1')).toBe(30);
+    });
+
+    it('rejects loyalty redemption that exceeds the net subtotal after the promotion', async () => {
+      // Subtotal 20.00. Promo 18.00 -> net 2.00. 50 points = 5.00 > 2.00 net: rejected.
+      promotions.setApplied({ promotionId: 'promo-1', discount: '18.00' });
+      loyalty.seedBalance('c-1', 80);
+
+      await expect(
+        useCase.execute(command({ pointsRedeemed: 50 }), { id: 'c-1', canAttend: false }),
+      ).rejects.toBeInstanceOf(InsufficientPointsError);
+
+      expect(create).not.toHaveBeenCalled();
     });
   });
 });

@@ -37,6 +37,10 @@ import {
   LOYALTY_REDEMPTION,
   type LoyaltyRedemption,
 } from '@modules/loyalty/application/ports/loyalty-redemption.port';
+import {
+  PROMOTION_APPLICATION,
+  type PromotionApplication,
+} from '@modules/promotions/application/ports/promotion-application.port';
 import { PointsRedemptionRequiresCustomerError } from '../errors/points-redemption-requires-customer.error';
 
 /** Who is performing the operation, resolved from the auth token by the HTTP layer. */
@@ -83,6 +87,8 @@ export class CreateOrderUseCase {
     private readonly enrollment: LoyaltyEnrollment,
     @Inject(LOYALTY_REDEMPTION)
     private readonly redemption: LoyaltyRedemption,
+    @Inject(PROMOTION_APPLICATION)
+    private readonly promotions: PromotionApplication,
   ) {}
 
   async execute(command: CreateOrderCommand, actor: Actor): Promise<Order> {
@@ -117,24 +123,32 @@ export class CreateOrderUseCase {
 
       const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
 
-      // The redeem discount needs the orderId for its REDEEM transaction row, but the
-      // id is DB-generated at create. So we quote the discount first (read-only, sets
-      // the authoritative total), create the order, then debit the points keyed to that
-      // id - all inside this tx, so any later failure (stock) rolls the debit back with
-      // the order. Loyalty rules and the rate stay behind the port; orders never reads
-      // the loyalty domain. The discount is deterministic, so quote and debit agree.
-      const discountAmount = redeems
+      // Discount composition (RN-promo): the promotion prices against the GROSS subtotal
+      // first; loyalty then prices against the NET (subtotal - promo). Both ports are
+      // two-step and deterministic - they need the DB-generated orderId for their rows
+      // (OrderPromotion / REDEEM transaction), so we quote here to set the authoritative
+      // total, create the order, then commit each side keyed to that id, all in this tx.
+      // Order.discountAmount ends up promo + loyalty and Order.computeTotal re-checks the
+      // [0, subtotal] band as the net backstop.
+      const now = new Date();
+      const promoDiscount = await this.quotePromoDiscount(businessUnitId, itemsSubtotal, now, tx);
+
+      // Loyalty applies on what is left after the promotion, never on the gross.
+      const subtotalAfterPromo = itemsSubtotal.minus(promoDiscount);
+      const loyaltyDiscount = redeems
         ? Money.fromDecimalString(
             await this.redemption.quoteDiscount(
               {
                 customerId: customerId as string,
                 points: pointsRedeemed as number,
-                subtotal: itemsSubtotal.toDecimalString(),
+                subtotal: subtotalAfterPromo.toDecimalString(),
               },
               tx,
             ),
           )
         : Money.zero();
+
+      const discountAmount = promoDiscount.plus(loyaltyDiscount);
       const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toDecimalString();
 
       // pointsEarned stays at the DB default (0) on creation. Points (1 per R$10 of the
@@ -154,6 +168,22 @@ export class CreateOrderUseCase {
         },
         tx,
       );
+
+      // Record the chosen promotion keyed to the new order id, in the same tx. The apply
+      // re-selects from the same snapshot with the same `now`, so it lands on the promotion
+      // the quote priced (deterministic). Only the promo's own discount is stored in
+      // OrderPromotion.discountApplied - the loyalty parcel is not a promotion.
+      if (promoDiscount.isPositive()) {
+        await this.promotions.applyForOrder(
+          {
+            businessUnitId,
+            orderId: created.id,
+            subtotal: itemsSubtotal.toDecimalString(),
+            now,
+          },
+          tx,
+        );
+      }
 
       if (redeems) {
         // Debit the points in the same tx. Insufficient balance (INVALID) or a
@@ -235,6 +265,25 @@ export class CreateOrderUseCase {
         },
       });
     }
+  }
+
+  /**
+   * Prices the order's promotion against the gross subtotal, or zero when none applies.
+   * The selection (at most one promotion, MVP) and per-type pricing live behind the
+   * promotions port; orders never reads the promotions domain. Read-only here - the
+   * OrderPromotion row is written later via applyForOrder, once the order id exists.
+   */
+  private async quotePromoDiscount(
+    businessUnitId: string,
+    itemsSubtotal: Money,
+    now: Date,
+    tx: TransactionContext,
+  ): Promise<Money> {
+    const applied = await this.promotions.quoteDiscount(
+      { businessUnitId, subtotal: itemsSubtotal.toDecimalString(), now },
+      tx,
+    );
+    return applied ? Money.fromDecimalString(applied.discount) : Money.zero();
   }
 
   /**
