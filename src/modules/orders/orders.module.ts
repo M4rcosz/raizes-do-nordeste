@@ -13,11 +13,12 @@ import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-tr
 import { AuditModule } from '@modules/audit/audit.module';
 import { InventoryModule } from '@modules/inventory/inventory.module';
 import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
+import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { ORDER_FOR_PAYMENT } from './application/ports/order-for-payment.port';
 import { OrderForPaymentService } from './application/services/order-for-payment.service';
 
 @Module({
-  imports: [AuditModule, InventoryModule, LoyaltyModule],
+  imports: [AuditModule, InventoryModule, LoyaltyModule, PromotionsModule],
   controllers: [OrdersController],
   providers: [
     {

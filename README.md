@@ -13,9 +13,11 @@ customer loyalty program - across multiple business units (franchises).
 > status state machine), **payments** (gateway charge + HMAC-signed webhook
 > confirmation that advances the order, plus a stale-payment sweeper),
 > **inventory** (stock deducted atomically on order creation, manual
-> adjustments, low-stock alerts) and **loyalty** (auto-enrolment on the first
-> order, consent-gated points credited on approved payments). Promotions are
-> the only context still pending (see [Roadmap](#roadmap)).
+> adjustments, low-stock alerts), **loyalty** (auto-enrolment on the first
+> order, consent-gated points credited on approved payments) and
+> **promotions** (percentage / fixed-amount discounts, CRUD plus one promotion
+> applied per order, priced before loyalty). All seven bounded contexts now
+> have application code shipped (see [Roadmap](#roadmap)).
 
 ---
 
@@ -287,11 +289,16 @@ src/
     │   ├── domain/               ← Inventory entity, InventoryTransactionType VO, InventoryRepository, errors
     │   ├── application/          ← GetInventory/AdjustInventory/DeductStockForOrder, StockDeduction port (consumed by orders), errors
     │   └── infrastructure/       ← PrismaInventoryRepository, InventoryController, DTOs
-    └── loyalty/                  ← Customer points program (LGPD consent-gated)
-        ├── loyalty.module.ts
-        ├── domain/               ← LoyaltyAccount/LoyaltyTransaction entities, VOs, repository
-        ├── application/          ← EnrollCustomer/EarnPoints/GetMyLoyaltyAccount, LoyaltyEnrollment + LoyaltyEarning ports, errors
-        └── infrastructure/       ← PrismaLoyaltyRepository, LoyaltyController, DTOs
+    ├── loyalty/                  ← Customer points program (LGPD consent-gated)
+    │   ├── loyalty.module.ts
+    │   ├── domain/               ← LoyaltyAccount/LoyaltyTransaction entities, VOs, repository
+    │   ├── application/          ← EnrollCustomer/EarnPoints/GetMyLoyaltyAccount, LoyaltyEnrollment + LoyaltyEarning ports, errors
+    │   └── infrastructure/       ← PrismaLoyaltyRepository, LoyaltyController, DTOs
+    └── promotions/               ← Discount campaigns applied to orders
+        ├── promotions.module.ts
+        ├── domain/               ← Promotion entity, DiscountType/PromotionRules VOs, PromotionRepository, errors
+        ├── application/          ← Create/Update/FindById/List + ApplyPromotions use cases, PromotionApplication port (consumed by orders), errors
+        └── infrastructure/       ← PrismaPromotionRepository, PromotionsController, DTOs
 prisma/
 ├── schema.prisma                 ← Single source of truth for the database
 ├── seed.ts                       ← Idempotent seed for local dev
@@ -307,8 +314,8 @@ test/
 └── payments.e2e-spec.ts          ← Critical flow A (order → pay → webhook → confirm) e2e
 ```
 
-> `promotions` is the only remaining context; it will follow the same
-> internal shape under `src/modules/`.
+> All seven bounded contexts now live under `src/modules/`, each following the
+> same four-layer internal shape.
 
 ---
 
@@ -468,10 +475,9 @@ npm run devs
 | Promotions        | `promotions`, `order_promotions`                                       |
 | Loyalty           | `loyalty_accounts`, `loyalty_transactions`                             |
 
-> Of the domains above, **Identity, Business Units, Audit, Orders, Payments,
-> Inventory and Loyalty** have application code shipped. Only **Promotions**
-> (`promotions`, `order_promotions`) exists in the schema as forward-looking
-> infrastructure - it has no use cases, controllers or repositories yet.
+> All domains above now have application code shipped, including **Promotions**
+> (`promotions`, `order_promotions`): CRUD use cases, a controller and a Prisma
+> repository, plus a published port that applies one promotion per order.
 
 ### Design Decisions
 
@@ -520,7 +526,8 @@ A global `AuthGuard` protects every route by default; routes opt out with
 `@Public()`. Only the **product reads** and the **payment webhook** are public;
 everything else needs a `Bearer` JWT in the `Authorization` header. Some routes
 additionally require a role via `@Roles()` - `POST /api/products` needs
-`ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, order listing/status needs
+`ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all promotion routes need
+`ADMIN`/`MANAGER`, order listing/status needs
 staff, and `loyalty/me` needs `CUSTOMER`. `POST /api/orders` needs a JWT but no
 fixed role: the requirement is enforced per request by the `orderChannel` policy
 (see [Orders](#orders)). A protected route returns `401` when the JWT is missing
@@ -640,6 +647,11 @@ when the payment is **approved**: `floor(paidAmount / 10)` points (1 per R$10),
 gated by the customer's `LoyaltyAccount` consent and recorded as a
 `LoyaltyTransaction` (the source of truth). The account is created automatically
 on the customer's first order. See [Loyalty](#loyalty).
+
+A single eligible promotion for the order's business unit is also applied at
+creation: it is priced on the gross items subtotal, the loyalty redemption (if
+any) is then priced on the net, and the chosen promotion is persisted as an
+`OrderPromotion` in the same transaction. See [Promotions](#promotions).
 
 ```json
 {
@@ -846,7 +858,10 @@ A customer's `LoyaltyAccount` is created automatically on their **first order**
 customer who has never ordered, and `403` for staff. Points are credited only
 when a payment is **approved**, only if the account has `consentGiven = true`
 (LGPD gate): `floor(paidAmount / 10)` points (1 point per R$10), recorded as a
-`LoyaltyTransaction` of type `EARN`. Redemption is not implemented yet.
+`LoyaltyTransaction` of type `EARN`. Redemption runs at order creation: the
+client sends `pointsRedeemed` on the order, each point is worth `R$0.10` off the
+total, and the balance is validated and debited (optimistically) in the same
+transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 
 #### Response - `LoyaltyAccountResponseDto`
 
@@ -857,6 +872,46 @@ when a payment is **approved**, only if the account has `consentGiven = true`
   "consentGiven": true
 }
 ```
+
+### Promotions
+
+| Method  | Path                                               | Auth          | Description                                   |
+| ------- | -------------------------------------------------- | ------------- | --------------------------------------------- |
+| `POST`  | `/api/promotions`                                  | ADMIN/MANAGER | Create a promotion for a business unit.       |
+| `GET`   | `/api/promotions/by-business-unit/:businessUnitId` | ADMIN/MANAGER | List a unit's promotions (cursor-paginated).  |
+| `GET`   | `/api/promotions/:promotionId`                     | ADMIN/MANAGER | Get one promotion by ID.                      |
+| `PATCH` | `/api/promotions/:promotionId`                     | ADMIN/MANAGER | Update a promotion.                           |
+
+Promotions carry a `discountType` (`PERCENTAGE` or `FIXED_AMOUNT`), a
+`discountValue`, a `minOrderValue` floor, and a `startDate`/`endDate` window.
+`FREE_ITEM` is rejected (the schema does not model a target item to price). The
+`businessUnitId` comes from the request body / route param today; once identity
+exposes a `businessUnitId` JWT claim, writes and reads will be pinned to it.
+
+At most **one** promotion applies per order (MVP). On order creation the
+promotion is priced against the **gross** items subtotal first, then loyalty
+redemption is priced against the **net** (subtotal - promo); the chosen
+promotion is recorded as an `OrderPromotion` row in the same transaction, with
+only its own parcel in `discountApplied`.
+
+#### Request body - `CreatePromotionDto` (`POST /api/promotions`)
+
+```json
+{
+  "businessUnitId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "Almoço executivo",
+  "discountType": "PERCENTAGE",
+  "discountValue": "10.00",
+  "minOrderValue": "30.00",
+  "startDate": "2026-06-01T00:00:00.000Z",
+  "endDate": "2026-06-30T23:59:59.000Z",
+  "isActive": true
+}
+```
+
+For `PERCENTAGE`, `discountValue` is the percent as a decimal (`"10.00"` = 10%);
+for `FIXED_AMOUNT` it is the BRL amount. Money fields are decimal strings,
+mirroring the rest of the API.
 
 ### Error responses
 
@@ -957,8 +1012,8 @@ with.
 
 ## Roadmap
 
-The catalog, identity, audit, orders, payments, inventory and loyalty modules
-are shipped. Remaining work:
+The catalog, identity, audit, orders, payments, inventory, loyalty and
+promotions modules are shipped. Remaining work (per-module follow-ups below):
 
 - [x] **Auth** - JWT login, global role guard, argon2 hashing (`CUSTOMER`,
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`). Refresh-token rotation
@@ -977,11 +1032,16 @@ are shipped. Remaining work:
 - [x] **Inventory** - per-unit stock, an `InventoryTransaction` ledger, atomic
       deduction on order creation, manual `IN`/`OUT` adjustments, and a
       `STOCK_ALERT` audit on low balance. Reservations still pending.
-- [ ] **Promotions** - percentage / fixed-amount / free-item discounts
+- [x] **Promotions** - percentage / fixed-amount discounts, CRUD (create / list
+      by business unit / get / update) and at most one promotion applied per
+      order, priced on the gross subtotal before the loyalty discount and
+      recorded as an `OrderPromotion` in the same transaction. `FREE_ITEM`,
+      coupon codes and a unique `(orderId, promotionId)` index are out of MVP
+      scope.
 - [x] **Loyalty** - auto-enrolment on the first order, consent tracking (LGPD),
-      and `floor(paidAmount / 10)` points credited on approved payments.
-      Redemption (balance validation against `LoyaltyAccount.totalPoints`)
-      still pending.
+      `floor(paidAmount / 10)` points credited on approved payments, and
+      redemption at order creation (1 point = `R$0.10` discount), balance-validated
+      and debited in the same transaction.
 
 ---
 
