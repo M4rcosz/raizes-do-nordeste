@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { USER_REPOSITORY } from './domain/repositories/user.repository';
 import { PrismaUserRepository } from './infrastructure/persistence/prisma-user.repository';
 import { SignInUseCase } from './application/use-cases/sign-in.use-case';
+import { RegisterCustomerUseCase } from './application/use-cases/register-customer.use-case';
+import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
+import { DeactivateUserUseCase } from './application/use-cases/deactivate-user.use-case';
 import { AuthController } from './infrastructure/http/controllers/auth.controller';
+import { UsersController } from './infrastructure/http/controllers/users.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtTokenSigner } from './infrastructure/security/jwt-token-signer';
 import { PASSWORD_HASHER } from './domain/ports/password-hasher.port';
@@ -23,7 +27,7 @@ import { AuditModule } from '@modules/audit/audit.module';
     }),
     AuditModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, UsersController],
   providers: [
     {
       provide: USER_REPOSITORY,
@@ -38,6 +42,9 @@ import { AuditModule } from '@modules/audit/audit.module';
       useClass: JwtTokenSigner,
     },
     SignInUseCase,
+    RegisterCustomerUseCase,
+    CreateUserUseCase,
+    DeactivateUserUseCase,
   ],
 })
 export class IdentityModule {}

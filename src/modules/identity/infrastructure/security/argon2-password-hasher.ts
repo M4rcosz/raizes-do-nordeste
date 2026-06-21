@@ -1,6 +1,6 @@
 import argon from 'argon2';
 import { PasswordHasher } from '../../domain/ports/password-hasher.port';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 const ARGON_OPTIONS = {
   type: argon.argon2id,
@@ -11,6 +11,7 @@ const ARGON_OPTIONS = {
 
 @Injectable()
 export class Argon2PasswordHasher implements PasswordHasher {
+  private readonly logger = new Logger(Argon2PasswordHasher.name);
   private dummyHash?: string;
 
   async hash(password: string): Promise<string> {
@@ -23,7 +24,11 @@ export class Argon2PasswordHasher implements PasswordHasher {
       const ok = await argon.verify(hashToCheck, password);
       return passwordHash !== null && ok;
     } catch (err) {
-      console.warn('argon2.verify failed', { cause: err });
+      // Malformed/unsupported hash. Never log the password or the hash itself.
+      this.logger.warn({
+        message: 'argon2.verify failed',
+        cause: err instanceof Error ? err.message : String(err),
+      });
       return false;
     }
   }
