@@ -259,10 +259,10 @@ src/
     │   ├── domain/               ← AuditAction const, AuditLogRepository
     │   ├── application/          ← AuditService (impl), AuditLogger port, errors
     │   └── infrastructure/       ← PrismaAuditLogRepository
-    ├── business-units/           ← Products, Categories, Menu Items, Units
+    ├── business-units/           ← Business Units, Products, Categories, Menu Items
     │   ├── business-units.module.ts
     │   ├── domain/               ← Pure rules (no framework imports)
-    │   │   ├── entities/         ← Product, BusinessUnitMenuItem
+    │   │   ├── entities/         ← BusinessUnit, Product, BusinessUnitMenuItem
     │   │   ├── errors/           ← Domain errors (extend shared DomainError)
     │   │   └── repositories/     ← Interfaces + DI tokens
     │   ├── application/          ← Orchestration
@@ -527,13 +527,15 @@ returned by `POST /api/auth/login` directly into the "Authorize" dialog.
 ### Authentication
 
 A global `AuthGuard` protects every route by default; routes opt out with
-`@Public()`. Only the **product reads**, the **payment webhook** and
-**customer self-registration** (`POST /api/users/register`) are public;
-everything else needs a `Bearer` JWT in the `Authorization` header. Some routes
-additionally require a role via `@Roles()` - `POST /api/products` needs
-`ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all promotion routes need
-`ADMIN`/`MANAGER`, order listing/status needs
-staff, and `loyalty/me` needs `CUSTOMER`. `POST /api/orders` needs a JWT but no
+`@Public()`. Only the **product reads**, the **public business-unit reads**
+(`GET /api/business-units`, `GET /api/business-units/:id`), the **payment
+webhook** and **customer self-registration** (`POST /api/users/register`) are
+public; everything else needs a `Bearer` JWT in the `Authorization` header. Some
+routes additionally require a role via `@Roles()` - `POST /api/products` needs
+`ADMIN`/`MANAGER`, `POST /api/business-units` needs `ADMIN`, the business-unit
+`internal` reads need `ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all
+promotion routes need `ADMIN`/`MANAGER`, order listing/status needs staff, and
+`loyalty/me` needs `CUSTOMER`. `POST /api/orders` needs a JWT but no
 fixed role: the requirement is enforced per request by the `orderChannel` policy
 (see [Orders](#orders)). A protected route returns `401` when the JWT is missing
 or invalid and `403` when the role is insufficient.
@@ -663,6 +665,60 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
   "createdAt": "2026-01-01T12:00:00.000Z",
   "updatedAt": "2026-01-01T12:00:00.000Z",
   "imageUrl": "https://example.com/images/acai-fitness.jpg"
+}
+```
+
+### Business Units
+
+| Method | Path                               | Auth            | Description                                                                                        |
+| ------ | ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/business-units`              | Public          | List active units (cursor-paginated). Public view omits `cnpj`. Optional `search`/`city` filters. |
+| `GET`  | `/api/business-units/:id`          | Public          | Get a single active unit. Returns `404` if missing or inactive.                                   |
+| `GET`  | `/api/business-units/internal`     | ADMIN / MANAGER | List all units (cursor-paginated), full detail. Optional `search`/`city`/`isActive` filters.      |
+| `GET`  | `/api/business-units/internal/:id` | ADMIN / MANAGER | Get a single unit by id, full detail (any status).                                                |
+| `POST` | `/api/business-units`              | ADMIN           | Create a unit. `201` on success, `409` if the `cnpj` or `phone` already exists.                   |
+
+#### Request body - `BusinessUnitCreateDto` (`POST /api/business-units`)
+
+`cnpj` is exactly 14 digits, no mask.
+
+```json
+{
+  "name": "Raízes Pelourinho",
+  "cnpj": "12345678000190",
+  "address": "Largo do Pelourinho, 10",
+  "city": "Salvador",
+  "phone": "7132223344"
+}
+```
+
+#### Response - `BusinessUnitResponseDto` (internal / create)
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Raízes Pelourinho",
+  "cnpj": "12345678000190",
+  "address": "Largo do Pelourinho, 10",
+  "city": "Salvador",
+  "phone": "7132223344",
+  "isActive": true,
+  "createdAt": "2026-05-18T10:30:00.000Z",
+  "updatedAt": "2026-05-18T10:30:00.000Z"
+}
+```
+
+#### Response - `PublicBusinessUnitResponseDto` (public reads)
+
+Omits `cnpj`, `isActive` and timestamps.
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Raízes Pelourinho",
+  "address": "Largo do Pelourinho, 10",
+  "city": "Salvador",
+  "phone": "7132223344"
 }
 ```
 
