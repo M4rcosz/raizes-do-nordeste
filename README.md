@@ -1,7 +1,7 @@
 # Raízes do Nordeste - Backend API
 
 [![CI](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml/badge.svg)](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/M4rcosz/raizes-do-nordeste/releases/tag/v1.0.0)
+[![version](https://img.shields.io/github/package-json/v/M4rcosz/raizes-do-nordeste?color=blue)](https://github.com/M4rcosz/raizes-do-nordeste/releases)
 
 Repository: <https://github.com/M4rcosz/raizes-do-nordeste>
 
