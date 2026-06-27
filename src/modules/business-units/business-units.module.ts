@@ -12,9 +12,17 @@ import { BusinessUnitsController } from './infrastructure/http/controllers/busin
 import { CreateBusinessUnitUseCase } from './application/use-cases/create-business-unit.use-case';
 import { ListBusinessUnitsUseCase } from './application/use-cases/list-business-units.use-case';
 import { GetBusinessUnitByIdUseCase } from './application/use-cases/get-business-unit-by-id.use-case';
+import { MENU_ITEM_REPOSITORY } from './domain/repositories/menu-item.repository';
+import { PrismaMenuItemRepository } from './infrastructure/persistence/prisma-menu-item.repository';
+import { MenuItemsController } from './infrastructure/http/controllers/menu-items.controller';
+import { GetMenuByBusinessUnitUseCase } from './application/use-cases/get-menu-by-business-unit.use-case';
+import { GetMenuItemByIdUseCase } from './application/use-cases/get-menu-item-by-id.use-case';
+import { AddMenuItemUseCase } from './application/use-cases/add-menu-item.use-case';
+import { UpdateMenuItemUseCase } from './application/use-cases/update-menu-item.use-case';
+import { DeactivateMenuItemUseCase } from './application/use-cases/deactivate-menu-item.use-case';
 
 @Module({
-  controllers: [ProductsController, BusinessUnitsController],
+  controllers: [ProductsController, BusinessUnitsController, MenuItemsController],
   providers: [
     {
       provide: PRODUCT_REPOSITORY,
@@ -31,6 +39,15 @@ import { GetBusinessUnitByIdUseCase } from './application/use-cases/get-business
     CreateBusinessUnitUseCase,
     ListBusinessUnitsUseCase,
     GetBusinessUnitByIdUseCase,
+    {
+      provide: MENU_ITEM_REPOSITORY,
+      useClass: PrismaMenuItemRepository,
+    },
+    GetMenuByBusinessUnitUseCase,
+    GetMenuItemByIdUseCase,
+    AddMenuItemUseCase,
+    UpdateMenuItemUseCase,
+    DeactivateMenuItemUseCase,
   ],
 })
 export class BusinessUnitsModule {}

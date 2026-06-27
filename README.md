@@ -10,7 +10,10 @@ browsing, order management, payment processing, inventory control and a
 customer loyalty program - across multiple business units (franchises).
 
 > **Status:** the project is being built incrementally. The shipped surface
-> is the product catalog (public browsing + role-gated creation), identity
+> is the product catalog (public browsing + role-gated creation), per-unit
+> menu management (add/update/deactivate menu items with a required custom
+> price, public cursor-paginated listing plus an internal management view),
+> identity
 > (JWT login + argon2 hashing + global role guard, public customer
 > self-registration, role-gated user creation and deactivation, refresh-token
 > rotation with reuse detection and logout), a cross-cutting audit
@@ -531,12 +534,16 @@ returned by `POST /api/auth/login` directly into the "Authorize" dialog.
 
 A global `AuthGuard` protects every route by default; routes opt out with
 `@Public()`. Only the **product reads**, the **public business-unit reads**
-(`GET /api/business-units`, `GET /api/business-units/:id`), the **payment
+(`GET /api/business-units`, `GET /api/business-units/:id`), the **public menu
+reads** (`GET /api/business-units/:businessUnitId/menu`,
+`GET /api/business-units/:businessUnitId/menu/:menuItemId`), the **payment
 webhook** and **customer self-registration** (`POST /api/users/register`) are
 public; everything else needs a `Bearer` JWT in the `Authorization` header. Some
 routes additionally require a role via `@Roles()` - `POST /api/products` needs
 `ADMIN`/`MANAGER`, `POST /api/business-units` needs `ADMIN`, the business-unit
-`internal` reads need `ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all
+`internal` reads need `ADMIN`/`MANAGER`, menu management (`POST`, `PATCH` and the
+internal manage list under `/api/business-units/:id/menu`) needs
+`ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all
 promotion routes need `ADMIN`/`MANAGER`, order listing/status needs staff, and
 `loyalty/me` needs `CUSTOMER`. `POST /api/orders` needs a JWT but no
 fixed role: the requirement is enforced per request by the `orderChannel` policy
@@ -757,6 +764,44 @@ Omits `cnpj`, `isActive` and timestamps.
   "phone": "7132223344"
 }
 ```
+
+### Menu Items
+
+A menu item links a `Product` to a business unit with a unit-specific
+`customPrice`. The menu is scoped per unit (`@@unique(businessUnitId, productId)`).
+
+| Method  | Path                                                              | Auth            | Description                                                                                          |
+| ------- | ---------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------- |
+| `GET`   | `/api/business-units/:businessUnitId/menu`                       | Public          | List available menu items for a unit (cursor-paginated). Only items where the item, its product and the unit are active. |
+| `GET`   | `/api/business-units/:businessUnitId/menu/manage`               | ADMIN / MANAGER | List all menu items including unavailable ones (cursor-paginated).                                   |
+| `GET`   | `/api/business-units/:businessUnitId/menu/:menuItemId`          | Public          | Get a single available menu item. Returns `404` if missing or unavailable.                          |
+| `POST`  | `/api/business-units/:businessUnitId/menu`                      | ADMIN / MANAGER | Add a product to the unit's menu. `201` on success, `409` if it is already on the menu, `404` if the unit or product does not exist. |
+| `PATCH` | `/api/business-units/:businessUnitId/menu/:menuItemId`          | ADMIN / MANAGER | Update `customPrice` and/or `isAvailable`. At least one field is required.                           |
+| `PATCH` | `/api/business-units/:businessUnitId/menu/:menuItemId/deactivate` | ADMIN / MANAGER | Deactivate a menu item (`isAvailable = false`). Returns `200`; idempotent.                           |
+
+`customPrice` is the unit-specific price that overrides `Product.basePrice`. It
+is **required** on creation - a positive decimal string with up to 2 fractional
+digits (same convention as `Product.price`).
+
+#### Request body - `MenuItemCreateDto` (`POST /api/business-units/:businessUnitId/menu`)
+
+`productId` is required (uuid). `customPrice` is required. `isAvailable` is
+optional and defaults to `true`. `businessUnitId` comes from the route, never the body.
+
+```json
+{ "productId": "cebe6acf-e54e-4842-a8ec-eda9a439ceb5", "customPrice": "22.30" }
+```
+
+#### Request body - `MenuItemUpdateDto` (`PATCH /api/business-units/:businessUnitId/menu/:menuItemId`)
+
+Both fields are optional, but at least one must be present.
+
+```json
+{ "customPrice": "25.00", "isAvailable": false }
+```
+
+Errors follow the standard envelope: `MenuItemAlreadyExistsError` -> `409`,
+`MenuItemNotFoundError` -> `404`, `MenuItemsFetchError` -> `503`.
 
 ### Orders
 
@@ -1179,6 +1224,14 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
       self-registration, policy-gated user creation/deactivation, an
       inactive-account login block, and refresh-token rotation with reuse
       detection and logout.
+- [x] **Business Units / Catalog** - business-unit CRUD (public active-only
+      list, public single, internal full list/single, `ADMIN` creation), product
+      catalog (public list, public single, by-unit list, staff creation), and
+      per-unit menu management (`AddMenuItem`, `UpdateMenuItem`,
+      `DeactivateMenuItem`, `GetMenuByBusinessUnit`, `GetMenuItemById`).
+      `customPrice` is required and overrides `Product.basePrice` per unit.
+      `businessUnitId` scope comes from the route param today (same IDOR gap as
+      promotions and inventory; JWT claim pending).
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port injected
       into the login, order, payment and inventory flows.
