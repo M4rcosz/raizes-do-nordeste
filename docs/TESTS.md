@@ -13,9 +13,10 @@ autossuficiente (usa collection variables, sem environment externo).
 ## Como a API responde
 
 - Prefixo global: todas as rotas ficam sob `/api`. Base local: `http://localhost:3000/api`.
-- Autenticação: JWT Bearer. `POST /api/auth/login` devolve `{ "access_token": "<jwt>" }`.
-  As rotas protegidas exigem o header `Authorization: Bearer <token>`. São públicas apenas:
-  login, `GET /api/products...` e `POST /api/payments/webhook`.
+- Autenticação: JWT Bearer. `POST /api/auth/login` devolve `{ "access_token": "<jwt>", "refresh_token": "<token>" }`.
+  O access token vai no header `Authorization: Bearer <token>` nas rotas protegidas. O refresh token
+  pode ser trocado por um novo par em `POST /api/auth/refresh`; use `POST /api/auth/logout` para revogá-lo.
+  São públicas: login, refresh, logout, `GET /api/products...` e `POST /api/payments/webhook`.
 - Papéis: `ADMIN`, `MANAGER`, `ATTENDANT`, `KITCHEN`, `CUSTOMER`.
 - Listagens (`GET /api/products...`, `GET /api/orders`) usam envelope paginado
   `{ data: [...], meta: {...} }`. `GET /api/inventory/:unidade` devolve um array simples.
@@ -61,7 +62,7 @@ O `unitPrice` enviado no pedido tem que bater com o preço autoritativo de card�
 
 | ID  | Nome                                  | Endpoint                                                        | Pré-condição                                  | Entrada                                                                                   | Resultado esperado                                                       | Evidência (request)   |
 | --- | ------------------------------------- | -------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------- |
-| P1  | Login com credenciais válidas         | `POST /auth/login`                                             | `customer1` no seed                           | `{ username: customer1, password: password4 }`                                           | 200; corpo com `access_token` (string JWT)                               | Positivos/P1          |
+| P1  | Login com credenciais válidas         | `POST /auth/login`                                             | `customer1` no seed                           | `{ username: customer1, password: password4 }`                                           | 200; corpo com `access_token` e `refresh_token` (ambos strings)          | Positivos/P1          |
 | P2  | Criar pedido válido (canal APP)       | `POST /orders`                                                 | logado como `customer1`; Açaí no cardápio     | Bearer; `businessUnitId` unid. 1; `orderChannel=APP`; item Açaí `quantity=1` `unitPrice=22.30` | 201; `orderStatus=PENDING`; `totalAmount=22.30`; `customerId` preenchido | Positivos/P2          |
 | P3  | Pagar pedido (sucesso)                | `POST /payments` + `POST /payments/webhook` + `GET /orders/:id` | pedido em PENDING (P2)                         | 1) pagamento `{orderId, method:PIX}`; 2) webhook assinado `status=APPROVED`; 3) lê pedido | pagamento 201 `PROCESSING`; webhook 200 `{received:true}`; pedido `CONFIRMED` | Positivos/P3a-c       |
 | P4  | Ler pagamento do pedido               | `GET /orders/:orderId/payment`                                 | pedido pago (P3)                              | Bearer `customer1`                                                                        | 200; pagamento `status=APPROVED`; `orderId` confere                      | Positivos/P4          |

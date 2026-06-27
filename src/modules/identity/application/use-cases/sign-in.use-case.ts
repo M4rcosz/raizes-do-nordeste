@@ -12,11 +12,26 @@ import {
 } from '@modules/identity/domain/ports/password-hasher.port';
 import { type TokenSigner, TOKEN_SIGNER } from '@modules/identity/domain/ports/token-signer.port';
 import {
+  REFRESH_TOKEN_GENERATOR,
+  type RefreshTokenGenerator,
+} from '@modules/identity/domain/ports/refresh-token-generator.port';
+import {
+  REFRESH_TOKEN_REPOSITORY,
+  type RefreshTokenRepository,
+} from '@modules/identity/domain/repositories/refresh-token.repository';
+import { RefreshToken } from '@modules/identity/domain/entities/refresh-token.entity';
+import { REFRESH_TOKEN_TTL_MS } from '../config/refresh-token-ttl.token';
+import {
   AUDIT_LOGGER,
   type AuditLogInput,
   type AuditLogger,
 } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
+
+export interface AuthTokens {
+  access_token: string;
+  refresh_token: string;
+}
 
 @Injectable()
 export class SignInUseCase {
@@ -29,11 +44,17 @@ export class SignInUseCase {
     private readonly tokenSigner: TokenSigner,
     @Inject(PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
+    @Inject(REFRESH_TOKEN_GENERATOR)
+    private readonly refreshTokenGenerator: RefreshTokenGenerator,
+    @Inject(REFRESH_TOKEN_REPOSITORY)
+    private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(REFRESH_TOKEN_TTL_MS)
+    private readonly refreshTtlMs: number,
     @Inject(AUDIT_LOGGER)
     private readonly auditLogger: AuditLogger,
   ) {}
 
-  async execute(username: string, plainPassword: string): Promise<{ access_token: string }> {
+  async execute(username: string, plainPassword: string): Promise<AuthTokens> {
     let user: User | null;
 
     try {
@@ -68,9 +89,19 @@ export class SignInUseCase {
     });
 
     const payload = { sub: user.id, username: user.username, role: user.role };
-    const token = await this.tokenSigner.sign(payload);
+    const accessToken = await this.tokenSigner.sign(payload);
 
-    return { access_token: token };
+    // Issue and persist a fresh refresh token. Only the hash is stored; the
+    // opaque value is returned once, here, and never again.
+    const generated = this.refreshTokenGenerator.generate();
+    const refresh = RefreshToken.issue({
+      userId: user.id,
+      tokenHash: generated.tokenHash,
+      ttlMs: this.refreshTtlMs,
+    });
+    await this.refreshTokens.save(refresh);
+
+    return { access_token: accessToken, refresh_token: generated.token };
   }
 
   // Audit must never break the login outcome, so failures here are swallowed.

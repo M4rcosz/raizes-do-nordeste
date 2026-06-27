@@ -4,6 +4,15 @@ import { SignInUseCase } from './sign-in.use-case';
 import { UserRepository, USER_REPOSITORY } from '../../domain/repositories/user.repository';
 import { PasswordHasher, PASSWORD_HASHER } from '../../domain/ports/password-hasher.port';
 import { TokenSigner, TOKEN_SIGNER } from '../../domain/ports/token-signer.port';
+import {
+  RefreshTokenGenerator,
+  REFRESH_TOKEN_GENERATOR,
+} from '../../domain/ports/refresh-token-generator.port';
+import {
+  RefreshTokenRepository,
+  REFRESH_TOKEN_REPOSITORY,
+} from '../../domain/repositories/refresh-token.repository';
+import { REFRESH_TOKEN_TTL_MS } from '../config/refresh-token-ttl.token';
 import { User } from '../../domain/entities/user.entity';
 import { UsersFetchError } from '../errors/users-fetch.error';
 import { InvalidCredentialsError } from '../errors/invalid-credentials.error';
@@ -15,6 +24,8 @@ describe('SignInUseCase', () => {
   let findByUsername: jest.MockedFunction<UserRepository['findByUsername']>;
   let verify: jest.MockedFunction<PasswordHasher['verify']>;
   let sign: jest.MockedFunction<TokenSigner['sign']>;
+  let generate: jest.MockedFunction<RefreshTokenGenerator['generate']>;
+  let saveRefresh: jest.MockedFunction<RefreshTokenRepository['save']>;
   let auditLog: jest.MockedFunction<AuditLogger['log']>;
 
   const buildUser = (overrides?: {
@@ -41,6 +52,8 @@ describe('SignInUseCase', () => {
     findByUsername = jest.fn() as jest.MockedFunction<UserRepository['findByUsername']>;
     verify = jest.fn() as jest.MockedFunction<PasswordHasher['verify']>;
     sign = jest.fn() as jest.MockedFunction<TokenSigner['sign']>;
+    generate = jest.fn() as jest.MockedFunction<RefreshTokenGenerator['generate']>;
+    saveRefresh = jest.fn() as jest.MockedFunction<RefreshTokenRepository['save']>;
     auditLog = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
 
     const userRepo: jest.Mocked<UserRepository> = {
@@ -54,6 +67,16 @@ describe('SignInUseCase', () => {
       verify,
     };
     const tokenSigner: jest.Mocked<TokenSigner> = { sign };
+    const refreshGenerator: jest.Mocked<RefreshTokenGenerator> = {
+      generate,
+      hash: jest.fn() as jest.MockedFunction<RefreshTokenGenerator['hash']>,
+    };
+    const refreshRepo: jest.Mocked<RefreshTokenRepository> = {
+      findByTokenHash: jest.fn() as jest.MockedFunction<RefreshTokenRepository['findByTokenHash']>,
+      save: saveRefresh,
+      revoke: jest.fn() as jest.MockedFunction<RefreshTokenRepository['revoke']>,
+      revokeChainFrom: jest.fn() as jest.MockedFunction<RefreshTokenRepository['revokeChainFrom']>,
+    };
     const auditLogger: jest.Mocked<AuditLogger> = { log: auditLog };
 
     const moduleRef = await Test.createTestingModule({
@@ -62,6 +85,9 @@ describe('SignInUseCase', () => {
         { provide: USER_REPOSITORY, useValue: userRepo },
         { provide: PASSWORD_HASHER, useValue: passwordHasher },
         { provide: TOKEN_SIGNER, useValue: tokenSigner },
+        { provide: REFRESH_TOKEN_GENERATOR, useValue: refreshGenerator },
+        { provide: REFRESH_TOKEN_REPOSITORY, useValue: refreshRepo },
+        { provide: REFRESH_TOKEN_TTL_MS, useValue: 7 * 24 * 60 * 60 * 1000 },
         { provide: AUDIT_LOGGER, useValue: auditLogger },
       ],
     }).compile();
@@ -74,10 +100,11 @@ describe('SignInUseCase', () => {
   });
 
   describe('execute', () => {
-    it('should return access_token on valid credentials', async () => {
+    it('should return an access/refresh pair on valid credentials and persist the refresh', async () => {
       findByUsername.mockResolvedValue(buildUser({ id: 'user-1' }));
       verify.mockResolvedValue(true);
       sign.mockResolvedValue('signed.jwt.token');
+      generate.mockReturnValue({ token: 'refresh-plain', tokenHash: 'refresh-hash' });
 
       const result = await useCase.execute('panic', 'plain-password');
 
@@ -88,7 +115,13 @@ describe('SignInUseCase', () => {
         username: 'panic',
         role: 'KITCHEN',
       });
-      expect(result).toEqual({ access_token: 'signed.jwt.token' });
+      expect(result).toEqual({ access_token: 'signed.jwt.token', refresh_token: 'refresh-plain' });
+
+      // Only the hash is persisted, bound to the user; plaintext never stored.
+      expect(saveRefresh).toHaveBeenCalledTimes(1);
+      const saved = saveRefresh.mock.calls[0]?.[0];
+      expect(saved?.tokenHash).toBe('refresh-hash');
+      expect(saved?.userId).toBe('user-1');
     });
 
     it('should throw InvalidCredentialsError when password is invalid', async () => {
@@ -154,6 +187,7 @@ describe('SignInUseCase', () => {
       findByUsername.mockResolvedValue(buildUser({ id: 'user-1' }));
       verify.mockResolvedValue(true);
       sign.mockResolvedValue('signed.jwt.token');
+      generate.mockReturnValue({ token: 'refresh-plain', tokenHash: 'refresh-hash' });
 
       await useCase.execute('panic', 'plain-password');
 
@@ -207,6 +241,7 @@ describe('SignInUseCase', () => {
       findByUsername.mockResolvedValue(buildUser({ id: 'user-1', passwordHash: 'real-hash' }));
       verify.mockResolvedValue(true);
       sign.mockResolvedValue('signed.jwt.token');
+      generate.mockReturnValue({ token: 'refresh-plain', tokenHash: 'refresh-hash' });
 
       await useCase.execute('panic', 'super-secret-password');
 
@@ -221,11 +256,12 @@ describe('SignInUseCase', () => {
       findByUsername.mockResolvedValue(buildUser({ id: 'user-1' }));
       verify.mockResolvedValue(true);
       sign.mockResolvedValue('signed.jwt.token');
+      generate.mockReturnValue({ token: 'refresh-plain', tokenHash: 'refresh-hash' });
       auditLog.mockRejectedValue(new Error('audit DB down'));
 
       const result = await useCase.execute('panic', 'plain-password');
 
-      expect(result).toEqual({ access_token: 'signed.jwt.token' });
+      expect(result).toEqual({ access_token: 'signed.jwt.token', refresh_token: 'refresh-plain' });
     });
 
     it('should still throw InvalidCredentialsError when auditLogger.log rejects on failure path', async () => {

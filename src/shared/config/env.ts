@@ -29,6 +29,38 @@ export function parseIntEnv(
   return parsed;
 }
 
+// Parse a short duration string like "15m", "7d", "30s" into milliseconds.
+// Accepts a bare integer count plus a unit suffix (ms, s, m, h, d). Treats
+// undefined and '' as absent (returns the default). A present-but-malformed
+// value throws and names both the var and what it received.
+const DURATION_UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+};
+
+export function parseDurationMsEnv(
+  name: string,
+  raw: string | undefined,
+  defaultMs: number,
+): number {
+  if (raw === undefined || raw === '') {
+    return defaultMs;
+  }
+
+  const match = /^(\d+)(ms|s|m|h|d)$/.exec(raw.trim());
+  if (!match) {
+    throw new Error(
+      `Invalid env ${name}: expected a duration like "15m" or "7d", received "${raw}"`,
+    );
+  }
+
+  const [, count, unit] = match;
+  return Number(count) * DURATION_UNIT_MS[unit];
+}
+
 // Map TRUST_PROXY into what express understands: a boolean for the on/off cases
 // or a hop count when a non negative integer is given. Absent means off. A
 // present but unrecognized value throws instead of silently falling back to off.
