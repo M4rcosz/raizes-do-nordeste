@@ -12,7 +12,8 @@ customer loyalty program - across multiple business units (franchises).
 > **Status:** the project is being built incrementally. The shipped surface
 > is the product catalog (public browsing + role-gated creation), identity
 > (JWT login + argon2 hashing + global role guard, public customer
-> self-registration, role-gated user creation and deactivation), a cross-cutting audit
+> self-registration, role-gated user creation and deactivation, refresh-token
+> rotation with reuse detection and logout), a cross-cutting audit
 > log wired into the login flow, **orders** (channel-aware creation, reads,
 > status state machine), **payments** (gateway charge + HMAC-signed webhook
 > confirmation that advances the order, plus a stale-payment sweeper),
@@ -460,6 +461,8 @@ npm run devs
 | `NODE_ENV`          | Runtime environment                       | `development` / `production` |
 | `PORT`              | HTTP server port                          | `3000`                       |
 | `JWT_SECRET_KEY`    | Signing secret for access tokens. **Required** - the app exits on boot if missing (`getOrThrow`). | `a-strong-random-secret` |
+| `JWT_ACCESS_TTL`    | Lifetime of the short-lived access JWT. Accepts `ms`/`s`/`m`/`h`/`d` suffixes. Default `15m`. | `15m` |
+| `JWT_REFRESH_TTL`   | Lifetime of the stateful refresh token. Accepts the same suffixes. Default `7d`. | `7d` |
 | `PAYMENT_WEBHOOK_SECRET` | HMAC secret the payment webhook is signed with. If unset, the webhook guard **fails closed** (every callback returns `401`). | `dev-webhook-secret` |
 
 ---
@@ -470,7 +473,7 @@ npm run devs
 
 | Domain            | Tables                                                                 |
 | ----------------- | ---------------------------------------------------------------------- |
-| Identity & Access | `users`                                                                |
+| Identity & Access | `users`, `refresh_tokens`                                              |
 | Business Units    | `business_units`, `categories`, `products`, `business_unit_menu_items` |
 | Audit             | `audit_logs`                                                           |
 | Inventory         | `inventory`, `inventory_transactions`                                  |
@@ -540,9 +543,11 @@ fixed role: the requirement is enforced per request by the `orderChannel` policy
 (see [Orders](#orders)). A protected route returns `401` when the JWT is missing
 or invalid and `403` when the role is insufficient.
 
-| Method | Path              | Auth   | Description                                 |
-| ------ | ----------------- | ------ | ------------------------------------------- |
-| `POST` | `/api/auth/login` | Public | Exchange `username` + `password` for a JWT. |
+| Method | Path                | Auth   | Description                                                                      |
+| ------ | ------------------- | ------ | ------------------------------------------------------------------------------- |
+| `POST` | `/api/auth/login`   | Public | Exchange `username` + `password` for an access + refresh token pair.            |
+| `POST` | `/api/auth/refresh` | Public | Exchange a valid refresh token for a new access + refresh pair (token rotation). |
+| `POST` | `/api/auth/logout`  | Public | Revoke a refresh token and its entire rotation family. Returns `204 No Content`. |
 
 Request body - `SignInDto` (`password` >= 8 chars):
 
@@ -553,7 +558,7 @@ Request body - `SignInDto` (`password` >= 8 chars):
 Response - `200 OK`:
 
 ```json
-{ "access_token": "eyJhbGciOiJI..." }
+{ "access_token": "eyJhbGciOiJI...", "refresh_token": "..." }
 ```
 
 Invalid credentials return `401` (see [Error responses](#error-responses)).
@@ -564,6 +569,37 @@ action). Metadata is defensively sanitized: any key matching
 `password` / `token` / `cpf` / `authorization` / `secret` (case-insensitive,
 recursive) is stored as `[REDACTED]`. Audit persistence failures are
 swallowed so they cannot break the login outcome.
+
+#### `POST /api/auth/refresh`
+
+Request body - `RefreshTokenDto`:
+
+```json
+{ "refresh_token": "..." }
+```
+
+Response - `200 OK` (new access + refresh pair; the presented token is invalidated):
+
+```json
+{ "access_token": "eyJhbGciOiJI...", "refresh_token": "..." }
+```
+
+An unknown, expired or already-revoked token returns `401` (the condition is not
+disclosed). If a revoked token is re-presented, the entire rotation family is
+revoked and `TOKEN_REUSE_DETECTED` is written to the audit log. Rate-limited to
+5 requests/min.
+
+#### `POST /api/auth/logout`
+
+Request body - `LogoutDto`:
+
+```json
+{ "refresh_token": "..." }
+```
+
+Response - `204 No Content`. Revokes the supplied refresh token and its entire
+rotation family. The already-issued access token is not invalidated and expires
+on its own short TTL. Rate-limited to 5 requests/min.
 
 ### Users
 
@@ -1140,8 +1176,9 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
 
 - [x] **Auth** - JWT login, global role guard, argon2 hashing (`CUSTOMER`,
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`), public customer
-      self-registration, policy-gated user creation/deactivation, and an
-      inactive-account login block. Refresh-token rotation still pending.
+      self-registration, policy-gated user creation/deactivation, an
+      inactive-account login block, and refresh-token rotation with reuse
+      detection and logout.
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port injected
       into the login, order, payment and inventory flows.

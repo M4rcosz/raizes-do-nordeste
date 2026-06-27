@@ -1,5 +1,26 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseIntEnv, parseTrustProxy } from './env';
+import { parseDurationMsEnv, parseIntEnv, parseTrustProxy } from './env';
+
+describe('parseDurationMsEnv', () => {
+  it('returns the default when the var is absent or empty', () => {
+    expect(parseDurationMsEnv('TTL', undefined, 1000)).toBe(1000);
+    expect(parseDurationMsEnv('TTL', '', 1000)).toBe(1000);
+  });
+
+  it('parses seconds, minutes, hours and days', () => {
+    expect(parseDurationMsEnv('TTL', '30s', 0)).toBe(30_000);
+    expect(parseDurationMsEnv('TTL', '15m', 0)).toBe(900_000);
+    expect(parseDurationMsEnv('TTL', '2h', 0)).toBe(7_200_000);
+    expect(parseDurationMsEnv('TTL', '7d', 0)).toBe(604_800_000);
+    expect(parseDurationMsEnv('TTL', '500ms', 0)).toBe(500);
+  });
+
+  it('throws on a malformed duration, naming the var and value', () => {
+    expect(() => parseDurationMsEnv('TTL', 'abc', 0)).toThrow(/TTL.*abc/);
+    expect(() => parseDurationMsEnv('TTL', '10', 0)).toThrow(/TTL/);
+    expect(() => parseDurationMsEnv('TTL', '10w', 0)).toThrow(/TTL/);
+  });
+});
 
 describe('parseIntEnv', () => {
   it('returns the default when the var is absent', () => {

@@ -44,6 +44,7 @@ model User {
   attendantOrders       Order[]                @relation("AttendantOrders")
   inventoryTransactions InventoryTransaction[]
   loyaltyAccounts       LoyaltyAccount[]
+  refreshTokens         RefreshToken[]
 
   userUpdatedBy            User[]           @relation("UserUpdatedBy")
   ordersUpdatedBy          Order[]          @relation("OrdersUpdatedBy")
@@ -52,6 +53,28 @@ model User {
   @@index([role])
   @@index([businessUnitId])
   @@map("users")
+}
+
+// Stateful refresh token (rotation strategy). We persist only the SHA-256 hash
+// of an opaque high-entropy value; the plaintext lives client-side only. Each
+// rotation revokes the old row and links it to its successor via replacedById,
+// so a re-presented revoked token (reuse) lets us walk and kill the chain.
+model RefreshToken {
+  id           String    @id @default(uuid())
+  tokenHash    String    @unique @map("token_hash")
+  userId       String    @map("user_id")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @map("replaced_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken?  @relation("RefreshTokenRotation", fields: [replacedById], references: [id])
+  replaces   RefreshToken[] @relation("RefreshTokenRotation")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 // ============================================================
