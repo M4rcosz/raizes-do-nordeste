@@ -551,6 +551,13 @@ fixed role: the requirement is enforced per request by the `orderChannel` policy
 (see [Orders](#orders)). A protected route returns `401` when the JWT is missing
 or invalid and `403` when the role is insufficient.
 
+Beyond roles, **inventory**, **promotions** and **menu management** routes enforce
+unit scope via `UnitScopeGuard`. `ADMIN` bypasses the check (global reach). Any
+other role must carry a `businessUnitId` claim in the JWT matching the
+`:businessUnitId` route param; a null claim or a mismatch returns `404` so the
+existence of another unit's resources is not disclosed. Unit scope is set at user
+creation time and is encoded in the token on every login and refresh.
+
 | Method | Path                | Auth   | Description                                                                      |
 | ------ | ------------------- | ------ | ------------------------------------------------------------------------------- |
 | `POST` | `/api/auth/login`   | Public | Exchange `username` + `password` for an access + refresh token pair.            |
@@ -1041,7 +1048,9 @@ rounding on the client.
 | `POST` | `/api/inventory/:businessUnitId/adjust` | MANAGER / ADMIN | Apply a manual `IN`/`OUT` stock movement.           |
 
 Stock is a management concern: `ATTENDANT`, `KITCHEN` and `CUSTOMER` are
-rejected with `403`. Every balance change is recorded as an
+rejected with `403`. Access is also unit-scoped: `ADMIN` sees any unit;
+`MANAGER` must have a `businessUnitId` claim matching the `:businessUnitId`
+param (mismatch or null claim -> `404`). Every balance change is recorded as an
 `InventoryTransaction` (the balance is never mutated blind).
 
 #### Stock is deducted when an order is created
@@ -1113,8 +1122,11 @@ transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 Promotions carry a `discountType` (`PERCENTAGE` or `FIXED_AMOUNT`), a
 `discountValue`, a `minOrderValue` floor, and a `startDate`/`endDate` window.
 `FREE_ITEM` is rejected (the schema does not model a target item to price). The
-`businessUnitId` comes from the request body / route param today; once identity
-exposes a `businessUnitId` JWT claim, writes and reads will be pinned to it.
+`businessUnitId` is derived from the actor's JWT claim, never accepted from the
+request body. All promotion routes are protected by `UnitScopeGuard`: a non-admin
+staff member can only create, read and update promotions for the unit they are
+scoped to in the token; a claim mismatch or a null claim returns `404` so the
+existence of another unit's promotions is not disclosed.
 
 At most **one** promotion applies per order (MVP). On order creation the
 promotion is priced against the **gross** items subtotal first, then loyalty
@@ -1126,7 +1138,6 @@ only its own parcel in `discountApplied`.
 
 ```json
 {
-  "businessUnitId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "name": "Almoço executivo",
   "discountType": "PERCENTAGE",
   "discountValue": "10.00",
@@ -1273,8 +1284,9 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
       per-unit menu management (`AddMenuItem`, `UpdateMenuItem`,
       `DeactivateMenuItem`, `GetMenuByBusinessUnit`, `GetMenuItemById`).
       `customPrice` is required and overrides `Product.basePrice` per unit.
-      `businessUnitId` scope comes from the route param today (same IDOR gap as
-      promotions and inventory; JWT claim pending).
+      Management routes (add, update, deactivate, manage-list) are unit-scoped
+      via `UnitScopeGuard`: the `:businessUnitId` param is validated against the
+      actor's JWT claim. The same guard now covers inventory and promotions routes.
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port injected
       into the login, order, payment and inventory flows, and `GET /api/audit-logs`

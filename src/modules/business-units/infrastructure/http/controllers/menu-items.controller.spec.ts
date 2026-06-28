@@ -1,7 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
 import { Money } from '@shared/domain/value-objects/money';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
+import { UnitScopeGuard } from '@shared/auth/unit-scope.guard';
+import { ScopedToBusinessUnit } from '@shared/auth/scoped-to-business-unit.decorator';
 import { MenuItemsController } from './menu-items.controller';
 import { GetMenuByBusinessUnitUseCase } from '../../../application/use-cases/get-menu-by-business-unit.use-case';
 import { GetMenuItemByIdUseCase } from '../../../application/use-cases/get-menu-item-by-id.use-case';
@@ -202,5 +205,37 @@ describe('MenuItemsController', () => {
       expect(deactivateMenuItem.execute).toHaveBeenCalledWith('menu-item-1', 'bu-1');
       expect(response.isAvailable).toBe(false);
     });
+  });
+});
+
+// Behavioral isolation lives in unit-scope.guard.spec. Here we only assert the
+// guard and the :businessUnitId binding are wired onto the management handlers
+// and stay off the @Public read handlers (which carry no principal).
+describe('MenuItemsController unit scoping', () => {
+  const reflector = new Reflector();
+  const proto = MenuItemsController.prototype;
+
+  const isUnitScoped = (handler: (...args: never[]) => unknown): boolean => {
+    const guards = (Reflect.getMetadata('__guards__', handler) ?? []) as unknown[];
+    return (
+      guards.includes(UnitScopeGuard) &&
+      reflector.get(ScopedToBusinessUnit, handler) === 'businessUnitId'
+    );
+  };
+
+  it.each([
+    ['findMenuForManagement', proto.findMenuForManagement],
+    ['addItem', proto.addItem],
+    ['updateItem', proto.updateItem],
+    ['deactivateItem', proto.deactivateItem],
+  ])('scopes the management route %s to the unit', (_name, handler) => {
+    expect(isUnitScoped(handler)).toBe(true);
+  });
+
+  it.each([
+    ['findMenu', proto.findMenu],
+    ['findMenuItem', proto.findMenuItem],
+  ])('leaves the public read route %s unscoped', (_name, handler) => {
+    expect(isUnitScoped(handler)).toBe(false);
   });
 });

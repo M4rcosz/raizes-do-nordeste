@@ -11,7 +11,21 @@ import { Promotion } from '@modules/promotions/domain/entities/promotion.entity'
 import { DiscountType } from '@modules/promotions/domain/value-objects/discount-type';
 import { PromotionResponseDto } from '../dto/promotion-response.dto';
 import { PromotionNotFoundError } from '@modules/promotions/application/errors/promotion-not-found.error';
+import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
+import type { PromotionActor } from '@modules/promotions/application/promotion-actor';
 import type { CreatePromotionDto } from '../dto/create-promotion.dto';
+
+// A scoped manager principal as AuthGuard would attach it.
+const principal: JwtPayload = {
+  sub: 'user-1',
+  username: 'manager',
+  role: UserRole.MANAGER,
+  businessUnitId: 'bu-1',
+  iat: 0,
+  exp: 0,
+};
+const actor: PromotionActor = { role: UserRole.MANAGER, businessUnitId: 'bu-1' };
 
 const buildPromotion = (id = 'promo-1'): Promotion =>
   new Promotion(
@@ -59,11 +73,10 @@ describe('PromotionsController', () => {
   });
 
   describe('create', () => {
-    it('maps the created promotion to its response DTO', async () => {
+    it('derives the unit from the claim and maps the created promotion to its response DTO', async () => {
       createPromotion.execute.mockResolvedValue(buildPromotion('promo-9'));
 
       const body = {
-        businessUnitId: 'bu-1',
         name: 'Almoço',
         discountType: DiscountType.PERCENTAGE,
         discountValue: '10.00',
@@ -72,9 +85,9 @@ describe('PromotionsController', () => {
         endDate: new Date('2026-06-30T00:00:00.000Z'),
       } satisfies CreatePromotionDto;
 
-      const response = await controller.create(body);
+      const response = await controller.create(body, principal);
 
-      expect(createPromotion.execute).toHaveBeenCalledWith(body);
+      expect(createPromotion.execute).toHaveBeenCalledWith(body, actor);
       expect(response).toBeInstanceOf(PromotionResponseDto);
       expect(response.id).toBe('promo-9');
       expect(response.discountValue).toBe('10.00');
@@ -104,31 +117,35 @@ describe('PromotionsController', () => {
   });
 
   describe('findById', () => {
-    it('returns the mapped DTO when the promotion exists', async () => {
+    it('forwards the actor and returns the mapped DTO when the promotion exists', async () => {
       findPromotionById.execute.mockResolvedValue(buildPromotion('promo-42'));
 
-      const response = await controller.findById({ promotionId: 'promo-42' });
+      const response = await controller.findById({ promotionId: 'promo-42' }, principal);
 
-      expect(findPromotionById.execute).toHaveBeenCalledWith('promo-42');
+      expect(findPromotionById.execute).toHaveBeenCalledWith('promo-42', actor);
       expect(response.id).toBe('promo-42');
     });
 
     it('propagates PromotionNotFoundError from the use case', async () => {
       findPromotionById.execute.mockRejectedValue(new PromotionNotFoundError('not found'));
 
-      await expect(controller.findById({ promotionId: 'missing' })).rejects.toBeInstanceOf(
-        PromotionNotFoundError,
-      );
+      await expect(
+        controller.findById({ promotionId: 'missing' }, principal),
+      ).rejects.toBeInstanceOf(PromotionNotFoundError);
     });
   });
 
   describe('update', () => {
-    it('forwards the id and patch and returns the mapped DTO', async () => {
+    it('forwards the id, patch and actor and returns the mapped DTO', async () => {
       updatePromotion.execute.mockResolvedValue(buildPromotion('promo-1'));
 
-      const response = await controller.update({ promotionId: 'promo-1' }, { isActive: false });
+      const response = await controller.update(
+        { promotionId: 'promo-1' },
+        { isActive: false },
+        principal,
+      );
 
-      expect(updatePromotion.execute).toHaveBeenCalledWith('promo-1', { isActive: false });
+      expect(updatePromotion.execute).toHaveBeenCalledWith('promo-1', { isActive: false }, actor);
       expect(response).toBeInstanceOf(PromotionResponseDto);
     });
   });

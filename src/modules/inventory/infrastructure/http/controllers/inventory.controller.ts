@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -9,6 +18,8 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { Roles } from '@shared/auth/roles.decorator';
+import { UnitScopeGuard } from '@shared/auth/unit-scope.guard';
+import { ScopedToBusinessUnit } from '@shared/auth/scoped-to-business-unit.decorator';
 import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
@@ -24,6 +35,10 @@ const INVENTORY_ROLES: UserRole[] = [UserRole.MANAGER, UserRole.ADMIN];
 @ApiTags('inventory')
 @ApiBearerAuth()
 @Controller('inventory')
+// Both routes carry the unit in the :businessUnitId param. The guard rejects a
+// non-admin staff whose claim does not match it (reported as not-found).
+@UseGuards(UnitScopeGuard)
+@ScopedToBusinessUnit('businessUnitId')
 export class InventoryController {
   constructor(
     private readonly getInventory: GetInventoryUseCase,

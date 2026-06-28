@@ -6,7 +6,9 @@ import {
   type UpdatePromotionInput,
 } from '../../domain/repositories/promotion.repository';
 import { PromotionNotFoundError } from '../errors/promotion-not-found.error';
+import { PromotionsFetchError } from '../errors/promotions-fetch.error';
 import { PromotionNotEligibleError } from '../../domain/errors/promotion-not-eligible.error';
+import { actorOwnsUnit, type PromotionActor } from '../promotion-actor';
 
 @Injectable()
 export class UpdatePromotionUseCase {
@@ -15,9 +17,23 @@ export class UpdatePromotionUseCase {
     private readonly promotions: PromotionRepository,
   ) {}
 
-  async execute(promotionId: string, input: UpdatePromotionInput): Promise<Promotion> {
-    const existing = await this.promotions.findById(promotionId);
-    if (!existing) {
+  async execute(
+    promotionId: string,
+    input: UpdatePromotionInput,
+    actor: PromotionActor,
+  ): Promise<Promotion> {
+    let existing: Promotion | null;
+    try {
+      existing = await this.promotions.findById(promotionId);
+    } catch (err) {
+      throw new PromotionsFetchError(`Could not retrieve promotion by id "${promotionId}".`, {
+        cause: err,
+      });
+    }
+
+    // Same 404 for missing and not-yours so a foreign unit's promotion never
+    // leaks its existence to a scoped actor.
+    if (!existing || !actorOwnsUnit(actor, existing.businessUnitId)) {
       throw new PromotionNotFoundError(`Promotion with id "${promotionId}" not found.`);
     }
 

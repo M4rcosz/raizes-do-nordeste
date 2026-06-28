@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from '@jest/globals';
 import { Money } from '@shared/domain/value-objects/money';
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
+import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { FindPromotionByIdUseCase } from './find-promotion-by-id.use-case';
 import { Promotion } from '../../domain/entities/promotion.entity';
 import { DiscountType } from '../../domain/value-objects/discount-type';
 import { PromotionNotFoundError } from '../errors/promotion-not-found.error';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
+import type { PromotionActor } from '../promotion-actor';
 import type {
   CreatePromotionInput,
   FindPromotionsByBusinessUnitInput,
@@ -63,6 +65,12 @@ class FakePromotionRepository implements PromotionRepository {
   }
 }
 
+const owner = (businessUnitId: string | null = 'bu-1'): PromotionActor => ({
+  role: UserRole.MANAGER,
+  businessUnitId,
+});
+const admin: PromotionActor = { role: UserRole.ADMIN, businessUnitId: null };
+
 describe('FindPromotionByIdUseCase', () => {
   let repo: FakePromotionRepository;
   let useCase: FindPromotionByIdUseCase;
@@ -72,25 +80,43 @@ describe('FindPromotionByIdUseCase', () => {
     useCase = new FindPromotionByIdUseCase(repo);
   });
 
-  it('returns the promotion when it exists', async () => {
+  it('returns the promotion when it exists and the actor owns the unit', async () => {
     repo.seed(sample());
 
-    const promotion = await useCase.execute('promo-1');
+    const promotion = await useCase.execute('promo-1', owner('bu-1'));
 
     expect(promotion.id).toBe('promo-1');
+  });
+
+  it('lets a global ADMIN read any unit promotion', async () => {
+    repo.seed(sample());
+
+    const promotion = await useCase.execute('promo-1', admin);
+
+    expect(promotion.id).toBe('promo-1');
+  });
+
+  it('hides a foreign-unit promotion behind PromotionNotFoundError', async () => {
+    repo.seed(sample());
+
+    await expect(useCase.execute('promo-1', owner('bu-2'))).rejects.toBeInstanceOf(
+      PromotionNotFoundError,
+    );
   });
 
   it('throws PromotionNotFoundError when missing', async () => {
     repo.seed(null);
 
-    await expect(useCase.execute('missing')).rejects.toBeInstanceOf(PromotionNotFoundError);
+    await expect(useCase.execute('missing', owner())).rejects.toBeInstanceOf(
+      PromotionNotFoundError,
+    );
   });
 
   it('wraps a repository failure as PromotionsFetchError, chaining the cause', async () => {
     const cause = new Error('db down');
     repo.failWith(cause);
 
-    await expect(useCase.execute('promo-1')).rejects.toBeInstanceOf(PromotionsFetchError);
-    await expect(useCase.execute('promo-1')).rejects.toMatchObject({ cause });
+    await expect(useCase.execute('promo-1', owner())).rejects.toBeInstanceOf(PromotionsFetchError);
+    await expect(useCase.execute('promo-1', owner())).rejects.toMatchObject({ cause });
   });
 });

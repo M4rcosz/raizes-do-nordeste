@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. See [commit
 
 ### Features
 
+* **auth:** add unit-scope guard (`UnitScopeGuard` + `@ScopedToBusinessUnit()`) that derives `businessUnitId` from the JWT claim and validates it against the route param; closes unit-scope IDOR on inventory, promotions and menu management routes; `businessUnitId` claim added to JWT payload on sign-in and refresh
 * **audit:** add ADMIN read endpoint for audit logs (`GET /api/audit-logs`, cursor-paginated, filterable by date range, userId, action, entity and entityId)
 * **business-units:** add per-unit menu management (public cursor-paginated menu listing, public single-item read, internal management view, add/update/deactivate use cases, required custom pricing via Money VO)
 * **identity:** add self-service password change endpoint (re-verifies current password, strong-password validation, revokes all active refresh tokens)

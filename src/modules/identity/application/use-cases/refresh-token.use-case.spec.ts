@@ -213,7 +213,12 @@ describe('RefreshTokenUseCase', () => {
 
       await useCase.execute(plain);
 
-      expect(sign).toHaveBeenCalledWith({ sub: 'user-1', username: 'panic', role: 'KITCHEN' });
+      expect(sign).toHaveBeenCalledWith({
+        sub: 'user-1',
+        username: 'panic',
+        role: 'KITCHEN',
+        businessUnitId: 'bu-1',
+      });
     });
 
     it('audits TOKEN_REFRESHED', async () => {

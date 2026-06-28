@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -9,7 +9,12 @@ import {
 } from '@nestjs/swagger';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { Roles } from '@shared/auth/roles.decorator';
+import { CurrentUser } from '@shared/auth/current-user.decorator';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
+import { UnitScopeGuard } from '@shared/auth/unit-scope.guard';
+import { ScopedToBusinessUnit } from '@shared/auth/scoped-to-business-unit.decorator';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
+import type { PromotionActor } from '@modules/promotions/application/promotion-actor';
 import { sanitizeLimit } from '@shared/pagination/pagination';
 import { CreatePromotionUseCase } from '@modules/promotions/application/use-cases/create-promotion.use-case';
 import { UpdatePromotionUseCase } from '@modules/promotions/application/use-cases/update-promotion.use-case';
@@ -28,6 +33,10 @@ import {
 @ApiTags('promotions')
 @ApiBearerAuth()
 @Controller('promotions')
+// Every route is unit-scoped management. The guard rejects a non-admin staff
+// acting outside their claim (reported as not-found). Routes that carry the unit
+// in a :businessUnitId param name it; the rest derive/check the unit from the claim.
+@UseGuards(UnitScopeGuard)
 export class PromotionsController {
   constructor(
     private readonly createPromotion: CreatePromotionUseCase,
@@ -36,20 +45,28 @@ export class PromotionsController {
     private readonly listPromotions: ListPromotionsUseCase,
   ) {}
 
+  // Reads the unit-scoping principal off the verified JWT claim.
+  private actorOf(user: JwtPayload): PromotionActor {
+    return { role: user.role, businessUnitId: user.businessUnitId };
+  }
+
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @ScopedToBusinessUnit()
   @Post()
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiCreatedResponse({ type: PromotionResponseDto })
-  @ApiNotFoundResponse({ description: 'The referenced business unit does not exist' })
-  async create(@Body() dto: CreatePromotionDto): Promise<PromotionResponseDto> {
-    // TODO(tenant-scope): businessUnitId comes from the admin's body today. When the
-    // identity context exposes a businessUnitId JWT claim, scope writes to that claim
-    // and stop trusting the body for the unit.
-    const promotion = await this.createPromotion.execute(dto);
+  @ApiNotFoundResponse({ description: 'The actor has no unit scope to create in' })
+  async create(
+    @Body() dto: CreatePromotionDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PromotionResponseDto> {
+    // The unit is derived from the actor's claim, never the body.
+    const promotion = await this.createPromotion.execute(dto, this.actorOf(user));
     return PromotionResponseDto.fromEntity(promotion);
   }
 
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @ScopedToBusinessUnit('businessUnitId')
   @Get('by-business-unit/:businessUnitId')
   @ApiOperation({ summary: 'List promotions for a business unit (cursor-paginated)' })
   @ApiOkResponse({ type: PaginatedPromotionResponseDto })
@@ -57,8 +74,7 @@ export class PromotionsController {
     @Param() { businessUnitId }: PromotionBusinessUnitIdParamDto,
     @Query() query: PromotionsQueryDto,
   ): Promise<PaginatedResponseDto<PromotionResponseDto>> {
-    // TODO(tenant-scope): the unit is a route param today (cross-tenant read is the
-    // admin's choice). Pin it to the JWT claim once identity exposes one.
+    // The guard already pinned the param to the actor's claim (admin bypassed).
     const limit = sanitizeLimit(query.limit);
     const result = await this.listPromotions.execute({
       businessUnitId,
@@ -72,16 +88,22 @@ export class PromotionsController {
   }
 
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @ScopedToBusinessUnit()
   @Get(':promotionId')
   @ApiOperation({ summary: 'Get a promotion by ID' })
   @ApiOkResponse({ type: PromotionResponseDto })
   @ApiNotFoundResponse({ description: 'Promotion not found' })
-  async findById(@Param() { promotionId }: PromotionIdParamDto): Promise<PromotionResponseDto> {
-    const promotion = await this.findPromotionById.execute(promotionId);
+  async findById(
+    @Param() { promotionId }: PromotionIdParamDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PromotionResponseDto> {
+    // No unit in the path, so ownership is checked in the use case against the claim.
+    const promotion = await this.findPromotionById.execute(promotionId, this.actorOf(user));
     return PromotionResponseDto.fromEntity(promotion);
   }
 
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @ScopedToBusinessUnit()
   @Patch(':promotionId')
   @ApiOperation({ summary: 'Update a promotion' })
   @ApiOkResponse({ type: PromotionResponseDto })
@@ -89,8 +111,10 @@ export class PromotionsController {
   async update(
     @Param() { promotionId }: PromotionIdParamDto,
     @Body() dto: UpdatePromotionDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<PromotionResponseDto> {
-    const promotion = await this.updatePromotion.execute(promotionId, dto);
+    // No unit in the path, so ownership is checked in the use case against the claim.
+    const promotion = await this.updatePromotion.execute(promotionId, dto, this.actorOf(user));
     return PromotionResponseDto.fromEntity(promotion);
   }
 }
