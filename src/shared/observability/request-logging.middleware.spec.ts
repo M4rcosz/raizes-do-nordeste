@@ -71,7 +71,14 @@ describe('RequestLoggingMiddleware', () => {
 
   it('logs transport metadata including userId from req.user', () => {
     const req = createFakeRequest({
-      user: { sub: 'user-123', username: 'jane', role: 'ADMIN', iat: 0, exp: 0 },
+      user: {
+        sub: 'user-123',
+        username: 'jane',
+        role: 'ADMIN',
+        businessUnitId: null,
+        iat: 0,
+        exp: 0,
+      },
     } as Partial<Request>);
     const { res, fireFinish } = createFakeResponse(200);
 

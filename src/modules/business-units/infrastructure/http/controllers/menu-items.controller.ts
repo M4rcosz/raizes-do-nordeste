@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -7,8 +7,11 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { Public } from '@shared/auth/public.decorator';
 import { Roles } from '@shared/auth/roles.decorator';
+import { UnitScopeGuard } from '@shared/auth/unit-scope.guard';
+import { ScopedToBusinessUnit } from '@shared/auth/scoped-to-business-unit.decorator';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
 import { sanitizeLimit } from '@shared/pagination/pagination';
 import { GetMenuByBusinessUnitUseCase } from '../../../application/use-cases/get-menu-by-business-unit.use-case';
@@ -59,7 +62,11 @@ export class MenuItemsController {
   }
 
   // Static route declared before :menuItemId so it is not captured as a param.
-  @Roles(['ADMIN', 'MANAGER'])
+  // Guard is per-method (not class-wide) so the @Public read routes stay open;
+  // they carry no principal and would trip the guard otherwise.
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
+  @ScopedToBusinessUnit('businessUnitId')
   @Get('manage')
   @ApiOperation({ summary: 'List the full menu for management, including unavailable items' })
   @ApiOkResponse({ type: PaginatedMenuItemResponseDto })
@@ -94,7 +101,9 @@ export class MenuItemsController {
     return PublicMenuItemResponseDto.fromReadModel(readModel);
   }
 
-  @Roles(['ADMIN', 'MANAGER'])
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
+  @ScopedToBusinessUnit('businessUnitId')
   @Post()
   @ApiOperation({ summary: 'Add a product to a business unit menu' })
   @ApiCreatedResponse({ type: MenuItemResponseDto })
@@ -114,7 +123,9 @@ export class MenuItemsController {
     return MenuItemResponseDto.fromEntity(item);
   }
 
-  @Roles(['ADMIN', 'MANAGER'])
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
+  @ScopedToBusinessUnit('businessUnitId')
   @Patch(':menuItemId')
   @ApiOperation({ summary: 'Update a menu item price and/or availability' })
   @ApiOkResponse({ type: MenuItemResponseDto })
@@ -133,7 +144,9 @@ export class MenuItemsController {
     return MenuItemResponseDto.fromEntity(item);
   }
 
-  @Roles(['ADMIN', 'MANAGER'])
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
+  @ScopedToBusinessUnit('businessUnitId')
   @Patch(':menuItemId/deactivate')
   @ApiOperation({ summary: 'Deactivate a menu item (set isAvailable to false)' })
   @ApiOkResponse({ type: MenuItemResponseDto })

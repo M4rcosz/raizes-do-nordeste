@@ -26,6 +26,7 @@ const user: JwtPayload = {
   sub: 'user-1',
   username: 'tester',
   role: UserRole.CUSTOMER,
+  businessUnitId: 'bu-1',
   iat: 0,
   exp: 0,
 };

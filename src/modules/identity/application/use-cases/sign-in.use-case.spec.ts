@@ -116,6 +116,7 @@ describe('SignInUseCase', () => {
         sub: 'user-1',
         username: 'panic',
         role: 'KITCHEN',
+        businessUnitId: 'bu-1',
       });
       expect(result).toEqual({ access_token: 'signed.jwt.token', refresh_token: 'refresh-plain' });
 

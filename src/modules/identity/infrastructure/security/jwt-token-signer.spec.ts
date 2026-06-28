@@ -26,7 +26,12 @@ describe('JwtTokenSigner', () => {
   describe('sign', () => {
     it('should delegate to JwtService.signAsync with the payload and return its result', async () => {
       signAsync.mockResolvedValue('signed.jwt.token');
-      const payload: JwtPayloadSign = { sub: 'user-1', username: 'panic', role: 'KITCHEN' };
+      const payload: JwtPayloadSign = {
+        sub: 'user-1',
+        username: 'panic',
+        role: 'KITCHEN',
+        businessUnitId: 'bu-1',
+      };
 
       const token = await signer.sign(payload);
 

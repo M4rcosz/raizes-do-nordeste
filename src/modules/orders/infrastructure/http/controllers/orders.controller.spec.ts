@@ -36,6 +36,7 @@ const jwt = (sub: string, role: UserRole): JwtPayload => ({
   sub,
   username: 'u',
   role,
+  businessUnitId: 'bu-1',
   iat: 0,
   exp: 0,
 });

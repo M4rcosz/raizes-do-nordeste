@@ -42,6 +42,7 @@ describe('AuthGuard', () => {
     sub: 'user-1',
     username: 'panic',
     role: 'KITCHEN',
+    businessUnitId: 'bu-1',
     iat: 0,
     exp: 0,
   };

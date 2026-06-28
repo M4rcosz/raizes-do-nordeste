@@ -88,7 +88,12 @@ export class SignInUseCase {
       metadata: { username },
     });
 
-    const payload = { sub: user.id, username: user.username, role: user.role };
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      role: user.role,
+      businessUnitId: user.businessUnitId,
+    };
     const accessToken = await this.tokenSigner.sign(payload);
 
     // Issue and persist a fresh refresh token. Only the hash is stored; the
