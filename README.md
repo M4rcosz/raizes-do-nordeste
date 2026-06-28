@@ -258,11 +258,11 @@ src/
 │   │   └── prisma/               ← @Global() PrismaService + lifecycle
 │   └── pagination/               ← Cursor-pagination types and DTO envelope
 └── modules/                      ← One folder per bounded context
-    ├── audit/                    ← Cross-cutting audit logging
+    ├── audit/                    ← Cross-cutting audit logging + ADMIN read endpoint
     │   ├── audit.module.ts
-    │   ├── domain/               ← AuditAction const, AuditLogRepository
-    │   ├── application/          ← AuditService (impl), AuditLogger port, errors
-    │   └── infrastructure/       ← PrismaAuditLogRepository
+    │   ├── domain/               ← AuditLog entity, AuditAction const, AuditLogRepository (+findMany)
+    │   ├── application/          ← AuditService (impl), AuditLogger port, ListAuditLogsUseCase, errors
+    │   └── infrastructure/       ← PrismaAuditLogRepository, AuditLogsController, DTOs
     ├── business-units/           ← Business Units, Products, Categories, Menu Items
     │   ├── business-units.module.ts
     │   ├── domain/               ← Pure rules (no framework imports)
@@ -544,8 +544,9 @@ routes additionally require a role via `@Roles()` - `POST /api/products` needs
 `internal` reads need `ADMIN`/`MANAGER`, menu management (`POST`, `PATCH` and the
 internal manage list under `/api/business-units/:id/menu`) needs
 `ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all
-promotion routes need `ADMIN`/`MANAGER`, order listing/status needs staff, and
-`loyalty/me` needs `CUSTOMER`. `POST /api/orders` needs a JWT but no
+promotion routes need `ADMIN`/`MANAGER`, order listing/status needs staff,
+`loyalty/me` needs `CUSTOMER`, and `GET /api/audit-logs` needs `ADMIN`.
+`POST /api/orders` needs a JWT but no
 fixed role: the requirement is enforced per request by the `orderChannel` policy
 (see [Orders](#orders)). A protected route returns `401` when the JWT is missing
 or invalid and `403` when the role is insufficient.
@@ -1140,6 +1141,25 @@ For `PERCENTAGE`, `discountValue` is the percent as a decimal (`"10.00"` = 10%);
 for `FIXED_AMOUNT` it is the BRL amount. Money fields are decimal strings,
 mirroring the rest of the API.
 
+### Audit Logs
+
+| Method | Path              | Auth  | Description                                                           |
+| ------ | ----------------- | ----- | -------------------------------------------------------------------- |
+| `GET`  | `/api/audit-logs` | ADMIN | List audit log entries (cursor-paginated). All query params optional. |
+
+#### Query parameters
+
+| Parameter  | Type   | Description                                              |
+| ---------- | ------ | ------------------------------------------------------- |
+| `from`     | string | ISO-8601 date-time lower bound (inclusive).             |
+| `to`       | string | ISO-8601 date-time upper bound (inclusive).             |
+| `userId`   | string | UUID of the user who triggered the event.               |
+| `action`   | string | Audit action name (e.g. `LOGIN_SUCCESS`).               |
+| `entity`   | string | Entity type name (e.g. `Order`).                        |
+| `entityId` | string | UUID of the affected entity.                            |
+
+Response uses the standard cursor-paginated envelope `{ data: [...], meta: { ... } }`.
+
 ### Error responses
 
 Every error passes through the global exception filter and is returned with a
@@ -1257,7 +1277,9 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
       promotions and inventory; JWT claim pending).
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port injected
-      into the login, order, payment and inventory flows.
+      into the login, order, payment and inventory flows, and `GET /api/audit-logs`
+      (ADMIN-only, cursor-paginated, filterable by `from`/`to`, `userId`, `action`,
+      `entity` and `entityId`).
 - [x] **Orders** - channel-aware creation, cursor-paginated reads, owner-scoped
       single read, and a status state machine (optimistic-locked transitions).
       Decimal-string money, server-side total, `unitPrice` anti-tampering and
