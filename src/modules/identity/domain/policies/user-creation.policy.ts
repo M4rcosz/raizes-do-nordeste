@@ -1,9 +1,9 @@
 import { UserRole } from '../value-objects/user-role';
 
-// Pure authorization policy: decides whether an actor with `actorRole` may create
-// or deactivate a user holding `targetRole`. No I/O, no framework. The use cases
-// apply this and translate a false into an application FORBIDDEN error; @Roles on
-// the controller is only the coarse filter (it cannot see the target's role).
+// Pure authorization policy: decides whether an actor with `actorRole` may create,
+// deactivate, or reactivate a user holding `targetRole`. No I/O, no framework.
+// Use cases apply this and translate false into a FORBIDDEN error; @Roles on the
+// controller is only the coarse filter (it cannot see the target role).
 //
 // Rules:
 //   ADMIN    -> any role (including ADMIN)

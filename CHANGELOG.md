@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file. See [commit
 
 * **business-units:** add per-unit menu management (public cursor-paginated menu listing, public single-item read, internal management view, add/update/deactivate use cases, required custom pricing via Money VO)
 * **identity:** add refresh token rotation with reuse detection and logout
+* **identity:** add user reactivation endpoint (ADMIN/MANAGER) and self-update endpoint (authenticated users can edit their own name/phone)
 
 
 ## [1.2.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.0.0...v1.2.0) (2026-06-22)

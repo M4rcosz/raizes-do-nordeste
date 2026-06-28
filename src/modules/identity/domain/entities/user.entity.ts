@@ -58,6 +58,28 @@ export class User {
   }
 
   /**
+   * Returns a new User with name and/or phone replaced. All other fields
+   * (id, email, passwordHash, role, isActive, timestamps, ...) are carried
+   * over unchanged. updatedAt is NOT bumped here; persistence does that.
+   */
+  withProfile(fields: { name?: string; phone?: string }): User {
+    return new User(
+      this.id,
+      this.businessUnitId,
+      this.username,
+      fields.name ?? this.name,
+      this.email,
+      this.passwordHash,
+      fields.phone !== undefined ? fields.phone : this.phone,
+      this.createdAt,
+      this.updatedAt,
+      this.updatedBy,
+      this.role,
+      this.isActive,
+    );
+  }
+
+  /**
    * Flat snapshot the repository persists. Lives here so the password hash never
    * leaves the entity through a public getter; the repo writes these fields as-is.
    */

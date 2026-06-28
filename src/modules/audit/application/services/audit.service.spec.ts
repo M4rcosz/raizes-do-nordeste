@@ -81,6 +81,29 @@ describe('AuditService', () => {
       });
     });
 
+    it('should redact phone and email (PII defense-in-depth)', async () => {
+      await service.log({
+        userId: 'user-1',
+        action: AUDIT_ACTIONS.USER_UPDATED,
+        entity: 'User',
+        entityId: 'user-1',
+        metadata: {
+          updatedFields: ['phone', 'name'],
+          phone: '+5581999999999',
+          email: 'maria@example.com',
+          name: 'Maria Souza',
+        },
+      });
+
+      const persisted = create.mock.calls[0]?.[0];
+      expect(persisted.metadata).toEqual({
+        updatedFields: ['phone', 'name'],
+        phone: '[REDACTED]',
+        email: '[REDACTED]',
+        name: 'Maria Souza',
+      });
+    });
+
     it('should redact sensitive keys regardless of casing', async () => {
       await service.log({
         userId: null,

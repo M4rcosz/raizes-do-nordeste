@@ -139,6 +139,54 @@ describe('User', () => {
     });
   });
 
+  describe('withProfile', () => {
+    it('should return a new instance with name updated', () => {
+      const user = buildUser();
+      const updated = user.withProfile({ name: 'Novo Nome' });
+
+      expect(updated.name).toBe('Novo Nome');
+      expect(updated).not.toBe(user);
+    });
+
+    it('should return a new instance with phone updated', () => {
+      const user = buildUser();
+      const updated = user.withProfile({ phone: '34911112222' });
+
+      expect(updated.phone).toBe('34911112222');
+      expect(updated.name).toBe(user.name);
+    });
+
+    it('should update both name and phone at once', () => {
+      const user = buildUser();
+      const updated = user.withProfile({ name: 'Outro Nome', phone: '34933334444' });
+
+      expect(updated.name).toBe('Outro Nome');
+      expect(updated.phone).toBe('34933334444');
+    });
+
+    it('should not alter email, role, isActive, or other identity fields', () => {
+      const user = buildUser();
+      const updated = user.withProfile({ name: 'Caminho Novo' });
+
+      expect(updated.id).toBe(user.id);
+      expect(updated.username).toBe(user.username);
+      expect(updated.email).toBe(user.email);
+      expect(updated.role).toBe(user.role);
+      expect(updated.isActive).toBe(user.isActive);
+      expect(updated.businessUnitId).toBe(user.businessUnitId);
+      expect(updated.createdAt).toBe(user.createdAt);
+      expect(updated.toCreateInput().passwordHash).toBe(user.toCreateInput().passwordHash);
+    });
+
+    it('should preserve name and phone when neither is provided', () => {
+      const user = buildUser();
+      const updated = user.withProfile({});
+
+      expect(updated.name).toBe(user.name);
+      expect(updated.phone).toBe(user.phone);
+    });
+  });
+
   describe('verifyPasswordOrDecoy', () => {
     let verify: jest.MockedFunction<PasswordHasher['verify']>;
     let hasher: PasswordHasher;

@@ -20,6 +20,9 @@ const SENSITIVE_KEYS = new Set([
   'authorization',
   'secret',
   'cpf',
+  // PII: defense-in-depth so metadata logged from profile updates never leaks contact data.
+  'phone',
+  'email',
 ]);
 
 @Injectable()

@@ -614,7 +614,9 @@ on its own short TTL. Rate-limited to 5 requests/min.
 | ------- | ----------------------------- | --------------- | --------------------------------------------------------------------- |
 | `POST`  | `/api/users/register`         | Public          | Self-register as a `CUSTOMER`. The role is forced server-side - the body has no role field, so a client cannot grant itself a privileged role. Rate-limited to 5 requests/min. |
 | `POST`  | `/api/users`                  | ADMIN / MANAGER | Create a staff or admin user. The target role is gated by a domain policy (see below). |
+| `PATCH` | `/api/users/me`               | Bearer          | Update the authenticated user's own `name` and/or `phone`. At least one field is required; password and email are out of scope (dedicated endpoints later). Returns `200`. |
 | `PATCH` | `/api/users/:id/deactivate`   | ADMIN / MANAGER | Deactivate a user (`is_active = false`, not a soft-delete). Returns `200`. |
+| `PATCH` | `/api/users/:id/reactivate`   | ADMIN / MANAGER | Reactivate a user (`is_active = true`). Same target-role policy as deactivate. Returns `200`. |
 
 #### Who may create / deactivate whom (`UserCreationPolicy`)
 

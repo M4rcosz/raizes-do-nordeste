@@ -1,28 +1,32 @@
 import { beforeEach, describe, expect, it } from '@jest/globals';
-import { DeactivateUserUseCase } from './deactivate-user.use-case';
+import { ReactivateUserUseCase } from './reactivate-user.use-case';
 import { User } from '../../domain/entities/user.entity';
-import { CreateUserInput, UserRepository } from '../../domain/repositories/user.repository';
+import {
+  CreateUserInput,
+  UpdateProfileInput,
+  UserRepository,
+} from '../../domain/repositories/user.repository';
 import { UserRole } from '../../domain/value-objects/user-role';
 import { UserCreationForbiddenError } from '../errors/user-creation-forbidden.error';
-import { UserDeactivationConflictError } from '../errors/user-deactivation-conflict.error';
+import { UserReactivationConflictError } from '../errors/user-reactivation-conflict.error';
 import { UserNotFoundError } from '../errors/user-not-found.error';
 import { AuditLogInput, AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
-// In-memory fake. deactivateIfRole honors the (role, isActive) guard like the real
-// conditional UPDATE: it only flips when the stored role still matches expectedRole
-// and the user is active, returning null otherwise (stale snapshot).
+// In-memory fake. reactivateIfRole honors the (role, isActive=false) guard like
+// the real conditional UPDATE: it only flips when the stored role still matches
+// expectedRole and the user is inactive, returning null otherwise.
 class FakeUserRepository implements UserRepository {
   readonly store = new Map<string, User>();
-  readonly deactivateCalls: { id: string; expectedRole: UserRole; updatedById: string | null }[] =
+  readonly reactivateCalls: { id: string; expectedRole: UserRole; updatedById: string | null }[] =
     [];
 
-  seed(id: string, role: UserRole, isActive = true): void {
+  // Seeds a user as inactive by default (the target state for reactivation).
+  seed(id: string, role: UserRole, isActive = false): void {
     this.store.set(id, this.build(id, role, isActive, null));
   }
 
-  // Arms a concurrent role change that lands AFTER the next findById read but
-  // BEFORE the guarded deactivateIfRole write, reproducing the read-then-write race.
+  // Arms a concurrent role change that lands AFTER findById but BEFORE the write.
   private pendingRoleChange?: { id: string; role: UserRole };
 
   changeRoleAfterRead(id: string, role: UserRole): void {
@@ -35,7 +39,6 @@ class FakeUserRepository implements UserRepository {
 
   findById(id: string): Promise<User | null> {
     const snapshot = this.store.get(id) ?? null;
-    // Apply the armed change now: the use case has just read the old snapshot.
     if (this.pendingRoleChange && this.pendingRoleChange.id === id) {
       const current = this.store.get(id);
       if (current) {
@@ -53,27 +56,32 @@ class FakeUserRepository implements UserRepository {
     return Promise.reject(new Error('not used'));
   }
 
-  reactivateIfRole(): Promise<User | null> {
+  deactivateIfRole(): Promise<User | null> {
     return Promise.reject(new Error('not used'));
   }
 
-  updateProfile(): Promise<User | null> {
-    return Promise.reject(new Error('not used'));
-  }
-
-  deactivateIfRole(
+  reactivateIfRole(
     id: string,
     expectedRole: UserRole,
     updatedById: string | null,
   ): Promise<User | null> {
-    this.deactivateCalls.push({ id, expectedRole, updatedById });
+    this.reactivateCalls.push({ id, expectedRole, updatedById });
     const current = this.store.get(id);
-    if (!current || current.role !== expectedRole || !current.isActive) {
+    // Guard: must exist, must match expectedRole, must be inactive.
+    if (!current || current.role !== expectedRole || current.isActive) {
       return Promise.resolve(null);
     }
-    const updated = this.build(id, current.role, false, updatedById);
+    const updated = this.build(id, current.role, true, updatedById);
     this.store.set(id, updated);
     return Promise.resolve(updated);
+  }
+
+  updateProfile(
+    _id: string,
+    _data: UpdateProfileInput,
+    _updatedById: string,
+  ): Promise<User | null> {
+    return Promise.reject(new Error('not used'));
   }
 
   private build(id: string, role: UserRole, isActive: boolean, updatedById: string | null): User {
@@ -103,15 +111,15 @@ class FakeAuditLogger implements AuditLogger {
   }
 }
 
-describe('DeactivateUserUseCase', () => {
+describe('ReactivateUserUseCase', () => {
   let repo: FakeUserRepository;
   let audit: FakeAuditLogger;
-  let useCase: DeactivateUserUseCase;
+  let useCase: ReactivateUserUseCase;
 
   beforeEach(() => {
     repo = new FakeUserRepository();
     audit = new FakeAuditLogger();
-    useCase = new DeactivateUserUseCase(repo, audit);
+    useCase = new ReactivateUserUseCase(repo, audit);
   });
 
   describe('ADMIN actor', () => {
@@ -123,34 +131,25 @@ describe('DeactivateUserUseCase', () => {
       UserRole.ATTENDANT,
       UserRole.KITCHEN,
       UserRole.CUSTOMER,
-    ])('should deactivate a %s target', async (role) => {
-      repo.seed('target-1', role);
+    ])('should reactivate a %s target', async (role) => {
+      repo.seed('target-1', role, false);
 
       const updated = await useCase.execute(admin, 'target-1');
 
-      expect(updated.isActive).toBe(false);
-      expect(repo.deactivateCalls).toEqual([
+      expect(updated.isActive).toBe(true);
+      expect(repo.reactivateCalls).toEqual([
         { id: 'target-1', expectedRole: role, updatedById: 'admin-1' },
       ]);
     });
 
-    it('should block self-deactivation before touching the repo', async () => {
-      repo.seed('admin-1', UserRole.ADMIN);
-
-      await expect(useCase.execute(admin, 'admin-1')).rejects.toBeInstanceOf(
-        UserCreationForbiddenError,
-      );
-      expect(repo.deactivateCalls).toHaveLength(0);
-    });
-
-    it('should audit USER_DEACTIVATED under the actor', async () => {
-      repo.seed('target-1', UserRole.ATTENDANT);
+    it('should audit USER_REACTIVATED under the actor', async () => {
+      repo.seed('target-1', UserRole.ATTENDANT, false);
 
       await useCase.execute(admin, 'target-1');
 
       expect(audit.entries[0]).toMatchObject({
         userId: 'admin-1',
-        action: AUDIT_ACTIONS.USER_DEACTIVATED,
+        action: AUDIT_ACTIONS.USER_REACTIVATED,
         entity: 'User',
         entityId: 'target-1',
       });
@@ -161,25 +160,25 @@ describe('DeactivateUserUseCase', () => {
     const manager = { id: 'mgr-1', role: UserRole.MANAGER };
 
     it.each([UserRole.ATTENDANT, UserRole.KITCHEN])(
-      'should deactivate a %s target',
+      'should reactivate a %s target',
       async (role) => {
-        repo.seed('target-1', role);
+        repo.seed('target-1', role, false);
 
         const updated = await useCase.execute(manager, 'target-1');
 
-        expect(updated.isActive).toBe(false);
+        expect(updated.isActive).toBe(true);
       },
     );
 
     it.each([UserRole.ADMIN, UserRole.MANAGER, UserRole.CUSTOMER])(
-      'should reject deactivating a %s target with FORBIDDEN',
+      'should reject reactivating a %s target with FORBIDDEN',
       async (role) => {
-        repo.seed('target-1', role);
+        repo.seed('target-1', role, false);
 
         await expect(useCase.execute(manager, 'target-1')).rejects.toBeInstanceOf(
           UserCreationForbiddenError,
         );
-        expect(repo.deactivateCalls).toHaveLength(0);
+        expect(repo.reactivateCalls).toHaveLength(0);
       },
     );
   });
@@ -188,24 +187,33 @@ describe('DeactivateUserUseCase', () => {
     const admin = { id: 'admin-1', role: UserRole.ADMIN };
 
     await expect(useCase.execute(admin, 'ghost')).rejects.toBeInstanceOf(UserNotFoundError);
-    expect(repo.deactivateCalls).toHaveLength(0);
+    expect(repo.reactivateCalls).toHaveLength(0);
   });
 
   it('should throw CONFLICT when the role changes between read and write', async () => {
-    // MANAGER reads+authorizes against ATTENDANT, but the row becomes ADMIN after
-    // that read and before the guarded write. The conditional UPDATE matches nothing
-    // -> the authorization was decided on a stale snapshot.
+    // MANAGER reads+authorizes against ATTENDANT, but the row becomes ADMIN
+    // after that read and before the guarded write.
     const manager = { id: 'mgr-1', role: UserRole.MANAGER };
-    repo.seed('target-1', UserRole.ATTENDANT);
+    repo.seed('target-1', UserRole.ATTENDANT, false);
     repo.changeRoleAfterRead('target-1', UserRole.ADMIN);
 
     await expect(useCase.execute(manager, 'target-1')).rejects.toBeInstanceOf(
-      UserDeactivationConflictError,
+      UserReactivationConflictError,
     );
-    // The write was attempted against the authorized role and rejected by the guard.
-    expect(repo.deactivateCalls).toEqual([
+    expect(repo.reactivateCalls).toEqual([
       { id: 'target-1', expectedRole: UserRole.ATTENDANT, updatedById: 'mgr-1' },
     ]);
-    expect(repo.store.get('target-1')?.isActive).toBe(true);
+    expect(repo.store.get('target-1')?.isActive).toBe(false);
+  });
+
+  it('should throw CONFLICT when the user is already active (guard isActive:false)', async () => {
+    const admin = { id: 'admin-1', role: UserRole.ADMIN };
+    // Seed as already active.
+    repo.seed('target-1', UserRole.ATTENDANT, true);
+
+    await expect(useCase.execute(admin, 'target-1')).rejects.toBeInstanceOf(
+      UserReactivationConflictError,
+    );
+    expect(repo.reactivateCalls).toHaveLength(1);
   });
 });
