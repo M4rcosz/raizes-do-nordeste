@@ -2,18 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [Unreleased]
+## [1.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.0.0...v1.3.0) (2026-06-28)
 
 
 ### Features
 
-* **auth:** add unit-scope guard (`UnitScopeGuard` + `@ScopedToBusinessUnit()`) that derives `businessUnitId` from the JWT claim and validates it against the route param; closes unit-scope IDOR on inventory, promotions and menu management routes; `businessUnitId` claim added to JWT payload on sign-in and refresh
-* **audit:** add ADMIN read endpoint for audit logs (`GET /api/audit-logs`, cursor-paginated, filterable by date range, userId, action, entity and entityId)
-* **business-units:** add per-unit menu management (public cursor-paginated menu listing, public single-item read, internal management view, add/update/deactivate use cases, required custom pricing via Money VO)
-* **identity:** add self-service password change endpoint (re-verifies current password, strong-password validation, revokes all active refresh tokens)
-* **identity:** add refresh token rotation with reuse detection and logout
-* **identity:** add user reactivation endpoint (ADMIN/MANAGER) and self-update endpoint (authenticated users can edit their own name/phone)
+* **audit:** add audit logs endpoint with cursor pagination and filters ([84088fb](https://github.com/M4rcosz/raizes-do-nordeste/commit/84088fbabcbcc914422b3db66b2088f029ed15f4))
+* **auth:** add unit-scope guard and businessUnitId JWT claim ([e01ed7b](https://github.com/M4rcosz/raizes-do-nordeste/commit/e01ed7b906198372bc147da466473f8c02dbd1a8))
+* **business-units:** add BusinessUnit entity with CRUD and public endpoints ([ab0b168](https://github.com/M4rcosz/raizes-do-nordeste/commit/ab0b1686946e1473c042f1878dce8058751cd603))
+* **business-units:** add per-unit menu management ([9bfe4c8](https://github.com/M4rcosz/raizes-do-nordeste/commit/9bfe4c8c34ba92a7c0553ef91516fe1cb0ddfaf0))
+* **identity:** add refresh token rotation and logout ([98d5fba](https://github.com/M4rcosz/raizes-do-nordeste/commit/98d5fba209995371552418355678a5f689160e61))
+* **identity:** add self-service password change endpoint ([0111fb3](https://github.com/M4rcosz/raizes-do-nordeste/commit/0111fb3d736629f12f888210b3e20117b670d190))
+* **identity:** add user creation and deactivation ([b84dfb2](https://github.com/M4rcosz/raizes-do-nordeste/commit/b84dfb29db03faa830185fe33190932f1de19e5e))
+* **identity:** add user reactivation and self-profile update endpoints ([e881333](https://github.com/M4rcosz/raizes-do-nordeste/commit/e88133357b8b8f2e4e57a31f2c8c6e44b14a249f))
 
+
+### Refactoring
+
+* **auth:** treat CUSTOMER as unit-unbound in UnitScopeGuard ([1558a76](https://github.com/M4rcosz/raizes-do-nordeste/commit/1558a76008e080bcc0983108c0bf5fa9eb5d15bb))
+
+
+### Documentation
+
+* use dynamic package version badge in README ([c8daa74](https://github.com/M4rcosz/raizes-do-nordeste/commit/c8daa74aee6d3880b893016dc863bdc55b3ea308))
 
 ## [1.2.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.0.0...v1.2.0) (2026-06-22)
 
