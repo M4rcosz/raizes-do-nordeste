@@ -23,6 +23,13 @@ export interface RefreshTokenRepository {
    * Idempotent: already-revoked rows are left as-is.
    */
   revokeChainFrom(tokenId: string, tx?: TransactionContext): Promise<void>;
+
+  /**
+   * Revokes every still-active token of a user in one write (revokedAt IS NULL ->
+   * now). Used after a password change to force re-authentication everywhere. `tx`
+   * shares the password-change atomic unit. Returns the number of rows revoked.
+   */
+  revokeAllActiveForUser(userId: string, tx?: TransactionContext): Promise<number>;
 }
 
 export const REFRESH_TOKEN_REPOSITORY = Symbol('RefreshTokenRepository');

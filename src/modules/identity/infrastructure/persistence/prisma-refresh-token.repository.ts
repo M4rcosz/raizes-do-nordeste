@@ -62,6 +62,17 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
     }
   }
 
+  async revokeAllActiveForUser(userId: string, tx?: TransactionContext): Promise<number> {
+    const db = this.client(tx);
+    // Single bulk write over every live token of the user. Already-revoked rows
+    // are excluded by the guard, so the count reflects only freshly killed ones.
+    const { count } = await db.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return count;
+  }
+
   // Use the open transaction client when threaded, otherwise the base connection.
   private client(tx?: TransactionContext): Prisma.TransactionClient {
     return (tx as Prisma.TransactionClient | undefined) ?? this.prisma;

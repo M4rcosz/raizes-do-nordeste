@@ -1,3 +1,4 @@
+import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { User } from '../entities/user.entity';
 import { UserRole } from '../value-objects/user-role';
 
@@ -58,6 +59,17 @@ export interface UserRepository {
    * Throws UserAlreadyExistsError on a phone unique collision (P2002).
    */
   updateProfile(id: string, data: UpdateProfileInput, updatedById: string): Promise<User | null>;
+  /**
+   * Replaces the password hash for the given user id, recording who changed it.
+   * `tx` lets it share the caller's atomic unit (hash rotation + token revoke).
+   * Returns the updated user, or null if no row matched (deleted between read and write).
+   */
+  updatePasswordHash(
+    id: string,
+    newPasswordHash: string,
+    updatedById: string,
+    tx?: TransactionContext,
+  ): Promise<User | null>;
 }
 
 export const USER_REPOSITORY = Symbol('UserRepository');

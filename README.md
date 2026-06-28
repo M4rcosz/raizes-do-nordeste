@@ -614,9 +614,30 @@ on its own short TTL. Rate-limited to 5 requests/min.
 | ------- | ----------------------------- | --------------- | --------------------------------------------------------------------- |
 | `POST`  | `/api/users/register`         | Public          | Self-register as a `CUSTOMER`. The role is forced server-side - the body has no role field, so a client cannot grant itself a privileged role. Rate-limited to 5 requests/min. |
 | `POST`  | `/api/users`                  | ADMIN / MANAGER | Create a staff or admin user. The target role is gated by a domain policy (see below). |
-| `PATCH` | `/api/users/me`               | Bearer          | Update the authenticated user's own `name` and/or `phone`. At least one field is required; password and email are out of scope (dedicated endpoints later). Returns `200`. |
+| `PATCH` | `/api/users/me`               | Bearer          | Update the authenticated user's own `name` and/or `phone`. At least one field is required; email is out of scope (dedicated endpoint later), password has its own endpoint below. Returns `200`. |
+| `PATCH` | `/api/users/me/password`      | Bearer          | Change the authenticated user's own password. `currentPassword` and `newPassword` are required; the new one must be >= 10 chars and meet the strong-password criteria. On success all active refresh tokens are revoked. Returns `204 No Content`. Rate-limited to 5 requests/min. |
 | `PATCH` | `/api/users/:id/deactivate`   | ADMIN / MANAGER | Deactivate a user (`is_active = false`, not a soft-delete). Returns `200`. |
 | `PATCH` | `/api/users/:id/reactivate`   | ADMIN / MANAGER | Reactivate a user (`is_active = true`). Same target-role policy as deactivate. Returns `200`. |
+
+#### Changing your own password (`PATCH /api/users/me/password`)
+
+Authenticated self-service; the target user is always derived from the JWT
+(`actor.sub`), never from the body or a route param, so you can only change your
+own password. Both fields are required:
+
+```json
+{ "currentPassword": "OldPass!2024", "newPassword": "N3w-Str0ng-Pass!" }
+```
+
+`newPassword` must be >= 10 chars (<= 128) and combine at least 3 of: lowercase,
+uppercase, digit, symbol. It must also differ from the current password. The
+current password is re-verified before any write (mitigates a stolen access
+token), and inactive accounts are rejected with the same generic error as a
+wrong password. On success the new hash is persisted and **all** active refresh
+tokens are revoked in the same transaction, forcing re-authentication on every
+device; the action is audited as `USER_PASSWORD_CHANGED` (never logging the
+password). Wrong/inactive current credentials return `401`; reusing the same
+password returns `422`.
 
 #### Who may create / deactivate whom (`UserCreationPolicy`)
 
