@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file. See [commit
 ### Features
 
 * **business-units:** add per-unit menu management (public cursor-paginated menu listing, public single-item read, internal management view, add/update/deactivate use cases, required custom pricing via Money VO)
+* **identity:** add self-service password change endpoint (re-verifies current password, strong-password validation, revokes all active refresh tokens)
 * **identity:** add refresh token rotation with reuse detection and logout
 * **identity:** add user reactivation endpoint (ADMIN/MANAGER) and self-update endpoint (authenticated users can edit their own name/phone)
 

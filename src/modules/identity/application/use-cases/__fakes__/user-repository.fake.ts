@@ -17,6 +17,8 @@ export function createFakeUserRepository(overrides?: Partial<UserRepository>): U
     reactivateIfRole: () =>
       Promise.reject(new Error('FakeUserRepository.reactivateIfRole not stubbed')),
     updateProfile: () => Promise.reject(new Error('FakeUserRepository.updateProfile not stubbed')),
+    updatePasswordHash: () =>
+      Promise.reject(new Error('FakeUserRepository.updatePasswordHash not stubbed')),
     ...overrides,
   };
 }

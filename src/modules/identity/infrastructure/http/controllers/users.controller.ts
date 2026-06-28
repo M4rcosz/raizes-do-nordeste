@@ -3,12 +3,16 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { ChangePasswordUseCase } from '@modules/identity/application/use-cases/change-password.use-case';
 import { CreateUserUseCase } from '@modules/identity/application/use-cases/create-user.use-case';
 import { DeactivateUserUseCase } from '@modules/identity/application/use-cases/deactivate-user.use-case';
 import { ReactivateUserUseCase } from '@modules/identity/application/use-cases/reactivate-user.use-case';
@@ -18,6 +22,7 @@ import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 import { Public } from '@shared/auth/public.decorator';
 import { Roles } from '@shared/auth/roles.decorator';
+import { ChangeMyPasswordDto } from '../dto/change-my-password-request.dto';
 import { CreateUserDto } from '../dto/create-user-request.dto';
 import { RegisterCustomerDto } from '../dto/register-customer-request.dto';
 import { UpdateMyProfileDto } from '../dto/update-my-profile-request.dto';
@@ -33,6 +38,7 @@ export class UsersController {
     private readonly deactivateUser: DeactivateUserUseCase,
     private readonly reactivateUser: ReactivateUserUseCase,
     private readonly updateUserProfile: UpdateUserProfileUseCase,
+    private readonly changePassword: ChangePasswordUseCase,
   ) {}
 
   // Stricter limit than the global one to slow self-registration abuse.
@@ -76,6 +82,23 @@ export class UsersController {
   ): Promise<UserResponseDto> {
     const user = await this.updateUserProfile.execute(actor.sub, body);
     return UserResponseDto.fromEntity(user);
+  }
+
+  // Declared before any :id route so /me/password matches literally. Stricter
+  // limit than the global one to slow online guessing against currentPassword.
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @Patch('me/password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Change own password' })
+  @ApiNoContentResponse({ description: 'Password changed; all sessions revoked' })
+  @ApiUnauthorizedResponse({ description: 'Current password is incorrect' })
+  @ApiUnprocessableEntityResponse({ description: 'New password equals the current one' })
+  @ApiNotFoundResponse({ description: 'Authenticated user not found' })
+  async changeMyPassword(
+    @CurrentUser() actor: JwtPayload,
+    @Body() body: ChangeMyPasswordDto,
+  ): Promise<void> {
+    await this.changePassword.execute(actor.sub, body);
   }
 
   @Roles(['ADMIN', 'MANAGER'])

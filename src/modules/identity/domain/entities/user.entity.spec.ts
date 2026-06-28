@@ -187,6 +187,40 @@ describe('User', () => {
     });
   });
 
+  describe('withPasswordHash', () => {
+    it('should return a new instance with only the hash replaced', () => {
+      const user = buildUser({ passwordHash: 'old-hash' });
+      const updated = user.withPasswordHash('new-hash');
+
+      expect(updated).not.toBe(user);
+      expect(updated.toCreateInput().passwordHash).toBe('new-hash');
+    });
+
+    it('should preserve every other field', () => {
+      const user = buildUser({ passwordHash: 'old-hash' });
+      const updated = user.withPasswordHash('new-hash');
+
+      expect(updated.id).toBe(user.id);
+      expect(updated.businessUnitId).toBe(user.businessUnitId);
+      expect(updated.username).toBe(user.username);
+      expect(updated.name).toBe(user.name);
+      expect(updated.email).toBe(user.email);
+      expect(updated.phone).toBe(user.phone);
+      expect(updated.createdAt).toBe(user.createdAt);
+      expect(updated.updatedAt).toBe(user.updatedAt);
+      expect(updated.updatedBy).toBe(user.updatedBy);
+      expect(updated.role).toBe(user.role);
+      expect(updated.isActive).toBe(user.isActive);
+    });
+
+    it('should leave the original instance untouched', () => {
+      const user = buildUser({ passwordHash: 'old-hash' });
+      user.withPasswordHash('new-hash');
+
+      expect(user.toCreateInput().passwordHash).toBe('old-hash');
+    });
+  });
+
   describe('verifyPasswordOrDecoy', () => {
     let verify: jest.MockedFunction<PasswordHasher['verify']>;
     let hasher: PasswordHasher;

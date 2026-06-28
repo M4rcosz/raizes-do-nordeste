@@ -9,6 +9,7 @@ import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { Injectable } from '@nestjs/common';
 import { Prisma, type User as PrismaUser } from '@prisma/client';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
+import { TransactionContext } from '@shared/transaction/transaction-runner.port';
 
 @Injectable()
 export class PrismaUserRepository implements UserRepository {
@@ -124,6 +125,33 @@ export class PrismaUserRepository implements UserRepository {
       }
       throw err;
     }
+  }
+
+  async updatePasswordHash(
+    id: string,
+    newPasswordHash: string,
+    updatedById: string,
+    tx?: TransactionContext,
+  ): Promise<User | null> {
+    const db = this.client(tx);
+    try {
+      const updated = await db.user.update({
+        where: { id },
+        data: { passwordHash: newPasswordHash, updatedById },
+      });
+      return this.toEntity(updated);
+    } catch (err) {
+      // P2025 = record to update not found (deleted between read and write).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  // Use the open transaction client when threaded, otherwise the base connection.
+  private client(tx?: TransactionContext): Prisma.TransactionClient {
+    return (tx as Prisma.TransactionClient | undefined) ?? this.prisma;
   }
 
   private toEntity(raw: PrismaUser): User {

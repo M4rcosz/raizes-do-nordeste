@@ -80,6 +80,28 @@ export class User {
   }
 
   /**
+   * Returns a new User with only the password hash replaced. Every other field
+   * (id, profile, role, isActive, timestamps, ...) is carried over unchanged.
+   * updatedAt is NOT bumped here; persistence does that.
+   */
+  withPasswordHash(newPasswordHash: string): User {
+    return new User(
+      this.id,
+      this.businessUnitId,
+      this.username,
+      this.name,
+      this.email,
+      newPasswordHash,
+      this.phone,
+      this.createdAt,
+      this.updatedAt,
+      this.updatedBy,
+      this.role,
+      this.isActive,
+    );
+  }
+
+  /**
    * Flat snapshot the repository persists. Lives here so the password hash never
    * leaves the entity through a public getter; the repo writes these fields as-is.
    */
