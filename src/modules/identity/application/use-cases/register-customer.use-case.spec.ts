@@ -2,27 +2,16 @@ import { beforeEach, describe, expect, it } from '@jest/globals';
 import { RegisterCustomerUseCase } from './register-customer.use-case';
 import { User } from '../../domain/entities/user.entity';
 import { PasswordHasher } from '../../domain/ports/password-hasher.port';
-import { CreateUserInput, UserRepository } from '../../domain/repositories/user.repository';
+import { CreateUserInput } from '../../domain/repositories/user.repository';
 import { UserAlreadyExistsError } from '../errors/user-already-exists.error';
 import { AuditLogInput, AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
+import { createFakeUserRepository } from './__fakes__/user-repository.fake';
 
-// In-memory fake: real behavior, no mock framework. Rejects duplicate username/email/phone
-// with UserAlreadyExistsError (mirrors the Prisma P2002 translation).
-class FakeUserRepository implements UserRepository {
-  readonly created: CreateUserInput[] = [];
-  private readonly store = new Map<string, User>();
-
-  findByUsername(): Promise<User | null> {
-    return Promise.resolve(null);
-  }
-
-  findById(id: string): Promise<User | null> {
-    return Promise.resolve(this.store.get(id) ?? null);
-  }
-
-  create(input: CreateUserInput): Promise<User> {
-    const collision = [...this.store.values()].some(
+// In-memory store shared across override closures within one test run.
+function buildCollisionAwareCreate(store: Map<string, User>) {
+  return (input: CreateUserInput): Promise<User> => {
+    const collision = [...store.values()].some(
       (u) =>
         u.username === input.username ||
         (input.email !== null && u.email === input.email) ||
@@ -31,31 +20,27 @@ class FakeUserRepository implements UserRepository {
     if (collision) {
       return Promise.reject(new UserAlreadyExistsError());
     }
-    this.created.push(input);
-    this.store.set(input.id, this.rebuild(input));
-    return Promise.resolve(this.rebuild(input));
-  }
+    const user = rebuild(input);
+    store.set(input.id, user);
+    return Promise.resolve(user);
+  };
+}
 
-  deactivateIfRole(): Promise<User | null> {
-    return Promise.reject(new Error('not used'));
-  }
-
-  private rebuild(input: CreateUserInput): User {
-    return new User(
-      input.id,
-      input.businessUnitId,
-      input.username,
-      input.name,
-      input.email,
-      input.passwordHash,
-      input.phone,
-      input.createdAt,
-      input.updatedAt,
-      null,
-      input.role,
-      input.isActive,
-    );
-  }
+function rebuild(input: CreateUserInput): User {
+  return new User(
+    input.id,
+    input.businessUnitId,
+    input.username,
+    input.name,
+    input.email,
+    input.passwordHash,
+    input.phone,
+    input.createdAt,
+    input.updatedAt,
+    null,
+    input.role,
+    input.isActive,
+  );
 }
 
 class FakeHasher implements PasswordHasher {
@@ -83,42 +68,57 @@ class FakeAuditLogger implements AuditLogger {
 }
 
 describe('RegisterCustomerUseCase', () => {
-  let repo: FakeUserRepository;
+  let created: CreateUserInput[];
+  let store: Map<string, User>;
   let hasher: FakeHasher;
   let audit: FakeAuditLogger;
   let useCase: RegisterCustomerUseCase;
 
   beforeEach(() => {
-    repo = new FakeUserRepository();
+    created = [];
+    store = new Map<string, User>();
     hasher = new FakeHasher();
     audit = new FakeAuditLogger();
+
+    const repo = createFakeUserRepository({
+      findByUsername: () => Promise.resolve(null),
+      findById: (id: string) => Promise.resolve(store.get(id) ?? null),
+      create: (input: CreateUserInput) => {
+        const createFn = buildCollisionAwareCreate(store);
+        return createFn(input).then((u) => {
+          created.push(input);
+          return u;
+        });
+      },
+    });
+
     useCase = new RegisterCustomerUseCase(repo, hasher, audit);
   });
 
   it('should always persist role CUSTOMER', async () => {
     await useCase.execute({ name: 'Maria', username: 'maria', password: 'password123' });
 
-    expect(repo.created).toHaveLength(1);
-    expect(repo.created[0]?.role).toBe('CUSTOMER');
+    expect(created).toHaveLength(1);
+    expect(created[0]?.role).toBe('CUSTOMER');
   });
 
   it('should hash the password and never persist the plain text', async () => {
     await useCase.execute({ name: 'Maria', username: 'maria', password: 'password123' });
 
     expect(hasher.hashed).toEqual(['password123']);
-    expect(repo.created[0]?.passwordHash).toBe(await hasher.hash('password123'));
-    expect(repo.created[0]?.passwordHash).not.toContain('password123');
+    expect(created[0]?.passwordHash).toBe(await hasher.hash('password123'));
+    expect(created[0]?.passwordHash).not.toContain('password123');
   });
 
   it('should default businessUnitId to null for a self-registered customer', async () => {
     await useCase.execute({ name: 'Maria', username: 'maria', password: 'password123' });
 
-    expect(repo.created[0]?.businessUnitId).toBeNull();
-    expect(repo.created[0]?.isActive).toBe(true);
+    expect(created[0]?.businessUnitId).toBeNull();
+    expect(created[0]?.isActive).toBe(true);
   });
 
   it('should audit CUSTOMER_REGISTERED without leaking the password', async () => {
-    const created = await useCase.execute({
+    const result = await useCase.execute({
       name: 'Maria',
       username: 'maria',
       password: 'super-secret',
@@ -126,10 +126,10 @@ describe('RegisterCustomerUseCase', () => {
 
     expect(audit.entries).toHaveLength(1);
     expect(audit.entries[0]).toMatchObject({
-      userId: created.id,
+      userId: result.id,
       action: AUDIT_ACTIONS.CUSTOMER_REGISTERED,
       entity: 'User',
-      entityId: created.id,
+      entityId: result.id,
     });
     expect(JSON.stringify(audit.entries[0])).not.toContain('super-secret');
   });
@@ -146,10 +146,15 @@ describe('RegisterCustomerUseCase', () => {
     const throwingAudit: AuditLogger = {
       log: () => Promise.reject(new Error('audit down')),
     };
-    const uc = new RegisterCustomerUseCase(repo, hasher, throwingAudit);
+    const repoForThrow = createFakeUserRepository({
+      findByUsername: () => Promise.resolve(null),
+      findById: () => Promise.resolve(null),
+      create: (input: CreateUserInput) => Promise.resolve(rebuild(input)),
+    });
+    const uc = new RegisterCustomerUseCase(repoForThrow, hasher, throwingAudit);
 
-    const created = await uc.execute({ name: 'Maria', username: 'maria', password: 'password123' });
+    const result = await uc.execute({ name: 'Maria', username: 'maria', password: 'password123' });
 
-    expect(created.username).toBe('maria');
+    expect(result.username).toBe('maria');
   });
 });

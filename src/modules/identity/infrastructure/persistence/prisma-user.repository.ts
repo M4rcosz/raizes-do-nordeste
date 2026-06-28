@@ -1,6 +1,7 @@
 import { User } from '@modules/identity/domain/entities/user.entity';
 import {
   CreateUserInput,
+  UpdateProfileInput,
   UserRepository,
 } from '@modules/identity/domain/repositories/user.repository';
 import { UserAlreadyExistsError } from '@modules/identity/application/errors/user-already-exists.error';
@@ -74,6 +75,55 @@ export class PrismaUserRepository implements UserRepository {
     // Row was flipped under the guard; re-read to return the persisted snapshot.
     const updated = await this.prisma.user.findUnique({ where: { id } });
     return updated ? this.toEntity(updated) : null;
+  }
+
+  async reactivateIfRole(
+    id: string,
+    expectedRole: UserRole,
+    updatedById: string | null,
+  ): Promise<User | null> {
+    // Guard the write on (id, role, isActive=false) — symmetric to deactivateIfRole.
+    const { count } = await this.prisma.user.updateMany({
+      where: { id, role: expectedRole, isActive: false },
+      data: { isActive: true, updatedById },
+    });
+
+    if (count === 0) {
+      return null;
+    }
+
+    const updated = await this.prisma.user.findUnique({ where: { id } });
+    return updated ? this.toEntity(updated) : null;
+  }
+
+  async updateProfile(
+    id: string,
+    data: UpdateProfileInput,
+    updatedById: string,
+  ): Promise<User | null> {
+    try {
+      const updated = await this.prisma.user.update({
+        where: { id },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.phone !== undefined && { phone: data.phone }),
+          updatedById,
+        },
+      });
+      return this.toEntity(updated);
+    } catch (err) {
+      // P2025 = record to update not found (deleted between read and write).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        return null;
+      }
+      // P2002 = unique constraint: phone is @unique.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new UserAlreadyExistsError('A user with the same phone already exists.', {
+          cause: err,
+        });
+      }
+      throw err;
+    }
   }
 
   private toEntity(raw: PrismaUser): User {

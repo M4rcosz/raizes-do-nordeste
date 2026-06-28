@@ -2,47 +2,12 @@ import { beforeEach, describe, expect, it } from '@jest/globals';
 import { CreateUserCommand, CreateUserUseCase } from './create-user.use-case';
 import { User } from '../../domain/entities/user.entity';
 import { PasswordHasher } from '../../domain/ports/password-hasher.port';
-import { CreateUserInput, UserRepository } from '../../domain/repositories/user.repository';
+import { CreateUserInput } from '../../domain/repositories/user.repository';
 import { UserRole } from '../../domain/value-objects/user-role';
 import { UserCreationForbiddenError } from '../errors/user-creation-forbidden.error';
 import { AuditLogInput, AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
-
-class FakeUserRepository implements UserRepository {
-  readonly created: CreateUserInput[] = [];
-
-  findByUsername(): Promise<User | null> {
-    return Promise.resolve(null);
-  }
-
-  findById(): Promise<User | null> {
-    return Promise.resolve(null);
-  }
-
-  create(input: CreateUserInput): Promise<User> {
-    this.created.push(input);
-    return Promise.resolve(
-      new User(
-        input.id,
-        input.businessUnitId,
-        input.username,
-        input.name,
-        input.email,
-        input.passwordHash,
-        input.phone,
-        input.createdAt,
-        input.updatedAt,
-        null,
-        input.role,
-        input.isActive,
-      ),
-    );
-  }
-
-  deactivateIfRole(): Promise<User | null> {
-    return Promise.reject(new Error('not used'));
-  }
-}
+import { createFakeUserRepository } from './__fakes__/user-repository.fake';
 
 class FakeHasher implements PasswordHasher {
   readonly hashed: string[] = [];
@@ -67,22 +32,47 @@ class FakeAuditLogger implements AuditLogger {
 }
 
 describe('CreateUserUseCase', () => {
-  let repo: FakeUserRepository;
+  let created: CreateUserInput[];
   let hasher: FakeHasher;
   let audit: FakeAuditLogger;
   let useCase: CreateUserUseCase;
 
   const baseCommand = (role: UserRole): CreateUserCommand => ({
-    name: 'João',
+    name: 'Joao',
     username: 'joao',
     password: 'password123',
     role,
   });
 
   beforeEach(() => {
-    repo = new FakeUserRepository();
+    created = [];
     hasher = new FakeHasher();
     audit = new FakeAuditLogger();
+
+    const repo = createFakeUserRepository({
+      findByUsername: () => Promise.resolve(null),
+      findById: () => Promise.resolve(null),
+      create: (input: CreateUserInput) => {
+        created.push(input);
+        return Promise.resolve(
+          new User(
+            input.id,
+            input.businessUnitId,
+            input.username,
+            input.name,
+            input.email,
+            input.passwordHash,
+            input.phone,
+            input.createdAt,
+            input.updatedAt,
+            null,
+            input.role,
+            input.isActive,
+          ),
+        );
+      },
+    });
+
     useCase = new CreateUserUseCase(repo, hasher, audit);
   });
 
@@ -90,17 +80,17 @@ describe('CreateUserUseCase', () => {
     const admin = { id: 'admin-1', role: UserRole.ADMIN };
 
     it('should create an ADMIN user', async () => {
-      const created = await useCase.execute(admin, baseCommand(UserRole.ADMIN));
+      const result = await useCase.execute(admin, baseCommand(UserRole.ADMIN));
 
-      expect(created.role).toBe('ADMIN');
-      expect(repo.created).toHaveLength(1);
+      expect(result.role).toBe('ADMIN');
+      expect(created).toHaveLength(1);
     });
 
     it.each([UserRole.MANAGER, UserRole.ATTENDANT, UserRole.KITCHEN, UserRole.CUSTOMER])(
       'should create a %s user',
       async (role) => {
-        const created = await useCase.execute(admin, baseCommand(role));
-        expect(created.role).toBe(role);
+        const result = await useCase.execute(admin, baseCommand(role));
+        expect(result.role).toBe(role);
       },
     );
 
@@ -108,11 +98,11 @@ describe('CreateUserUseCase', () => {
       await useCase.execute(admin, baseCommand(UserRole.ATTENDANT));
 
       expect(hasher.hashed).toEqual(['password123']);
-      expect(repo.created[0]?.passwordHash).toBe('hashed:password123');
+      expect(created[0]?.passwordHash).toBe('hashed:password123');
     });
 
     it('should audit USER_CREATED under the actor without leaking the password', async () => {
-      const created = await useCase.execute(admin, {
+      const result = await useCase.execute(admin, {
         ...baseCommand(UserRole.ATTENDANT),
         password: 'top-secret',
       });
@@ -121,7 +111,7 @@ describe('CreateUserUseCase', () => {
         userId: 'admin-1',
         action: AUDIT_ACTIONS.USER_CREATED,
         entity: 'User',
-        entityId: created.id,
+        entityId: result.id,
       });
       expect(JSON.stringify(audit.entries[0])).not.toContain('top-secret');
     });
@@ -131,8 +121,8 @@ describe('CreateUserUseCase', () => {
     const manager = { id: 'mgr-1', role: UserRole.MANAGER };
 
     it.each([UserRole.ATTENDANT, UserRole.KITCHEN])('should create a %s user', async (role) => {
-      const created = await useCase.execute(manager, baseCommand(role));
-      expect(created.role).toBe(role);
+      const result = await useCase.execute(manager, baseCommand(role));
+      expect(result.role).toBe(role);
     });
 
     it.each([UserRole.ADMIN, UserRole.MANAGER, UserRole.CUSTOMER])(
@@ -141,7 +131,7 @@ describe('CreateUserUseCase', () => {
         await expect(useCase.execute(manager, baseCommand(role))).rejects.toBeInstanceOf(
           UserCreationForbiddenError,
         );
-        expect(repo.created).toHaveLength(0);
+        expect(created).toHaveLength(0);
         expect(hasher.hashed).toHaveLength(0);
       },
     );

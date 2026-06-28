@@ -20,6 +20,12 @@ export interface CreateUserInput {
   updatedAt: Date;
 }
 
+/** Fields that updateProfile may change. At least one must differ from current. */
+export interface UpdateProfileInput {
+  name?: string;
+  phone?: string;
+}
+
 export interface UserRepository {
   findByUsername(username: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
@@ -36,6 +42,22 @@ export interface UserRepository {
     expectedRole: UserRole,
     updatedById: string | null,
   ): Promise<User | null>;
+  /**
+   * Conditional reactivation: flips is_active to true only if the row still has
+   * `expectedRole` and is currently inactive. Symmetric to deactivateIfRole.
+   * Returns the reactivated user, or null when no row matched the guard.
+   */
+  reactivateIfRole(
+    id: string,
+    expectedRole: UserRole,
+    updatedById: string | null,
+  ): Promise<User | null>;
+  /**
+   * Updates name and/or phone for the given user id. Returns the updated user,
+   * or null if no row matched (user deleted between read and write).
+   * Throws UserAlreadyExistsError on a phone unique collision (P2002).
+   */
+  updateProfile(id: string, data: UpdateProfileInput, updatedById: string): Promise<User | null>;
 }
 
 export const USER_REPOSITORY = Symbol('UserRepository');
