@@ -5,15 +5,21 @@ import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { BUSINESS_UNIT_PARAM, ScopedToBusinessUnit } from './scoped-to-business-unit.decorator';
 import { BusinessUnitScopeError } from '@shared/errors/application/business-unit-scope.error';
 
+// Roles with no unit binding. They reach every unit; access is decided by
+// @Roles alone, never by unit scope. ADMIN is global staff, CUSTOMER belongs to
+// no unit. A null claim on a unit-bound staff role (MANAGER/ATTENDANT/KITCHEN)
+// is misconfig, not global, so those still get scoped.
+const UNIT_UNBOUND_ROLES: ReadonlySet<UserRole> = new Set([UserRole.ADMIN, UserRole.CUSTOMER]);
+
 /**
  * Enforces unit isolation on management routes. Runs after the global AuthGuard,
  * so request.user is already the verified JWT payload.
  *
  * Rules:
- *   ADMIN                 -> passes (rides every unit, including global/null).
- *   non-admin, claim null -> blocked (no unit scope, no management reach).
- *   non-admin, param set  -> passes only when param == claim.businessUnitId.
- *   non-admin, no param   -> passes ONLY when the route truly carries no unit
+ *   unbound role          -> passes (ADMIN/CUSTOMER ride every unit; gated by @Roles).
+ *   bound role, claim null -> blocked (no unit scope, no management reach).
+ *   bound role, param set  -> passes only when param == claim.businessUnitId.
+ *   bound role, no param   -> passes ONLY when the route truly carries no unit
  *                            param; if a businessUnitId param is present the
  *                            decorator was forgotten, so fail closed and block.
  *
@@ -39,7 +45,7 @@ export class UnitScopeGuard implements CanActivate {
       throw new BusinessUnitScopeError();
     }
 
-    if (user.role === UserRole.ADMIN) {
+    if (UNIT_UNBOUND_ROLES.has(user.role)) {
       return true;
     }
 

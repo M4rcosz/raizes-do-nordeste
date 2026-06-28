@@ -76,6 +76,26 @@ describe('UnitScopeGuard', () => {
     });
   });
 
+  describe('CUSTOMER is unit-unbound (passes like ADMIN)', () => {
+    it('passes a CUSTOMER with a null scope on a param route (not blocked as misconfig)', () => {
+      mockParamName('businessUnitId');
+      const ctx = buildContext(buildUser({ role: UserRole.CUSTOMER, businessUnitId: null }), {
+        businessUnitId: 'bu-1',
+      });
+
+      expect(guard.canActivate(ctx)).toBe(true);
+    });
+
+    it('passes a CUSTOMER even on a mismatching param (access gated by @Roles, not unit)', () => {
+      mockParamName('businessUnitId');
+      const ctx = buildContext(buildUser({ role: UserRole.CUSTOMER, businessUnitId: null }), {
+        businessUnitId: 'bu-other',
+      });
+
+      expect(guard.canActivate(ctx)).toBe(true);
+    });
+  });
+
   describe('scoped non-admin (param route)', () => {
     it('passes when the route param matches the claim', () => {
       mockParamName('businessUnitId');
