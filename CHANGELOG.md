@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. See [commit
 
 ### Features
 
+* **audit:** add ADMIN read endpoint for audit logs (`GET /api/audit-logs`, cursor-paginated, filterable by date range, userId, action, entity and entityId)
 * **business-units:** add per-unit menu management (public cursor-paginated menu listing, public single-item read, internal management view, add/update/deactivate use cases, required custom pricing via Money VO)
 * **identity:** add self-service password change endpoint (re-verifies current password, strong-password validation, revokes all active refresh tokens)
 * **identity:** add refresh token rotation with reuse detection and logout
