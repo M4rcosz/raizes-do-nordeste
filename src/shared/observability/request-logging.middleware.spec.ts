@@ -75,7 +75,7 @@ describe('RequestLoggingMiddleware', () => {
         sub: 'user-123',
         username: 'jane',
         role: 'ADMIN',
-        businessUnitId: null,
+        businessUnitIds: [],
         iat: 0,
         exp: 0,
       },

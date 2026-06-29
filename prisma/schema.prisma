@@ -40,6 +40,8 @@ model User {
   businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id])
   updatedBy    User?         @relation("UserUpdatedBy", fields: [updatedById], references: [id])
 
+  businessUnits UserBusinessUnit[]
+
   customerOrders        Order[]                @relation("CustomerOrders")
   attendantOrders       Order[]                @relation("AttendantOrders")
   inventoryTransactions InventoryTransaction[]
@@ -52,7 +54,24 @@ model User {
 
   @@index([role])
   @@index([businessUnitId])
+  @@index([createdAt, id])
   @@map("users")
+}
+
+// Join table: a staff member may be scoped to several business units (N:N).
+// Replaces the single User.businessUnitId scope. The legacy column is kept for the
+// expand phase and dropped in a later contract migration (see release notes).
+model UserBusinessUnit {
+  userId         String   @map("user_id")
+  businessUnitId String   @map("business_unit_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+
+  @@id([userId, businessUnitId])
+  @@index([businessUnitId])
+  @@map("user_business_units")
 }
 
 // Stateful refresh token (rotation strategy). We persist only the SHA-256 hash
@@ -93,6 +112,7 @@ model BusinessUnit {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   users      User[]
+  userLinks  UserBusinessUnit[]
   orders     Order[]
   menuItems  BusinessUnitMenuItem[]
   inventory  Inventory[]

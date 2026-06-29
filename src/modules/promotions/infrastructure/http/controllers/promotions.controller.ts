@@ -47,7 +47,7 @@ export class PromotionsController {
 
   // Reads the unit-scoping principal off the verified JWT claim.
   private actorOf(user: JwtPayload): PromotionActor {
-    return { role: user.role, businessUnitId: user.businessUnitId };
+    return { role: user.role, businessUnitIds: user.businessUnitIds };
   }
 
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
@@ -55,12 +55,12 @@ export class PromotionsController {
   @Post()
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiCreatedResponse({ type: PromotionResponseDto })
-  @ApiNotFoundResponse({ description: 'The actor has no unit scope to create in' })
+  @ApiNotFoundResponse({ description: 'The target unit is outside the actor scope' })
   async create(
     @Body() dto: CreatePromotionDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<PromotionResponseDto> {
-    // The unit is derived from the actor's claim, never the body.
+    // The target unit is in the body; the use case rejects units outside scope.
     const promotion = await this.createPromotion.execute(dto, this.actorOf(user));
     return PromotionResponseDto.fromEntity(promotion);
   }

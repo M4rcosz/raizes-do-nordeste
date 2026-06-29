@@ -54,8 +54,9 @@ class FakePromotionRepository implements PromotionRepository {
   }
 }
 
-// The unit is no longer in the draft; it comes from the actor's claim.
+// The target unit is now an explicit field of the draft (the request body).
 const draft = (overrides: Partial<CreatePromotionDraft> = {}): CreatePromotionDraft => ({
+  businessUnitId: 'bu-1',
   name: 'Almoço',
   discountType: DiscountType.PERCENTAGE,
   discountValue: '10.00',
@@ -65,10 +66,12 @@ const draft = (overrides: Partial<CreatePromotionDraft> = {}): CreatePromotionDr
   ...overrides,
 });
 
-const manager = (businessUnitId: string | null = 'bu-1'): PromotionActor => ({
+const manager = (businessUnitIds: string[] = ['bu-1']): PromotionActor => ({
   role: UserRole.MANAGER,
-  businessUnitId,
+  businessUnitIds,
 });
+
+const admin: PromotionActor = { role: UserRole.ADMIN, businessUnitIds: [] };
 
 describe('CreatePromotionUseCase', () => {
   let repo: FakePromotionRepository;
@@ -79,8 +82,8 @@ describe('CreatePromotionUseCase', () => {
     useCase = new CreatePromotionUseCase(repo);
   });
 
-  it('persists a valid promotion scoped to the actor unit and returns the created entity', async () => {
-    const promotion = await useCase.execute(draft(), manager('bu-7'));
+  it('persists a promotion for a unit in the actor scope and returns the created entity', async () => {
+    const promotion = await useCase.execute(draft({ businessUnitId: 'bu-7' }), manager(['bu-7']));
 
     expect(repo.created).toHaveLength(1);
     expect(repo.created[0].businessUnitId).toBe('bu-7');
@@ -89,11 +92,18 @@ describe('CreatePromotionUseCase', () => {
     expect(promotion.discountValue.toDecimalString()).toBe('10.00');
   });
 
-  it('rejects a global (null-scope) actor with not-found and never persists', async () => {
-    await expect(useCase.execute(draft(), manager(null))).rejects.toBeInstanceOf(
-      BusinessUnitScopeError,
-    );
+  it('rejects a target unit outside the actor scope with not-found and never persists', async () => {
+    await expect(
+      useCase.execute(draft({ businessUnitId: 'bu-2' }), manager(['bu-1'])),
+    ).rejects.toBeInstanceOf(BusinessUnitScopeError);
     expect(repo.created).toEqual([]);
+  });
+
+  it('lets an ADMIN create for any unit regardless of claim', async () => {
+    const promotion = await useCase.execute(draft({ businessUnitId: 'bu-9' }), admin);
+
+    expect(repo.created[0].businessUnitId).toBe('bu-9');
+    expect(promotion.id).toBe('promo-new');
   });
 
   it('rejects when endDate is before startDate (dead window) and never persists', async () => {

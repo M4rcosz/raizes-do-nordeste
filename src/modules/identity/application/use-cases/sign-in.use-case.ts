@@ -92,7 +92,7 @@ export class SignInUseCase {
       sub: user.id,
       username: user.username,
       role: user.role,
-      businessUnitId: user.businessUnitId,
+      businessUnitIds: user.businessUnitIds,
     };
     const accessToken = await this.tokenSigner.sign(payload);
 

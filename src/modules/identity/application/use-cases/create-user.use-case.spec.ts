@@ -5,6 +5,7 @@ import { PasswordHasher } from '../../domain/ports/password-hasher.port';
 import { CreateUserInput } from '../../domain/repositories/user.repository';
 import { UserRole } from '../../domain/value-objects/user-role';
 import { UserCreationForbiddenError } from '../errors/user-creation-forbidden.error';
+import { BusinessUnitScopeError } from '@shared/errors/application/business-unit-scope.error';
 import { AuditLogInput, AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 import { createFakeUserRepository } from './__fakes__/user-repository.fake';
@@ -57,7 +58,7 @@ describe('CreateUserUseCase', () => {
         return Promise.resolve(
           new User(
             input.id,
-            input.businessUnitId,
+            input.businessUnitIds,
             input.username,
             input.name,
             input.email,
@@ -77,7 +78,7 @@ describe('CreateUserUseCase', () => {
   });
 
   describe('ADMIN actor', () => {
-    const admin = { id: 'admin-1', role: UserRole.ADMIN };
+    const admin = { id: 'admin-1', role: UserRole.ADMIN, businessUnitIds: [] };
 
     it('should create an ADMIN user', async () => {
       const result = await useCase.execute(admin, baseCommand(UserRole.ADMIN));
@@ -115,10 +116,20 @@ describe('CreateUserUseCase', () => {
       });
       expect(JSON.stringify(audit.entries[0])).not.toContain('top-secret');
     });
+
+    it('should bind the new user to any unit, even outside its own claim', async () => {
+      const result = await useCase.execute(admin, {
+        ...baseCommand(UserRole.ATTENDANT),
+        businessUnitIds: ['bu-9'],
+      });
+
+      expect(result.businessUnitIds).toEqual(['bu-9']);
+      expect(created).toHaveLength(1);
+    });
   });
 
   describe('MANAGER actor', () => {
-    const manager = { id: 'mgr-1', role: UserRole.MANAGER };
+    const manager = { id: 'mgr-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1', 'bu-2'] };
 
     it.each([UserRole.ATTENDANT, UserRole.KITCHEN])('should create a %s user', async (role) => {
       const result = await useCase.execute(manager, baseCommand(role));
@@ -135,5 +146,26 @@ describe('CreateUserUseCase', () => {
         expect(hasher.hashed).toHaveLength(0);
       },
     );
+
+    it('should create a user scoped to a subset of its own units', async () => {
+      const result = await useCase.execute(manager, {
+        ...baseCommand(UserRole.ATTENDANT),
+        businessUnitIds: ['bu-1'],
+      });
+
+      expect(result.businessUnitIds).toEqual(['bu-1']);
+      expect(created).toHaveLength(1);
+    });
+
+    it('should reject binding the new user to a unit outside its own claim', async () => {
+      await expect(
+        useCase.execute(manager, {
+          ...baseCommand(UserRole.ATTENDANT),
+          businessUnitIds: ['bu-1', 'bu-3'],
+        }),
+      ).rejects.toBeInstanceOf(BusinessUnitScopeError);
+      expect(created).toHaveLength(0);
+      expect(hasher.hashed).toHaveLength(0);
+    });
   });
 });

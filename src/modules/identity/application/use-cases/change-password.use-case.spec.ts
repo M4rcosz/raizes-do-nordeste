@@ -83,7 +83,7 @@ class FakeTransactionRunner implements TransactionRunner {
 const buildUser = (id: string, passwordHash: string): User =>
   new User(
     id,
-    'bu-1',
+    ['bu-1'],
     `user-${id}`,
     `Name ${id}`,
     null,
@@ -221,7 +221,7 @@ describe('ChangePasswordUseCase', () => {
     // not revealed through a different status code to a caller with a stale token.
     const inactive = new User(
       'user-1',
-      'bu-1',
+      ['bu-1'],
       'user-user-1',
       'Name user-1',
       null,

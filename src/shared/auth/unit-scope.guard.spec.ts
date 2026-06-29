@@ -31,14 +31,11 @@ describe('UnitScopeGuard', () => {
     );
   };
 
-  const buildUser = (overrides?: {
-    role?: UserRole;
-    businessUnitId?: string | null;
-  }): JwtPayload => ({
+  const buildUser = (overrides?: { role?: UserRole; businessUnitIds?: string[] }): JwtPayload => ({
     sub: 'user-1',
     username: 'panic',
     role: overrides?.role ?? UserRole.MANAGER,
-    businessUnitId: overrides?.businessUnitId === undefined ? 'bu-1' : overrides.businessUnitId,
+    businessUnitIds: overrides?.businessUnitIds ?? ['bu-1'],
     iat: 0,
     exp: 0,
   });
@@ -66,9 +63,9 @@ describe('UnitScopeGuard', () => {
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
-    it('passes an ADMIN with a null (global) scope', () => {
+    it('passes an ADMIN with an empty (global) scope', () => {
       mockParamName('businessUnitId');
-      const ctx = buildContext(buildUser({ role: UserRole.ADMIN, businessUnitId: null }), {
+      const ctx = buildContext(buildUser({ role: UserRole.ADMIN, businessUnitIds: [] }), {
         businessUnitId: 'bu-other',
       });
 
@@ -77,9 +74,9 @@ describe('UnitScopeGuard', () => {
   });
 
   describe('CUSTOMER is unit-unbound (passes like ADMIN)', () => {
-    it('passes a CUSTOMER with a null scope on a param route (not blocked as misconfig)', () => {
+    it('passes a CUSTOMER with an empty scope on a param route (not blocked as misconfig)', () => {
       mockParamName('businessUnitId');
-      const ctx = buildContext(buildUser({ role: UserRole.CUSTOMER, businessUnitId: null }), {
+      const ctx = buildContext(buildUser({ role: UserRole.CUSTOMER, businessUnitIds: [] }), {
         businessUnitId: 'bu-1',
       });
 
@@ -88,7 +85,7 @@ describe('UnitScopeGuard', () => {
 
     it('passes a CUSTOMER even on a mismatching param (access gated by @Roles, not unit)', () => {
       mockParamName('businessUnitId');
-      const ctx = buildContext(buildUser({ role: UserRole.CUSTOMER, businessUnitId: null }), {
+      const ctx = buildContext(buildUser({ role: UserRole.CUSTOMER, businessUnitIds: [] }), {
         businessUnitId: 'bu-other',
       });
 
@@ -97,23 +94,46 @@ describe('UnitScopeGuard', () => {
   });
 
   describe('scoped non-admin (param route)', () => {
-    it('passes when the route param matches the claim', () => {
+    it('passes when the route param is in the claim', () => {
       mockParamName('businessUnitId');
-      const ctx = buildContext(buildUser({ businessUnitId: 'bu-1' }), { businessUnitId: 'bu-1' });
+      const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1'] }), {
+        businessUnitId: 'bu-1',
+      });
 
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
     it('blocks (not-found) when the route param is a foreign unit', () => {
       mockParamName('businessUnitId');
-      const ctx = buildContext(buildUser({ businessUnitId: 'bu-1' }), { businessUnitId: 'bu-2' });
+      const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1'] }), {
+        businessUnitId: 'bu-2',
+      });
 
       expect(() => guard.canActivate(ctx)).toThrow(BusinessUnitScopeError);
     });
 
-    it('blocks (not-found) a non-admin with a null scope', () => {
+    it('blocks (not-found) a non-admin with an empty scope', () => {
       mockParamName('businessUnitId');
-      const ctx = buildContext(buildUser({ businessUnitId: null }), { businessUnitId: 'bu-1' });
+      const ctx = buildContext(buildUser({ businessUnitIds: [] }), { businessUnitId: 'bu-1' });
+
+      expect(() => guard.canActivate(ctx)).toThrow(BusinessUnitScopeError);
+    });
+  });
+
+  describe('multi-unit non-admin (regression for N:N scope)', () => {
+    it('passes each unit in a multi-unit claim', () => {
+      mockParamName('businessUnitId');
+      const both = buildUser({ businessUnitIds: ['bu-1', 'bu-2'] });
+
+      expect(guard.canActivate(buildContext(both, { businessUnitId: 'bu-1' }))).toBe(true);
+      expect(guard.canActivate(buildContext(both, { businessUnitId: 'bu-2' }))).toBe(true);
+    });
+
+    it('blocks a unit outside a multi-unit claim', () => {
+      mockParamName('businessUnitId');
+      const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1', 'bu-2'] }), {
+        businessUnitId: 'bu-3',
+      });
 
       expect(() => guard.canActivate(ctx)).toThrow(BusinessUnitScopeError);
     });
@@ -122,14 +142,14 @@ describe('UnitScopeGuard', () => {
   describe('claim-only route (no param)', () => {
     it('passes a scoped non-admin', () => {
       mockParamName(undefined);
-      const ctx = buildContext(buildUser({ businessUnitId: 'bu-1' }));
+      const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1'] }));
 
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
-    it('blocks a non-admin with a null scope', () => {
+    it('blocks a non-admin with an empty scope', () => {
       mockParamName(undefined);
-      const ctx = buildContext(buildUser({ businessUnitId: null }));
+      const ctx = buildContext(buildUser({ businessUnitIds: [] }));
 
       expect(() => guard.canActivate(ctx)).toThrow(BusinessUnitScopeError);
     });
@@ -140,7 +160,9 @@ describe('UnitScopeGuard', () => {
       // No @ScopedToBusinessUnit metadata, yet a businessUnitId param is present:
       // a config slip. Deny even when the param happens to match the claim.
       mockParamName(undefined);
-      const ctx = buildContext(buildUser({ businessUnitId: 'bu-1' }), { businessUnitId: 'bu-1' });
+      const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1'] }), {
+        businessUnitId: 'bu-1',
+      });
 
       expect(() => guard.canActivate(ctx)).toThrow(BusinessUnitScopeError);
     });

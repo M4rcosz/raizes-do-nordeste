@@ -6,6 +6,7 @@ import { UserRole } from '../../domain/value-objects/user-role';
 import { UserCreationForbiddenError } from '../errors/user-creation-forbidden.error';
 import { UserDeactivationConflictError } from '../errors/user-deactivation-conflict.error';
 import { UserNotFoundError } from '../errors/user-not-found.error';
+import { BusinessUnitScopeError } from '@shared/errors/application/business-unit-scope.error';
 import { AuditLogInput, AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 
@@ -79,7 +80,7 @@ class FakeUserRepository implements UserRepository {
   private build(id: string, role: UserRole, isActive: boolean, updatedById: string | null): User {
     return new User(
       id,
-      'bu-1',
+      ['bu-1'],
       `user-${id}`,
       `Name ${id}`,
       null,
@@ -91,6 +92,18 @@ class FakeUserRepository implements UserRepository {
       role,
       isActive,
     );
+  }
+
+  updatePasswordHash(): Promise<User | null> {
+    return Promise.reject(new Error('not used'));
+  }
+
+  findMany(): Promise<User[]> {
+    return Promise.reject(new Error('not used'));
+  }
+
+  replaceBusinessUnits(): Promise<User | null> {
+    return Promise.reject(new Error('not used'));
   }
 }
 
@@ -115,7 +128,7 @@ describe('DeactivateUserUseCase', () => {
   });
 
   describe('ADMIN actor', () => {
-    const admin = { id: 'admin-1', role: UserRole.ADMIN };
+    const admin = { id: 'admin-1', role: UserRole.ADMIN, businessUnitIds: [] };
 
     it.each([
       UserRole.ADMIN,
@@ -158,7 +171,7 @@ describe('DeactivateUserUseCase', () => {
   });
 
   describe('MANAGER actor', () => {
-    const manager = { id: 'mgr-1', role: UserRole.MANAGER };
+    const manager = { id: 'mgr-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] };
 
     it.each([UserRole.ATTENDANT, UserRole.KITCHEN])(
       'should deactivate a %s target',
@@ -182,10 +195,21 @@ describe('DeactivateUserUseCase', () => {
         expect(repo.deactivateCalls).toHaveLength(0);
       },
     );
+
+    it('should reject (not-found) when the target unit is outside the manager scope', async () => {
+      // Target lives in bu-1 (seed default); this manager is scoped to bu-9 only.
+      const foreignManager = { id: 'mgr-2', role: UserRole.MANAGER, businessUnitIds: ['bu-9'] };
+      repo.seed('target-1', UserRole.ATTENDANT);
+
+      await expect(useCase.execute(foreignManager, 'target-1')).rejects.toBeInstanceOf(
+        BusinessUnitScopeError,
+      );
+      expect(repo.deactivateCalls).toHaveLength(0);
+    });
   });
 
   it('should throw NOT_FOUND when the target does not exist', async () => {
-    const admin = { id: 'admin-1', role: UserRole.ADMIN };
+    const admin = { id: 'admin-1', role: UserRole.ADMIN, businessUnitIds: [] };
 
     await expect(useCase.execute(admin, 'ghost')).rejects.toBeInstanceOf(UserNotFoundError);
     expect(repo.deactivateCalls).toHaveLength(0);
@@ -195,7 +219,7 @@ describe('DeactivateUserUseCase', () => {
     // MANAGER reads+authorizes against ATTENDANT, but the row becomes ADMIN after
     // that read and before the guarded write. The conditional UPDATE matches nothing
     // -> the authorization was decided on a stale snapshot.
-    const manager = { id: 'mgr-1', role: UserRole.MANAGER };
+    const manager = { id: 'mgr-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] };
     repo.seed('target-1', UserRole.ATTENDANT);
     repo.changeRoleAfterRead('target-1', UserRole.ADMIN);
 

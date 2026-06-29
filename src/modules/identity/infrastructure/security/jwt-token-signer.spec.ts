@@ -30,7 +30,7 @@ describe('JwtTokenSigner', () => {
         sub: 'user-1',
         username: 'panic',
         role: 'KITCHEN',
-        businessUnitId: 'bu-1',
+        businessUnitIds: ['bu-1'],
       };
 
       const token = await signer.sign(payload);

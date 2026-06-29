@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { canRoleCreate } from './user-creation.policy';
+import { canManageInUnits, canRoleCreate } from './user-creation.policy';
 import { UserRole } from '../value-objects/user-role';
 
 describe('canRoleCreate', () => {
@@ -44,4 +44,31 @@ describe('canRoleCreate', () => {
       },
     );
   });
+});
+
+describe('canManageInUnits', () => {
+  it('lets an ADMIN manage regardless of unit overlap (even with empty scopes)', () => {
+    expect(canManageInUnits(UserRole.ADMIN, [], ['bu-1'])).toBe(true);
+    expect(canManageInUnits(UserRole.ADMIN, ['bu-9'], ['bu-1'])).toBe(true);
+  });
+
+  it('lets a MANAGER manage a target whose units overlap their own', () => {
+    expect(canManageInUnits(UserRole.MANAGER, ['bu-1', 'bu-2'], ['bu-2', 'bu-3'])).toBe(true);
+  });
+
+  it('blocks a MANAGER when scopes are disjoint', () => {
+    expect(canManageInUnits(UserRole.MANAGER, ['bu-1'], ['bu-2'])).toBe(false);
+  });
+
+  it('blocks a MANAGER when either scope is empty', () => {
+    expect(canManageInUnits(UserRole.MANAGER, [], ['bu-1'])).toBe(false);
+    expect(canManageInUnits(UserRole.MANAGER, ['bu-1'], [])).toBe(false);
+  });
+
+  it.each([UserRole.ATTENDANT, UserRole.KITCHEN, UserRole.CUSTOMER])(
+    '%s may not manage anyone',
+    (actor) => {
+      expect(canManageInUnits(actor, ['bu-1'], ['bu-1'])).toBe(false);
+    },
+  );
 });

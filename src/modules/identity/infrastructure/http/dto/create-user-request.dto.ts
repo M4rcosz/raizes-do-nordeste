@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayUnique,
+  IsArray,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -50,8 +52,14 @@ export class CreateUserDto {
   @MaxLength(20)
   phone?: string;
 
-  @ApiPropertyOptional({ format: 'uuid' })
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    description: 'Units this staff member is scoped to. Omit/empty for an unbound user.',
+  })
   @IsOptional()
-  @IsUUID()
-  businessUnitId?: string;
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  businessUnitIds?: string[];
 }

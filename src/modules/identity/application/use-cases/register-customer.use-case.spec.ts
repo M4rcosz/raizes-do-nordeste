@@ -29,7 +29,7 @@ function buildCollisionAwareCreate(store: Map<string, User>) {
 function rebuild(input: CreateUserInput): User {
   return new User(
     input.id,
-    input.businessUnitId,
+    input.businessUnitIds,
     input.username,
     input.name,
     input.email,
@@ -110,10 +110,10 @@ describe('RegisterCustomerUseCase', () => {
     expect(created[0]?.passwordHash).not.toContain('password123');
   });
 
-  it('should default businessUnitId to null for a self-registered customer', async () => {
+  it('should default businessUnitIds to empty for a self-registered customer', async () => {
     await useCase.execute({ name: 'Maria', username: 'maria', password: 'password123' });
 
-    expect(created[0]?.businessUnitId).toBeNull();
+    expect(created[0]?.businessUnitIds).toEqual([]);
     expect(created[0]?.isActive).toBe(true);
   });
 

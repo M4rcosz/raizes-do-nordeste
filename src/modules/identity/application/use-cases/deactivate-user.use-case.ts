@@ -5,8 +5,12 @@ import {
   type AuditLogger,
 } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
+import { BusinessUnitScopeError } from '@shared/errors/application/business-unit-scope.error';
 import { User } from '@modules/identity/domain/entities/user.entity';
-import { canRoleCreate } from '@modules/identity/domain/policies/user-creation.policy';
+import {
+  canManageInUnits,
+  canRoleCreate,
+} from '@modules/identity/domain/policies/user-creation.policy';
 import {
   USER_REPOSITORY,
   type UserRepository,
@@ -19,6 +23,7 @@ import { UserNotFoundError } from '../errors/user-not-found.error';
 export interface DeactivateUserActor {
   id: string;
   role: UserRole;
+  businessUnitIds: string[];
 }
 
 @Injectable()
@@ -50,6 +55,14 @@ export class DeactivateUserUseCase {
       throw new UserCreationForbiddenError(
         `Role ${actor.role} is not allowed to deactivate a ${target.role} user.`,
       );
+    }
+
+    // Unit scope: a MANAGER may only act on a target whose units overlap their
+    // own. Read the intersection before the write (no extra guard on the
+    // conditional update; TOCTOU on unit membership is out of scope here). A
+    // disjoint scope reads as not-found so a foreign unit's staff stays hidden.
+    if (!canManageInUnits(actor.role, actor.businessUnitIds, target.businessUnitIds)) {
+      throw new BusinessUnitScopeError();
     }
 
     // Condition the write on the role we just authorized against. If the role

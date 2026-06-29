@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   MaxLength,
 } from 'class-validator';
@@ -16,10 +17,14 @@ const POSITIVE_DECIMAL_2DP = /^(?!0+(?:\.0+)?$)\d{1,8}(?:\.\d{1,2})?$/;
 // Non-negative 2dp decimal: allows zero (a "no minimum" order value), same width.
 const NON_NEGATIVE_DECIMAL_2DP = /^\d{1,8}(?:\.\d{1,2})?$/;
 
-// businessUnitId is no longer accepted from the body. The unit a promotion
-// belongs to is derived from the actor's JWT claim so a manager cannot create
-// promotions for a unit they are not scoped to (was the tenant-scope IDOR gap).
+// businessUnitId is supplied in the body but the use case rejects any unit
+// outside the actor's claim (ADMIN excepted), so a manager still cannot create
+// promotions for a unit they are not scoped to.
 export class CreatePromotionDto {
+  @ApiProperty({ format: 'uuid', description: 'Unit the promotion belongs to (must be in scope)' })
+  @IsUUID()
+  businessUnitId!: string;
+
   @ApiProperty({ example: 'Almoço executivo', maxLength: 100 })
   @MaxLength(100)
   @IsString()

@@ -20,3 +20,25 @@ export function canRoleCreate(actorRole: UserRole, targetRole: UserRole): boolea
 
   return false;
 }
+
+/**
+ * Unit-scope check for managing (deactivate/reactivate) an existing user.
+ * ADMIN reaches everyone. MANAGER reaches a target only when their unit scopes
+ * overlap (non-empty intersection). Everyone else: no reach. This complements
+ * canRoleCreate (the role-target rule); both must hold to manage a user.
+ */
+export function canManageInUnits(
+  actorRole: UserRole,
+  actorUnitIds: string[],
+  targetUnitIds: string[],
+): boolean {
+  if (actorRole === UserRole.ADMIN) {
+    return true;
+  }
+
+  if (actorRole === UserRole.MANAGER) {
+    return actorUnitIds.some((id) => targetUnitIds.includes(id));
+  }
+
+  return false;
+}

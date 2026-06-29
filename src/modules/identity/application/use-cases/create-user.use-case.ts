@@ -16,6 +16,7 @@ import {
   type UserRepository,
 } from '@modules/identity/domain/repositories/user.repository';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import { BusinessUnitScopeError } from '@shared/errors/application/business-unit-scope.error';
 import { UserCreationForbiddenError } from '../errors/user-creation-forbidden.error';
 
 export interface CreateUserCommand {
@@ -25,12 +26,13 @@ export interface CreateUserCommand {
   role: UserRole;
   email?: string | null;
   phone?: string | null;
-  businessUnitId?: string | null;
+  businessUnitIds?: string[];
 }
 
 export interface CreateUserActor {
   id: string;
   role: UserRole;
+  businessUnitIds: string[];
 }
 
 @Injectable()
@@ -55,6 +57,18 @@ export class CreateUserUseCase {
       );
     }
 
+    // Unit scope on creation: a non-ADMIN actor may only bind the new user to
+    // units within their own claim. Without this a MANAGER could mint a staff
+    // proxy scoped to a foreign unit and log in as it. ADMIN is unit-unbound.
+    // Foreign unit reads as not-found so its existence stays hidden.
+    if (actor.role !== UserRole.ADMIN) {
+      const requested = command.businessUnitIds ?? [];
+      const outside = requested.filter((id) => !actor.businessUnitIds.includes(id));
+      if (outside.length > 0) {
+        throw new BusinessUnitScopeError();
+      }
+    }
+
     const passwordHash = await this.passwordHasher.hash(command.password);
 
     const user = User.register({
@@ -64,7 +78,7 @@ export class CreateUserUseCase {
       role: command.role,
       email: command.email ?? null,
       phone: command.phone ?? null,
-      businessUnitId: command.businessUnitId ?? null,
+      businessUnitIds: command.businessUnitIds ?? [],
     });
 
     const created = await this.users.create(user.toCreateInput());

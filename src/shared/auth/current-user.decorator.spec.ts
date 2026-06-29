@@ -13,7 +13,7 @@ describe('currentUserFactory', () => {
     sub: 'user-1',
     username: 'panic',
     role: 'ATTENDANT',
-    businessUnitId: 'bu-1',
+    businessUnitIds: ['bu-1'],
     iat: 1000,
     exp: 2000,
   };
