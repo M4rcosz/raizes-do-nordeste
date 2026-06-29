@@ -43,6 +43,17 @@ export interface LoyaltyRepository {
    * CONFLICT. `tx` is required so the insert and the decrement never land apart.
    */
   redeem(input: RedeemPointsInput, tx: TransactionContext): Promise<void>;
+  /**
+   * LGPD consent grant (upsert). Creates a consented account when the customer has
+   * none, or marks an existing one consented: consentGiven=true, consentDate=now,
+   * consentRevokedAt cleared. Returns the resulting account.
+   */
+  grantConsent(customerId: string): Promise<LoyaltyAccount>;
+  /**
+   * Withdraws consent on an existing account: consentGiven=false, consentRevokedAt=now.
+   * Returns null when the customer has no account (nothing to revoke).
+   */
+  revokeConsent(customerId: string): Promise<LoyaltyAccount | null>;
 }
 
 export const LOYALTY_REPOSITORY = Symbol('LoyaltyRepository');

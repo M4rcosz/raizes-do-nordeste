@@ -19,8 +19,18 @@ export const AUDIT_ACTIONS = {
   PAYMENT_REFUSED: 'PAYMENT_REFUSED',
   /** Payment approved but the order could not be confirmed - needs manual reconciliation. */
   PAYMENT_RECONCILE_REQUIRED: 'PAYMENT_RECONCILE_REQUIRED',
+  BUSINESS_UNIT_ACTIVATED: 'BUSINESS_UNIT_ACTIVATED',
+  BUSINESS_UNIT_DEACTIVATED: 'BUSINESS_UNIT_DEACTIVATED',
+  PRODUCT_ACTIVATED: 'PRODUCT_ACTIVATED',
+  PRODUCT_DEACTIVATED: 'PRODUCT_DEACTIVATED',
+  MENU_ITEM_ACTIVATED: 'MENU_ITEM_ACTIVATED',
+  MENU_ITEM_DEACTIVATED: 'MENU_ITEM_DEACTIVATED',
   /** A deduction left a product at or below its minQuantity threshold. */
   STOCK_ALERT: 'STOCK_ALERT',
+  /** Customer granted LGPD consent for the loyalty program. */
+  LOYALTY_CONSENT_GIVEN: 'LOYALTY_CONSENT_GIVEN',
+  /** Customer withdrew LGPD consent for the loyalty program. */
+  LOYALTY_CONSENT_REVOKED: 'LOYALTY_CONSENT_REVOKED',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

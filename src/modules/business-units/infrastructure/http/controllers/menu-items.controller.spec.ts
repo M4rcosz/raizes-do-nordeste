@@ -11,11 +11,15 @@ import { GetMenuItemByIdUseCase } from '../../../application/use-cases/get-menu-
 import { AddMenuItemUseCase } from '../../../application/use-cases/add-menu-item.use-case';
 import { UpdateMenuItemUseCase } from '../../../application/use-cases/update-menu-item.use-case';
 import { DeactivateMenuItemUseCase } from '../../../application/use-cases/deactivate-menu-item.use-case';
+import { ActivateMenuItemUseCase } from '../../../application/use-cases/activate-menu-item.use-case';
 import { MenuItem } from '../../../domain/entities/menu-item.entity';
 import { MenuItemWithProduct } from '../../../domain/repositories/menu-item.repository';
 import { MenuItemResponseDto } from '../dto/menu-item-response.dto';
 import { PublicMenuItemResponseDto } from '../dto/menu-item-public-response.dto';
 import { MenuItemNotFoundError } from '../../../application/errors/menu-item-not-found.error';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
+
+const actor = { sub: 'admin-1' } as JwtPayload;
 
 describe('MenuItemsController', () => {
   let controller: MenuItemsController;
@@ -24,6 +28,7 @@ describe('MenuItemsController', () => {
   let addMenuItem: jest.Mocked<AddMenuItemUseCase>;
   let updateMenuItem: jest.Mocked<UpdateMenuItemUseCase>;
   let deactivateMenuItem: jest.Mocked<DeactivateMenuItemUseCase>;
+  let activateMenuItem: jest.Mocked<ActivateMenuItemUseCase>;
 
   const buildMenuItem = (id = 'menu-item-1', isAvailable = true): MenuItem =>
     new MenuItem(
@@ -56,6 +61,9 @@ describe('MenuItemsController', () => {
     deactivateMenuItem = {
       execute: jest.fn(),
     } as unknown as jest.Mocked<DeactivateMenuItemUseCase>;
+    activateMenuItem = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<ActivateMenuItemUseCase>;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [MenuItemsController],
@@ -65,6 +73,7 @@ describe('MenuItemsController', () => {
         { provide: AddMenuItemUseCase, useValue: addMenuItem },
         { provide: UpdateMenuItemUseCase, useValue: updateMenuItem },
         { provide: DeactivateMenuItemUseCase, useValue: deactivateMenuItem },
+        { provide: ActivateMenuItemUseCase, useValue: activateMenuItem },
       ],
     }).compile();
 
@@ -197,13 +206,27 @@ describe('MenuItemsController', () => {
     it('should forward ids to the use-case and map the result', async () => {
       deactivateMenuItem.execute.mockResolvedValue(buildMenuItem('menu-item-1', false));
 
-      const response = await controller.deactivateItem({
+      const response = await controller.deactivateItem(actor, {
         businessUnitId: 'bu-1',
         menuItemId: 'menu-item-1',
       });
 
-      expect(deactivateMenuItem.execute).toHaveBeenCalledWith('menu-item-1', 'bu-1');
+      expect(deactivateMenuItem.execute).toHaveBeenCalledWith('menu-item-1', 'bu-1', 'admin-1');
       expect(response.isAvailable).toBe(false);
+    });
+  });
+
+  describe('activateItem', () => {
+    it('should forward ids to the use-case and map the result', async () => {
+      activateMenuItem.execute.mockResolvedValue(buildMenuItem('menu-item-1', true));
+
+      const response = await controller.activateItem(actor, {
+        businessUnitId: 'bu-1',
+        menuItemId: 'menu-item-1',
+      });
+
+      expect(activateMenuItem.execute).toHaveBeenCalledWith('menu-item-1', 'bu-1', 'admin-1');
+      expect(response.isAvailable).toBe(true);
     });
   });
 });
@@ -228,6 +251,7 @@ describe('MenuItemsController unit scoping', () => {
     ['addItem', proto.addItem],
     ['updateItem', proto.updateItem],
     ['deactivateItem', proto.deactivateItem],
+    ['activateItem', proto.activateItem],
   ])('scopes the management route %s to the unit', (_name, handler) => {
     expect(isUnitScoped(handler)).toBe(true);
   });

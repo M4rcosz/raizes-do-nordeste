@@ -2,10 +2,10 @@ import { describe, expect, it } from '@jest/globals';
 import { LoyaltyAccount } from './loyalty-account.entity';
 
 const buildAccount = (consentGiven: boolean): LoyaltyAccount =>
-  new LoyaltyAccount('la-1', 'c-1', 0, consentGiven, null, new Date(), new Date());
+  new LoyaltyAccount('la-1', 'c-1', 0, consentGiven, null, null, new Date(), new Date());
 
 const buildAccountWith = (consentGiven: boolean, totalPoints: number): LoyaltyAccount =>
-  new LoyaltyAccount('la-1', 'c-1', totalPoints, consentGiven, null, new Date(), new Date());
+  new LoyaltyAccount('la-1', 'c-1', totalPoints, consentGiven, null, null, new Date(), new Date());
 
 describe('LoyaltyAccount', () => {
   describe('canEarn', () => {

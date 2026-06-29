@@ -37,6 +37,12 @@ export interface ProductRepository {
   findAllByBusinessUnit(input: FindProductsByBusinessUnitInput): Promise<Product[]>;
   findAllActive(input: FindProductsInput): Promise<Product[]>;
   create(input: CreateProductInput): Promise<Product>;
+  /**
+   * Flips the active flag. Idempotent by design: setting the value it already
+   * holds is a no-op write that still returns the product. Returns null when no
+   * product matches the id so the use case can raise a not-found.
+   */
+  setActive(id: string, isActive: boolean): Promise<Product | null>;
 }
 
 export const PRODUCT_REPOSITORY = Symbol('ProductRepository');

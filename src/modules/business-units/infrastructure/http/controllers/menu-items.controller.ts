@@ -8,6 +8,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import { CurrentUser } from '@shared/auth/current-user.decorator';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 import { Public } from '@shared/auth/public.decorator';
 import { Roles } from '@shared/auth/roles.decorator';
 import { UnitScopeGuard } from '@shared/auth/unit-scope.guard';
@@ -19,6 +21,7 @@ import { GetMenuItemByIdUseCase } from '../../../application/use-cases/get-menu-
 import { AddMenuItemUseCase } from '../../../application/use-cases/add-menu-item.use-case';
 import { UpdateMenuItemUseCase } from '../../../application/use-cases/update-menu-item.use-case';
 import { DeactivateMenuItemUseCase } from '../../../application/use-cases/deactivate-menu-item.use-case';
+import { ActivateMenuItemUseCase } from '../../../application/use-cases/activate-menu-item.use-case';
 import { BusinessUnitIdParamDto } from '../dto/product-query.dto';
 import { MenuItemParamsDto, MenuItemsQueryDto } from '../dto/menu-item-query.dto';
 import { MenuItemCreateDto } from '../dto/menu-item-create.dto';
@@ -37,6 +40,7 @@ export class MenuItemsController {
     private readonly addMenuItem: AddMenuItemUseCase,
     private readonly updateMenuItem: UpdateMenuItemUseCase,
     private readonly deactivateMenuItem: DeactivateMenuItemUseCase,
+    private readonly activateMenuItem: ActivateMenuItemUseCase,
   ) {}
 
   @Public()
@@ -152,9 +156,25 @@ export class MenuItemsController {
   @ApiOkResponse({ type: MenuItemResponseDto })
   @ApiNotFoundResponse({ description: 'Menu item not found in this business unit' })
   async deactivateItem(
+    @CurrentUser() actor: JwtPayload,
     @Param() { businessUnitId, menuItemId }: MenuItemParamsDto,
   ): Promise<MenuItemResponseDto> {
-    const item = await this.deactivateMenuItem.execute(menuItemId, businessUnitId);
+    const item = await this.deactivateMenuItem.execute(menuItemId, businessUnitId, actor.sub);
+    return MenuItemResponseDto.fromEntity(item);
+  }
+
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
+  @ScopedToBusinessUnit('businessUnitId')
+  @Patch(':menuItemId/activate')
+  @ApiOperation({ summary: 'Activate a menu item (set isAvailable to true)' })
+  @ApiOkResponse({ type: MenuItemResponseDto })
+  @ApiNotFoundResponse({ description: 'Menu item not found in this business unit' })
+  async activateItem(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { businessUnitId, menuItemId }: MenuItemParamsDto,
+  ): Promise<MenuItemResponseDto> {
+    const item = await this.activateMenuItem.execute(menuItemId, businessUnitId, actor.sub);
     return MenuItemResponseDto.fromEntity(item);
   }
 }

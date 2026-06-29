@@ -61,6 +61,24 @@ export class PrismaBusinessUnitRepository implements BusinessUnitRepository {
     }
   }
 
+  async setActive(id: string, isActive: boolean): Promise<BusinessUnit | null> {
+    try {
+      const updated = await this.prisma.businessUnit.update({
+        where: { id },
+        data: { isActive },
+      });
+
+      return this.toEntity(updated);
+    } catch (err) {
+      // P2025 when no unit matches the id. Honor the null contract so the use case
+      // raises BusinessUnitNotFoundError (404) instead of leaking a 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
   // Resolves which unique field tripped P2002. Prisma reports it in meta.target,
   // which is string[] on Postgres but typed loosely, so we narrow defensively.
   private conflictingField(err: Prisma.PrismaClientKnownRequestError): 'cnpj' | 'phone' {

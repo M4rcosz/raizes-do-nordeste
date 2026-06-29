@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -23,7 +23,10 @@ import {
 } from '../dto/product-query.dto';
 import { ProductCreateDto } from '../dto/product-create.dto';
 import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
+import { SetProductActiveUseCase } from '@modules/business-units/application/use-cases/set-product-active.use-case';
 import { Roles } from '@shared/auth/roles.decorator';
+import { CurrentUser } from '@shared/auth/current-user.decorator';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 
 @ApiTags('products')
 @Controller('products')
@@ -33,6 +36,7 @@ export class ProductsController {
     private readonly getProductsByBusinessUnit: GetProductsByBusinessUnitUseCase,
     private readonly getProductById: GetProductByIdUseCase,
     private readonly createProduct: CreateProductUseCase,
+    private readonly setProductActive: SetProductActiveUseCase,
   ) {}
 
   @Public()
@@ -108,6 +112,32 @@ export class ProductsController {
   @ApiNotFoundResponse({ description: 'The referenced category does not exist' })
   async create(@Body() productCreateDto: ProductCreateDto): Promise<ProductResponseDto> {
     const product = await this.createProduct.execute(productCreateDto);
+    return ProductResponseDto.fromEntity(product);
+  }
+
+  @Roles(['ADMIN'])
+  @Patch(':productId/activate')
+  @ApiOperation({ summary: 'Activate a product (set isActive to true)' })
+  @ApiOkResponse({ type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Product not found' })
+  async activate(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { productId }: ProductIdParamDto,
+  ): Promise<ProductResponseDto> {
+    const product = await this.setProductActive.execute(productId, true, actor.sub);
+    return ProductResponseDto.fromEntity(product);
+  }
+
+  @Roles(['ADMIN'])
+  @Patch(':productId/deactivate')
+  @ApiOperation({ summary: 'Deactivate a product (set isActive to false)' })
+  @ApiOkResponse({ type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Product not found' })
+  async deactivate(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { productId }: ProductIdParamDto,
+  ): Promise<ProductResponseDto> {
+    const product = await this.setProductActive.execute(productId, false, actor.sub);
     return ProductResponseDto.fromEntity(product);
   }
 

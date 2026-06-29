@@ -11,7 +11,7 @@ import {
   MenuItemRepository,
   MENU_ITEM_REPOSITORY,
 } from '../../domain/repositories/menu-item.repository';
-import { DeactivateMenuItemUseCase } from './deactivate-menu-item.use-case';
+import { ActivateMenuItemUseCase } from './activate-menu-item.use-case';
 import { MenuItem } from '../../domain/entities/menu-item.entity';
 import { MenuItemNotFoundError } from '../errors/menu-item-not-found.error';
 
@@ -30,8 +30,8 @@ class FakeAuditLogger implements AuditLogger {
   }
 }
 
-describe('DeactivateMenuItemUseCase', () => {
-  let useCase: DeactivateMenuItemUseCase;
+describe('ActivateMenuItemUseCase', () => {
+  let useCase: ActivateMenuItemUseCase;
   let audit: FakeAuditLogger;
   let update: jest.MockedFunction<MenuItemRepository['update']>;
 
@@ -48,13 +48,13 @@ describe('DeactivateMenuItemUseCase', () => {
 
     const moduleRef = await Test.createTestingModule({
       providers: [
-        DeactivateMenuItemUseCase,
+        ActivateMenuItemUseCase,
         { provide: MENU_ITEM_REPOSITORY, useValue: mockRepo },
         { provide: AUDIT_LOGGER, useValue: audit },
       ],
     }).compile();
 
-    useCase = moduleRef.get(DeactivateMenuItemUseCase);
+    useCase = moduleRef.get(ActivateMenuItemUseCase);
   });
 
   afterEach(() => {
@@ -70,12 +70,12 @@ describe('DeactivateMenuItemUseCase', () => {
         'bu-1',
         'product-1',
         Money.fromDecimalString('15.90'),
-        false,
+        true,
         new Date(),
         new Date(),
       );
 
-    it('should flip isAvailable to false via a unit-scoped update', async () => {
+    it('should flip isAvailable to true via a unit-scoped update', async () => {
       const updated = buildItem();
       update.mockResolvedValue(updated);
 
@@ -84,7 +84,7 @@ describe('DeactivateMenuItemUseCase', () => {
       expect(update).toHaveBeenCalledWith({
         id: 'menu-item-1',
         businessUnitId: 'bu-1',
-        isAvailable: false,
+        isAvailable: true,
       });
       expect(result).toBe(updated);
     });
@@ -97,17 +97,17 @@ describe('DeactivateMenuItemUseCase', () => {
       );
     });
 
-    it('should audit the deactivation under the actor', async () => {
+    it('should audit the activation under the actor', async () => {
       update.mockResolvedValue(buildItem());
 
       await useCase.execute('menu-item-1', 'bu-1', 'admin-1');
 
       expect(audit.entries[0]).toMatchObject({
         userId: 'admin-1',
-        action: AUDIT_ACTIONS.MENU_ITEM_DEACTIVATED,
+        action: AUDIT_ACTIONS.MENU_ITEM_ACTIVATED,
         entity: 'MenuItem',
         entityId: 'menu-item-1',
-        metadata: { businessUnitId: 'bu-1', isAvailable: false },
+        metadata: { businessUnitId: 'bu-1', isAvailable: true },
       });
     });
 

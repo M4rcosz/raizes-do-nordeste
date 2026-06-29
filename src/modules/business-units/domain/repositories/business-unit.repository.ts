@@ -29,6 +29,12 @@ export interface BusinessUnitRepository {
   findById(id: string): Promise<BusinessUnit | null>;
   findMany(input: FindBusinessUnitsInput): Promise<BusinessUnit[]>;
   create(input: CreateBusinessUnitInput): Promise<BusinessUnit>;
+  /**
+   * Flips the active flag. Idempotent by design: setting the value it already
+   * holds is a no-op write that still returns the unit. Returns null when no unit
+   * matches the id so the use case can raise a not-found.
+   */
+  setActive(id: string, isActive: boolean): Promise<BusinessUnit | null>;
 }
 
 export const BUSINESS_UNIT_REPOSITORY = Symbol('BusinessUnitRepository');

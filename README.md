@@ -713,6 +713,8 @@ The password hash is never serialized.
 | `GET`  | `/api/products/:productId`                       | Public          | Get a single product by id. Returns `404` if missing.                                                         |
 | `GET`  | `/api/products/by-business-unit/:businessUnitId` | Public          | List products available at a business unit (effective price = `customPrice` when set, otherwise `basePrice`). |
 | `POST` | `/api/products`                                  | ADMIN / MANAGER | Create a product. `201` on success, `409` if the name exists, `404` if the category does not exist.           |
+| `PATCH` | `/api/products/:productId/activate`             | ADMIN           | Activate a product (`isActive = true`). Returns `200`; idempotent. `404` if missing.                         |
+| `PATCH` | `/api/products/:productId/deactivate`           | ADMIN           | Deactivate a product (`isActive = false`). Returns `200`; idempotent. `404` if missing.                      |
 
 #### Request body - `ProductCreateDto` (`POST /api/products`)
 
@@ -755,6 +757,8 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 | `GET`  | `/api/business-units/internal`     | ADMIN / MANAGER | List all units (cursor-paginated), full detail. Optional `search`/`city`/`isActive` filters.      |
 | `GET`  | `/api/business-units/internal/:id` | ADMIN / MANAGER | Get a single unit by id, full detail (any status).                                                |
 | `POST` | `/api/business-units`              | ADMIN           | Create a unit. `201` on success, `409` if the `cnpj` or `phone` already exists.                   |
+| `PATCH` | `/api/business-units/:id/activate`   | ADMIN          | Activate a business unit (`isActive = true`). Returns `200`; idempotent. `404` if missing.        |
+| `PATCH` | `/api/business-units/:id/deactivate` | ADMIN          | Deactivate a business unit (`isActive = false`). Returns `200`; idempotent. `404` if missing.     |
 
 #### Request body - `BusinessUnitCreateDto` (`POST /api/business-units`)
 
@@ -812,6 +816,7 @@ A menu item links a `Product` to a business unit with a unit-specific
 | `GET`   | `/api/business-units/:businessUnitId/menu/:menuItemId`          | Public          | Get a single available menu item. Returns `404` if missing or unavailable.                          |
 | `POST`  | `/api/business-units/:businessUnitId/menu`                      | ADMIN / MANAGER | Add a product to the unit's menu. `201` on success, `409` if it is already on the menu, `404` if the unit or product does not exist. |
 | `PATCH` | `/api/business-units/:businessUnitId/menu/:menuItemId`          | ADMIN / MANAGER | Update `customPrice` and/or `isAvailable`. At least one field is required.                           |
+| `PATCH` | `/api/business-units/:businessUnitId/menu/:menuItemId/activate`   | ADMIN / MANAGER | Activate a menu item (`isAvailable = true`). Returns `200`; idempotent.                              |
 | `PATCH` | `/api/business-units/:businessUnitId/menu/:menuItemId/deactivate` | ADMIN / MANAGER | Deactivate a menu item (`isAvailable = false`). Returns `200`; idempotent.                           |
 
 `customPrice` is the unit-specific price that overrides `Product.basePrice`. It
@@ -1092,14 +1097,22 @@ balance below zero returns `422`.
 
 | Method | Path              | Auth     | Description                                          |
 | ------ | ----------------- | -------- | --------------------------------------------------- |
-| `GET`  | `/api/loyalty/me` | CUSTOMER | Get the authenticated customer's loyalty account.   |
+| Method   | Path                      | Auth     | Description                                          |
+| -------- | ------------------------- | -------- | --------------------------------------------------- |
+| `GET`    | `/api/loyalty/me`         | CUSTOMER | Get the authenticated customer's loyalty account.   |
+| `POST`   | `/api/loyalty/me/consent` | CUSTOMER | Grant LGPD consent for the loyalty program. Idempotent upsert: creates the account if the customer has never ordered. Returns `200`. |
+| `DELETE` | `/api/loyalty/me/consent` | CUSTOMER | Withdraw LGPD consent. Sets `consentGiven = false` and records `consentRevokedAt`. Returns `200`; `404` if no account exists yet. |
 
 A customer's `LoyaltyAccount` is created automatically on their **first order**
-(with `consentGiven = false`). `GET /api/loyalty/me` returns `404` for a
-customer who has never ordered, and `403` for staff. Points are credited only
-when a payment is **approved**, only if the account has `consentGiven = true`
-(LGPD gate): `floor(paidAmount / 10)` points (1 point per R$10), recorded as a
-`LoyaltyTransaction` of type `EARN`. Redemption runs at order creation: the
+(with `consentGiven = false`), or eagerly via `POST /api/loyalty/me/consent`.
+`GET /api/loyalty/me` returns `404` for a customer who has never ordered, and
+`403` for staff. Points are credited only when a payment is **approved**, only
+if the account has `consentGiven = true` (LGPD gate): `floor(paidAmount / 10)`
+points (1 point per R$10), recorded as a `LoyaltyTransaction` of type `EARN`.
+Consent can be granted and withdrawn at will; withdrawal stamps `consentRevokedAt`
+and stops future earn/redeem without touching already-accrued points. Each grant
+and revoke is recorded in the audit log (`LOYALTY_CONSENT_GIVEN` /
+`LOYALTY_CONSENT_REVOKED`). Redemption runs at order creation: the
 client sends `pointsRedeemed` on the order, each point is worth `R$0.10` off the
 total, and the balance is validated and debited (optimistically) in the same
 transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
@@ -1108,9 +1121,13 @@ transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 
 ```json
 {
+  "id": "a1c4...",
   "customerId": "f3b7...",
   "totalPoints": 12,
-  "consentGiven": true
+  "consentGiven": true,
+  "consentDate": "2026-06-28T12:00:00.000Z",
+  "consentRevokedAt": null,
+  "createdAt": "2026-06-01T09:30:00.000Z"
 }
 ```
 

@@ -102,6 +102,41 @@ export class PrismaLoyaltyRepository implements LoyaltyRepository {
     }
   }
 
+  async grantConsent(customerId: string): Promise<LoyaltyAccount> {
+    const now = new Date();
+
+    // Upsert so a customer who never ordered can still opt in: create a consented
+    // account when absent, or refresh consent on the existing one (clearing any
+    // prior revocation). Idempotent under repeat grants.
+    const raw = await this.prisma.loyaltyAccount.upsert({
+      where: { customerId },
+      create: { customerId, consentGiven: true, consentDate: now },
+      update: { consentGiven: true, consentDate: now, consentRevokedAt: null },
+    });
+
+    return this.toEntity(raw);
+  }
+
+  async revokeConsent(customerId: string): Promise<LoyaltyAccount | null> {
+    try {
+      const raw = await this.prisma.loyaltyAccount.update({
+        where: { customerId },
+        // consentDate stays as the original grant time; consentRevokedAt records
+        // the withdrawal. Points and transactions are left intact.
+        data: { consentGiven: false, consentRevokedAt: new Date() },
+      });
+
+      return this.toEntity(raw);
+    } catch (err) {
+      // P2025 when the customer has no account. Honor the null contract so the use
+      // case raises LoyaltyAccountNotFoundError (404) instead of leaking a 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
   private toEntity(raw: LoyaltyAccountModel): LoyaltyAccount {
     return new LoyaltyAccount(
       raw.id,
@@ -109,6 +144,7 @@ export class PrismaLoyaltyRepository implements LoyaltyRepository {
       raw.totalPoints,
       raw.consentGiven,
       raw.consentDate,
+      raw.consentRevokedAt,
       raw.createdAt,
       raw.updatedAt,
     );

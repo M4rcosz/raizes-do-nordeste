@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -10,6 +10,7 @@ import {
 import { CreateBusinessUnitUseCase } from '../../../application/use-cases/create-business-unit.use-case';
 import { ListBusinessUnitsUseCase } from '../../../application/use-cases/list-business-units.use-case';
 import { GetBusinessUnitByIdUseCase } from '../../../application/use-cases/get-business-unit-by-id.use-case';
+import { SetBusinessUnitActiveUseCase } from '../../../application/use-cases/set-business-unit-active.use-case';
 import { BusinessUnitResponseDto } from '../dto/business-unit-response.dto';
 import { PublicBusinessUnitResponseDto } from '../dto/business-unit-public-response.dto';
 import {
@@ -23,6 +24,8 @@ import { sanitizeLimit } from '@shared/pagination/pagination';
 import { BusinessUnitFilters } from '../../../domain/repositories/business-unit.repository';
 import { Public } from '@shared/auth/public.decorator';
 import { Roles } from '@shared/auth/roles.decorator';
+import { CurrentUser } from '@shared/auth/current-user.decorator';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 
 @ApiTags('business-units')
 @Controller('business-units')
@@ -31,6 +34,7 @@ export class BusinessUnitsController {
     private readonly createBusinessUnit: CreateBusinessUnitUseCase,
     private readonly listBusinessUnits: ListBusinessUnitsUseCase,
     private readonly getBusinessUnitById: GetBusinessUnitByIdUseCase,
+    private readonly setBusinessUnitActive: SetBusinessUnitActiveUseCase,
   ) {}
 
   @Roles(['ADMIN'])
@@ -42,6 +46,32 @@ export class BusinessUnitsController {
   })
   async create(@Body() dto: BusinessUnitCreateDto): Promise<BusinessUnitResponseDto> {
     const unit = await this.createBusinessUnit.execute(dto);
+    return BusinessUnitResponseDto.fromEntity(unit);
+  }
+
+  @Roles(['ADMIN'])
+  @Patch(':id/activate')
+  @ApiOperation({ summary: 'Activate a business unit (set isActive to true)' })
+  @ApiOkResponse({ type: BusinessUnitResponseDto })
+  @ApiNotFoundResponse({ description: 'Business unit not found' })
+  async activate(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { id }: BusinessUnitByIdParamDto,
+  ): Promise<BusinessUnitResponseDto> {
+    const unit = await this.setBusinessUnitActive.execute(id, true, actor.sub);
+    return BusinessUnitResponseDto.fromEntity(unit);
+  }
+
+  @Roles(['ADMIN'])
+  @Patch(':id/deactivate')
+  @ApiOperation({ summary: 'Deactivate a business unit (set isActive to false)' })
+  @ApiOkResponse({ type: BusinessUnitResponseDto })
+  @ApiNotFoundResponse({ description: 'Business unit not found' })
+  async deactivate(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { id }: BusinessUnitByIdParamDto,
+  ): Promise<BusinessUnitResponseDto> {
+    const unit = await this.setBusinessUnitActive.execute(id, false, actor.sub);
     return BusinessUnitResponseDto.fromEntity(unit);
   }
 

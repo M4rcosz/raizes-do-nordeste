@@ -14,8 +14,14 @@ export class LoyaltyAccountResponseDto {
   @ApiProperty({ description: 'Points only accrue after the customer consents (LGPD).' })
   readonly consentGiven!: boolean;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ nullable: true, description: 'When consent was last granted.' })
   readonly consentDate!: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'When consent was withdrawn; null while consent is active.',
+  })
+  readonly consentRevokedAt!: Date | null;
 
   @ApiProperty()
   readonly createdAt!: Date;
@@ -27,6 +33,7 @@ export class LoyaltyAccountResponseDto {
       totalPoints: account.totalPoints,
       consentGiven: account.consentGiven,
       consentDate: account.consentDate,
+      consentRevokedAt: account.consentRevokedAt,
       createdAt: account.createdAt,
     });
   }
