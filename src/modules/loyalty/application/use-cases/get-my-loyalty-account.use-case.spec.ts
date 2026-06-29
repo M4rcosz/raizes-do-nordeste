@@ -20,7 +20,16 @@ describe('GetMyLoyaltyAccountUseCase', () => {
   });
 
   it('returns the authenticated customer account', async () => {
-    const account = new LoyaltyAccount('la-1', 'c-1', 42, true, new Date(), new Date(), new Date());
+    const account = new LoyaltyAccount(
+      'la-1',
+      'c-1',
+      42,
+      true,
+      new Date(),
+      null,
+      new Date(),
+      new Date(),
+    );
     findByCustomerId.mockResolvedValue(account);
 
     await expect(useCase.execute('c-1')).resolves.toBe(account);

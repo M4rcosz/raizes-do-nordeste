@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '@modules/audit/audit.module';
 import { LoyaltyController } from './infrastructure/http/controllers/loyalty.controller';
 import { LOYALTY_REPOSITORY } from './domain/repositories/loyalty.repository';
 import { PrismaLoyaltyRepository } from './infrastructure/persistence/prisma-loyalty.repository';
@@ -9,8 +10,11 @@ import { GetMyLoyaltyAccountUseCase } from './application/use-cases/get-my-loyal
 import { EnrollCustomerUseCase } from './application/use-cases/enroll-customer.use-case';
 import { EarnPointsUseCase } from './application/use-cases/earn-points.use-case';
 import { RedeemPointsUseCase } from './application/use-cases/redeem-points.use-case';
+import { GiveLoyaltyConsentUseCase } from './application/use-cases/give-loyalty-consent.use-case';
+import { RevokeLoyaltyConsentUseCase } from './application/use-cases/revoke-loyalty-consent.use-case';
 
 @Module({
+  imports: [AuditModule],
   controllers: [LoyaltyController],
   providers: [
     {
@@ -30,6 +34,8 @@ import { RedeemPointsUseCase } from './application/use-cases/redeem-points.use-c
       useClass: RedeemPointsUseCase,
     },
     GetMyLoyaltyAccountUseCase,
+    GiveLoyaltyConsentUseCase,
+    RevokeLoyaltyConsentUseCase,
   ],
   exports: [LOYALTY_ENROLLMENT, LOYALTY_EARNING, LOYALTY_REDEMPTION],
 })

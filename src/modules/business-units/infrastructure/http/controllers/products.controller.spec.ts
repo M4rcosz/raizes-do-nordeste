@@ -9,8 +9,12 @@ import { Product } from '../../../domain/entities/product.entity';
 import { ProductResponseDto } from '../dto/product-response.dto';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
 import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
+import { SetProductActiveUseCase } from '@modules/business-units/application/use-cases/set-product-active.use-case';
 import { ProductNotFoundError } from '../../../application/errors/product-not-found.error';
 import { ProductCreateDto } from '../dto/product-create.dto';
+import type { JwtPayload } from '@shared/auth/jwt-payload.type';
+
+const actor = { sub: 'admin-1' } as JwtPayload;
 
 describe('ProductsController', () => {
   let controller: ProductsController;
@@ -18,6 +22,7 @@ describe('ProductsController', () => {
   let getProductsByBusinessUnit: jest.Mocked<GetProductsByBusinessUnitUseCase>;
   let getProductById: jest.Mocked<GetProductByIdUseCase>;
   let createProduct: jest.Mocked<CreateProductUseCase>;
+  let setProductActive: jest.Mocked<SetProductActiveUseCase>;
 
   const buildProduct = (id = 'uuid-1'): Product =>
     new Product(
@@ -39,6 +44,7 @@ describe('ProductsController', () => {
     } as unknown as jest.Mocked<GetProductsByBusinessUnitUseCase>;
     getProductById = { execute: jest.fn() } as unknown as jest.Mocked<GetProductByIdUseCase>;
     createProduct = { execute: jest.fn() } as unknown as jest.Mocked<CreateProductUseCase>;
+    setProductActive = { execute: jest.fn() } as unknown as jest.Mocked<SetProductActiveUseCase>;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -47,6 +53,7 @@ describe('ProductsController', () => {
         { provide: GetProductsByBusinessUnitUseCase, useValue: getProductsByBusinessUnit },
         { provide: GetProductByIdUseCase, useValue: getProductById },
         { provide: CreateProductUseCase, useValue: createProduct },
+        { provide: SetProductActiveUseCase, useValue: setProductActive },
       ],
     }).compile();
 
@@ -159,6 +166,37 @@ describe('ProductsController', () => {
       getProductById.execute.mockRejectedValue(new ProductNotFoundError('Product not found.'));
 
       await expect(controller.findById({ productId: 'missing' })).rejects.toBeInstanceOf(
+        ProductNotFoundError,
+      );
+    });
+  });
+
+  describe('activate', () => {
+    it('should call the use-case with isActive=true and map the result', async () => {
+      setProductActive.execute.mockResolvedValue(buildProduct('uuid-7'));
+
+      const response = await controller.activate(actor, { productId: 'uuid-7' });
+
+      expect(setProductActive.execute).toHaveBeenCalledWith('uuid-7', true, 'admin-1');
+      expect(response).toBeInstanceOf(ProductResponseDto);
+      expect(response.id).toBe('uuid-7');
+    });
+  });
+
+  describe('deactivate', () => {
+    it('should call the use-case with isActive=false and map the result', async () => {
+      setProductActive.execute.mockResolvedValue(buildProduct('uuid-7'));
+
+      const response = await controller.deactivate(actor, { productId: 'uuid-7' });
+
+      expect(setProductActive.execute).toHaveBeenCalledWith('uuid-7', false, 'admin-1');
+      expect(response).toBeInstanceOf(ProductResponseDto);
+    });
+
+    it('should propagate ProductNotFoundError raised by the use-case', async () => {
+      setProductActive.execute.mockRejectedValue(new ProductNotFoundError('Product not found.'));
+
+      await expect(controller.deactivate(actor, { productId: 'missing' })).rejects.toBeInstanceOf(
         ProductNotFoundError,
       );
     });

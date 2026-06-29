@@ -13,14 +13,15 @@ export class LoyaltyAccount {
     public readonly totalPoints: number,
     public readonly consentGiven: boolean,
     public readonly consentDate: Date | null,
+    public readonly consentRevokedAt: Date | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
 
   /**
    * LGPD gate: points only accrue after the customer consented to the program.
-   * TODO(loyalty-consent): the consent-granting flow does not exist yet; accounts
-   * are created with consentGiven=false and earn nothing until it ships.
+   * Consent is granted via POST /loyalty/me/consent and can be withdrawn, which
+   * flips consentGiven back to false (see consentRevokedAt for the withdrawal time).
    */
   canEarn(): boolean {
     return this.consentGiven;

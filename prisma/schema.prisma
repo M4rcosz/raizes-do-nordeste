@@ -246,7 +246,7 @@ enum OrderStatus {
 model Order {
   id             String  @id @default(uuid())
   businessUnitId String  @map("business_unit_id")
-  customerId     String?  @map("customer_id")
+  customerId     String? @map("customer_id")
   attendantId    String? @map("attendant_id")
 
   pointsRedeemed Int          @default(0) @map("points_redeemed")
@@ -260,7 +260,7 @@ model Order {
   updatedById    String?      @map("updated_by")
 
   businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id])
-  customer     User?         @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
+  customer     User?        @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
   attendant    User?        @relation("AttendantOrders", fields: [attendantId], references: [id])
   updatedBy    User?        @relation("OrdersUpdatedBy", fields: [updatedById], references: [id])
 
@@ -400,12 +400,13 @@ model LoyaltyAccount {
   id         String @id @default(uuid())
   customerId String @unique @map("customer_id")
 
-  totalPoints  Int       @default(0) @map("total_points")
-  consentGiven Boolean   @default(false) @map("consent_given")
-  consentDate  DateTime? @map("consent_date")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  updatedById  String?   @map("updated_by")
+  totalPoints      Int       @default(0) @map("total_points")
+  consentGiven     Boolean   @default(false) @map("consent_given")
+  consentDate      DateTime? @map("consent_date")
+  consentRevokedAt DateTime? @map("consent_revoked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  updatedById      String?   @map("updated_by")
 
   customer  User  @relation(fields: [customerId], references: [id])
   updatedBy User? @relation("LoyaltyAccountsUpdatedBy", fields: [updatedById], references: [id])

@@ -113,6 +113,24 @@ export class PrismaProductRepository implements ProductRepository {
     }
   }
 
+  async setActive(id: string, isActive: boolean): Promise<Product | null> {
+    try {
+      const updated = await this.prisma.product.update({
+        where: { id },
+        data: { isActive },
+      });
+
+      return this.toEntity(updated);
+    } catch (err) {
+      // P2025 when no product matches the id. Honor the null contract so the use
+      // case raises ProductNotFoundError (404) instead of leaking a 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
   private buildProductWhere(filters?: ProductFilters): Prisma.ProductWhereInput {
     if (!filters) {
       return {};

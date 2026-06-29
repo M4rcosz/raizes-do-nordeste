@@ -6,7 +6,7 @@ import { LoyaltyAccount } from '../../domain/entities/loyalty-account.entity';
 const TX = Symbol('tx');
 
 const buildAccount = (consentGiven: boolean): LoyaltyAccount =>
-  new LoyaltyAccount('la-1', 'c-1', 10, consentGiven, null, new Date(), new Date());
+  new LoyaltyAccount('la-1', 'c-1', 10, consentGiven, null, null, new Date(), new Date());
 
 describe('EarnPointsUseCase', () => {
   let findByCustomerId: jest.MockedFunction<LoyaltyRepository['findByCustomerId']>;

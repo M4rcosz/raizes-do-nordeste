@@ -13,8 +13,8 @@ import {
 import { MenuItemNotFoundError } from '../errors/menu-item-not-found.error';
 
 @Injectable()
-export class DeactivateMenuItemUseCase {
-  private readonly logger = new Logger(DeactivateMenuItemUseCase.name);
+export class ActivateMenuItemUseCase {
+  private readonly logger = new Logger(ActivateMenuItemUseCase.name);
 
   constructor(
     @Inject(MENU_ITEM_REPOSITORY)
@@ -27,7 +27,7 @@ export class DeactivateMenuItemUseCase {
     const updated = await this.menuItems.update({
       id: menuItemId,
       businessUnitId,
-      isAvailable: false,
+      isAvailable: true,
     });
 
     if (!updated) {
@@ -38,10 +38,10 @@ export class DeactivateMenuItemUseCase {
 
     await this.tryAudit({
       userId: actorId,
-      action: AUDIT_ACTIONS.MENU_ITEM_DEACTIVATED,
+      action: AUDIT_ACTIONS.MENU_ITEM_ACTIVATED,
       entity: 'MenuItem',
       entityId: updated.id,
-      metadata: { businessUnitId, isAvailable: false },
+      metadata: { businessUnitId, isAvailable: true },
     });
 
     return updated;
@@ -53,7 +53,7 @@ export class DeactivateMenuItemUseCase {
       await this.auditLogger.log(input);
     } catch (err) {
       this.logger.warn({
-        message: 'Audit logger threw during menu item deactivation; swallowed',
+        message: 'Audit logger threw during menu item activation; swallowed',
         action: input.action,
         cause: err instanceof Error ? err.message : String(err),
       });

@@ -31,7 +31,7 @@ describe('EnrollCustomerUseCase', () => {
 
   it('is a no-op when the account already exists (later orders never duplicate)', async () => {
     findByCustomerId.mockResolvedValue(
-      new LoyaltyAccount('la-1', 'c-1', 0, false, null, new Date(), new Date()),
+      new LoyaltyAccount('la-1', 'c-1', 0, false, null, null, new Date(), new Date()),
     );
 
     await useCase.ensureAccount('c-1');

@@ -25,6 +25,17 @@ All notable changes to this project will be documented in this file. See [commit
   of a staff user's unit scope).
 * **identity:** scope deactivate/reactivate by unit intersection for MANAGER, and
   validate unit binding against the actor's claim on user creation.
+* **business-units:** add idempotent `PATCH /api/business-units/:id/activate` and
+  `/deactivate` (ADMIN), toggling `isActive`.
+* **business-units:** add idempotent `PATCH /api/products/:productId/activate` and
+  `/deactivate` (ADMIN), toggling `isActive`.
+* **business-units:** add `PATCH /api/business-units/:businessUnitId/menu/:menuItemId/activate`
+  (ADMIN/MANAGER, unit-scoped), mirroring the existing deactivate.
+* **loyalty:** add LGPD consent management for customers - `POST /api/loyalty/me/consent`
+  (idempotent upsert that creates the account if absent) and
+  `DELETE /api/loyalty/me/consent`, recording `consentDate`/`consentRevokedAt`.
+* **audit:** record toggle and loyalty-consent events (`BUSINESS_UNIT_*`,
+  `PRODUCT_*`, `MENU_ITEM_*`, `LOYALTY_CONSENT_GIVEN`/`LOYALTY_CONSENT_REVOKED`).
 
 ### Changes
 

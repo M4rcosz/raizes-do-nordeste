@@ -41,7 +41,7 @@ class FakeLoyaltyRepository implements LoyaltyRepository {
       const now = new Date();
       this.byCustomerId.set(
         customerId,
-        new LoyaltyAccount(`la-${customerId}`, customerId, 0, false, null, now, now),
+        new LoyaltyAccount(`la-${customerId}`, customerId, 0, false, null, null, now, now),
       );
     }
     return Promise.resolve();
@@ -88,6 +88,7 @@ class FakeLoyaltyRepository implements LoyaltyRepository {
         totalPoints,
         account.consentGiven,
         account.consentDate,
+        account.consentRevokedAt,
         account.createdAt,
         new Date(),
       ),
@@ -96,7 +97,7 @@ class FakeLoyaltyRepository implements LoyaltyRepository {
 }
 
 const account = (consentGiven: boolean, totalPoints: number): LoyaltyAccount =>
-  new LoyaltyAccount('la-1', 'c-1', totalPoints, consentGiven, null, new Date(), new Date());
+  new LoyaltyAccount('la-1', 'c-1', totalPoints, consentGiven, null, null, new Date(), new Date());
 
 describe('RedeemPointsUseCase', () => {
   let repo: FakeLoyaltyRepository;
