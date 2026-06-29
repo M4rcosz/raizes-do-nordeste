@@ -65,11 +65,11 @@ class FakePromotionRepository implements PromotionRepository {
   }
 }
 
-const owner = (businessUnitId: string | null = 'bu-1'): PromotionActor => ({
+const owner = (businessUnitId = 'bu-1'): PromotionActor => ({
   role: UserRole.MANAGER,
-  businessUnitId,
+  businessUnitIds: [businessUnitId],
 });
-const admin: PromotionActor = { role: UserRole.ADMIN, businessUnitId: null };
+const admin: PromotionActor = { role: UserRole.ADMIN, businessUnitIds: [] };
 
 describe('FindPromotionByIdUseCase', () => {
   let repo: FakePromotionRepository;

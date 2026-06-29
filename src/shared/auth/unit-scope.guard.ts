@@ -7,7 +7,7 @@ import { BusinessUnitScopeError } from '@shared/errors/application/business-unit
 
 // Roles with no unit binding. They reach every unit; access is decided by
 // @Roles alone, never by unit scope. ADMIN is global staff, CUSTOMER belongs to
-// no unit. A null claim on a unit-bound staff role (MANAGER/ATTENDANT/KITCHEN)
+// no unit. An empty claim on a unit-bound staff role (MANAGER/ATTENDANT/KITCHEN)
 // is misconfig, not global, so those still get scoped.
 const UNIT_UNBOUND_ROLES: ReadonlySet<UserRole> = new Set([UserRole.ADMIN, UserRole.CUSTOMER]);
 
@@ -16,9 +16,9 @@ const UNIT_UNBOUND_ROLES: ReadonlySet<UserRole> = new Set([UserRole.ADMIN, UserR
  * so request.user is already the verified JWT payload.
  *
  * Rules:
- *   unbound role          -> passes (ADMIN/CUSTOMER ride every unit; gated by @Roles).
- *   bound role, claim null -> blocked (no unit scope, no management reach).
- *   bound role, param set  -> passes only when param == claim.businessUnitId.
+ *   unbound role           -> passes (ADMIN/CUSTOMER ride every unit; gated by @Roles).
+ *   bound role, claim empty -> blocked (no unit scope, no management reach).
+ *   bound role, param set   -> passes only when claim.businessUnitIds includes the param.
  *   bound role, no param   -> passes ONLY when the route truly carries no unit
  *                            param; if a businessUnitId param is present the
  *                            decorator was forgotten, so fail closed and block.
@@ -49,7 +49,7 @@ export class UnitScopeGuard implements CanActivate {
       return true;
     }
 
-    if (user.businessUnitId === null) {
+    if (user.businessUnitIds.length === 0) {
       throw new BusinessUnitScopeError();
     }
 
@@ -63,7 +63,8 @@ export class UnitScopeGuard implements CanActivate {
       return true;
     }
 
-    if (request.params[paramName] !== user.businessUnitId) {
+    const param = request.params[paramName];
+    if (typeof param !== 'string' || !user.businessUnitIds.includes(param)) {
       throw new BusinessUnitScopeError();
     }
 

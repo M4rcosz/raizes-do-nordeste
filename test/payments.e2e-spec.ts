@@ -149,7 +149,7 @@ describe('Payments - critical flow A (e2e)', () => {
         username,
         passwordHash,
         role: 'CUSTOMER',
-        businessUnitId: unit.id,
+        businessUnits: { create: [{ businessUnitId: unit.id }] },
       },
     });
     customerId = user.id;
@@ -168,7 +168,7 @@ describe('Payments - critical flow A (e2e)', () => {
         username: otherUsername,
         passwordHash,
         role: 'CUSTOMER',
-        businessUnitId: unit.id,
+        businessUnits: { create: [{ businessUnitId: unit.id }] },
       },
     });
     otherCustomerId = other.id;

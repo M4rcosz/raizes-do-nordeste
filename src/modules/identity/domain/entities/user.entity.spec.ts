@@ -6,7 +6,7 @@ describe('User', () => {
   const buildUser = (overrides?: { passwordHash?: string }): User =>
     new User(
       'uuid-1',
-      'bu-1',
+      ['bu-1'],
       'panic',
       'Pedro Panic',
       'panic@example.com',
@@ -25,7 +25,7 @@ describe('User', () => {
       const updatedAt = new Date('2026-01-02T00:00:00Z');
       const user = new User(
         'uuid-1',
-        'bu-1',
+        ['bu-1'],
         'panic',
         'Pedro Panic',
         'panic@example.com',
@@ -39,7 +39,7 @@ describe('User', () => {
       );
 
       expect(user.id).toBe('uuid-1');
-      expect(user.businessUnitId).toBe('bu-1');
+      expect(user.businessUnitIds).toEqual(['bu-1']);
       expect(user.username).toBe('panic');
       expect(user.name).toBe('Pedro Panic');
       expect(user.email).toBe('panic@example.com');
@@ -62,7 +62,7 @@ describe('User', () => {
         role: 'CUSTOMER',
         email: 'maria@example.com',
         phone: '34988887777',
-        businessUnitId: 'bu-1',
+        businessUnitIds: ['bu-1'],
       });
       const after = Date.now();
 
@@ -72,7 +72,7 @@ describe('User', () => {
       expect(user.role).toBe('CUSTOMER');
       expect(user.email).toBe('maria@example.com');
       expect(user.phone).toBe('34988887777');
-      expect(user.businessUnitId).toBe('bu-1');
+      expect(user.businessUnitIds).toEqual(['bu-1']);
       expect(user.createdAt.getTime()).toBeGreaterThanOrEqual(before);
       expect(user.createdAt.getTime()).toBeLessThanOrEqual(after);
       expect(user.updatedAt.getTime()).toBe(user.createdAt.getTime());
@@ -88,7 +88,7 @@ describe('User', () => {
 
       expect(user.email).toBeNull();
       expect(user.phone).toBeNull();
-      expect(user.businessUnitId).toBeNull();
+      expect(user.businessUnitIds).toEqual([]);
     });
 
     it('should produce a distinct id per call', () => {
@@ -122,7 +122,7 @@ describe('User', () => {
     it('should be false for an inactive user', () => {
       const inactive = new User(
         'uuid-1',
-        'bu-1',
+        ['bu-1'],
         'panic',
         'Pedro Panic',
         'panic@example.com',
@@ -173,7 +173,7 @@ describe('User', () => {
       expect(updated.email).toBe(user.email);
       expect(updated.role).toBe(user.role);
       expect(updated.isActive).toBe(user.isActive);
-      expect(updated.businessUnitId).toBe(user.businessUnitId);
+      expect(updated.businessUnitIds).toEqual(user.businessUnitIds);
       expect(updated.createdAt).toBe(user.createdAt);
       expect(updated.toCreateInput().passwordHash).toBe(user.toCreateInput().passwordHash);
     });
@@ -201,7 +201,7 @@ describe('User', () => {
       const updated = user.withPasswordHash('new-hash');
 
       expect(updated.id).toBe(user.id);
-      expect(updated.businessUnitId).toBe(user.businessUnitId);
+      expect(updated.businessUnitIds).toEqual(user.businessUnitIds);
       expect(updated.username).toBe(user.username);
       expect(updated.name).toBe(user.name);
       expect(updated.email).toBe(user.email);

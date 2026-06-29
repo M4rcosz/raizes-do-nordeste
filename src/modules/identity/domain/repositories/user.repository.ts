@@ -1,3 +1,4 @@
+import type { CursorPaginationParams } from '@shared/pagination/pagination';
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { User } from '../entities/user.entity';
 import { UserRole } from '../value-objects/user-role';
@@ -5,11 +6,12 @@ import { UserRole } from '../value-objects/user-role';
 /**
  * Flat data the repository persists for a new user. The domain factory
  * ({@link User.register}) produces these values (id, timestamps, hash already set);
- * the repo is dumb and just writes them.
+ * the repo is dumb and just writes them. businessUnitIds become rows in the
+ * user_business_units join table.
  */
 export interface CreateUserInput {
   id: string;
-  businessUnitId: string | null;
+  businessUnitIds: string[];
   username: string;
   name: string;
   email: string | null;
@@ -25,6 +27,21 @@ export interface CreateUserInput {
 export interface UpdateProfileInput {
   name?: string;
   phone?: string;
+}
+
+/** Optional, AND-combined filters for the staff listing. */
+export interface ListUsersFilters {
+  /** Restrict to users linked to ANY of these units (join EXISTS). */
+  businessUnitIds?: string[];
+  /** Case-insensitive substring match on username. */
+  username?: string;
+  /** Case-insensitive substring match on email. */
+  email?: string;
+}
+
+export interface FindUsersInput {
+  filters?: ListUsersFilters;
+  pagination: CursorPaginationParams;
 }
 
 export interface UserRepository {
@@ -69,6 +86,24 @@ export interface UserRepository {
     newPasswordHash: string,
     updatedById: string,
     tx?: TransactionContext,
+  ): Promise<User | null>;
+  /**
+   * Cursor-paginated staff listing. Filters are AND-combined; businessUnitIds
+   * matches users linked to any of the given units. Ordered by (createdAt desc,
+   * id desc) so the cursor is stable.
+   */
+  findMany(input: FindUsersInput): Promise<User[]>;
+  /**
+   * Replaces a user's unit links with exactly `businessUnitIds` (delete current +
+   * insert new), stamping `updatedById`. Runs inside the caller's `tx` so the swap
+   * is atomic. Throws InvalidBusinessUnitError if any unit id does not exist (FK).
+   * Returns the updated user with its new links, or null if the user is gone.
+   */
+  replaceBusinessUnits(
+    id: string,
+    businessUnitIds: string[],
+    updatedById: string,
+    tx: TransactionContext,
   ): Promise<User | null>;
 }
 

@@ -10,6 +10,8 @@ import { DeactivateUserUseCase } from './application/use-cases/deactivate-user.u
 import { ReactivateUserUseCase } from './application/use-cases/reactivate-user.use-case';
 import { UpdateUserProfileUseCase } from './application/use-cases/update-user-profile.use-case';
 import { ChangePasswordUseCase } from './application/use-cases/change-password.use-case';
+import { ListUsersUseCase } from './application/use-cases/list-users.use-case';
+import { UpdateUserBusinessUnitsUseCase } from './application/use-cases/update-user-business-units.use-case';
 import { AuthController } from './infrastructure/http/controllers/auth.controller';
 import { UsersController } from './infrastructure/http/controllers/users.controller';
 import { JwtModule, type JwtModuleOptions } from '@nestjs/jwt';
@@ -98,6 +100,8 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     ReactivateUserUseCase,
     UpdateUserProfileUseCase,
     ChangePasswordUseCase,
+    ListUsersUseCase,
+    UpdateUserBusinessUnitsUseCase,
   ],
 })
 export class IdentityModule {}

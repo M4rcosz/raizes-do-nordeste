@@ -116,7 +116,7 @@ class FakeRefreshTokenGenerator implements RefreshTokenGenerator {
 const buildUser = (overrides?: { id?: string; isActive?: boolean }): User =>
   new User(
     overrides?.id ?? 'user-1',
-    'bu-1',
+    ['bu-1'],
     'panic',
     'Pedro Panic',
     'panic@example.com',
@@ -217,7 +217,7 @@ describe('RefreshTokenUseCase', () => {
         sub: 'user-1',
         username: 'panic',
         role: 'KITCHEN',
-        businessUnitId: 'bu-1',
+        businessUnitIds: ['bu-1'],
       });
     });
 

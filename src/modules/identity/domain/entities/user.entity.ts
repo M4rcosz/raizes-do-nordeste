@@ -10,13 +10,13 @@ export interface RegisterUserProps {
   role: UserRole;
   email?: string | null;
   phone?: string | null;
-  businessUnitId?: string | null;
+  businessUnitIds?: string[];
 }
 
 export class User {
   constructor(
     public readonly id: string,
-    public readonly businessUnitId: string | null,
+    public readonly businessUnitIds: string[],
     public readonly username: string,
     public readonly name: string,
     public readonly email: string | null,
@@ -38,7 +38,7 @@ export class User {
     const now = new Date();
     return new User(
       randomUUID(),
-      props.businessUnitId ?? null,
+      props.businessUnitIds ?? [],
       props.username,
       props.name,
       props.email ?? null,
@@ -65,7 +65,7 @@ export class User {
   withProfile(fields: { name?: string; phone?: string }): User {
     return new User(
       this.id,
-      this.businessUnitId,
+      this.businessUnitIds,
       this.username,
       fields.name ?? this.name,
       this.email,
@@ -87,7 +87,7 @@ export class User {
   withPasswordHash(newPasswordHash: string): User {
     return new User(
       this.id,
-      this.businessUnitId,
+      this.businessUnitIds,
       this.username,
       this.name,
       this.email,
@@ -108,7 +108,7 @@ export class User {
   toCreateInput(): CreateUserInput {
     return {
       id: this.id,
-      businessUnitId: this.businessUnitId,
+      businessUnitIds: this.businessUnitIds,
       username: this.username,
       name: this.name,
       email: this.email,

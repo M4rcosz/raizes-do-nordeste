@@ -43,7 +43,7 @@ export class AuthGuard implements CanActivate {
 
     const payload = await this.verifyToken(token);
 
-    request.user = payload;
+    request.user = this.normalizeScope(payload);
 
     const roles = this.reflector.getAllAndOverride<UserRole[] | undefined>(Roles, [
       context.getHandler(),
@@ -55,6 +55,21 @@ export class AuthGuard implements CanActivate {
     }
 
     return roles.includes(payload.role);
+  }
+
+  // Compat shim for tokens minted before the N:N migration, which carried a
+  // single businessUnitId instead of businessUnitIds. Derive the array from the
+  // legacy claim so an in-flight token keeps working until it expires.
+  // TODO: remove once the access-token TTL has elapsed past the deploy.
+  private normalizeScope(payload: JwtPayload): JwtPayload {
+    if (Array.isArray(payload.businessUnitIds)) {
+      return payload;
+    }
+    const legacy = (payload as { businessUnitId?: string | null }).businessUnitId;
+    return {
+      ...payload,
+      businessUnitIds: legacy === null || legacy === undefined ? [] : [legacy],
+    };
   }
 
   private extractTokenFromHeader(request: Request): string | undefined {

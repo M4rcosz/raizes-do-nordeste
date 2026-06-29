@@ -60,7 +60,7 @@ async function main(): Promise<void> {
       email: 'r6-squad@raizes.com',
       passwordHash: kitchenHash,
       role: 'KITCHEN',
-      businessUnitId: unit1.id,
+      businessUnits: { create: [{ businessUnitId: unit1.id }] },
     },
   });
 
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
       email: 'admin-tribes@raizes.com',
       passwordHash: adminHash,
       role: 'ADMIN',
-      businessUnitId: unit2.id,
+      businessUnits: { create: [{ businessUnitId: unit2.id }] },
     },
   });
 
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       email: 'chief@raizes.com',
       passwordHash: managerHash,
       role: 'MANAGER',
-      businessUnitId: unit2.id,
+      businessUnits: { create: [{ businessUnitId: unit2.id }] },
     },
   });
 
@@ -98,7 +98,6 @@ async function main(): Promise<void> {
       name: 'Customer Number 1',
       passwordHash: customerHash,
       role: 'CUSTOMER',
-      businessUnitId: unit2.id,
     },
   });
 

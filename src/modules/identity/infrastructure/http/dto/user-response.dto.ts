@@ -22,8 +22,8 @@ export class UserResponseDto {
   @ApiProperty({ enum: UserRole })
   role!: UserRole;
 
-  @ApiProperty({ nullable: true })
-  businessUnitId!: string | null;
+  @ApiProperty({ type: [String], description: 'Units this user is scoped to (empty if unbound)' })
+  businessUnitIds!: string[];
 
   @ApiProperty()
   isActive!: boolean;
@@ -36,7 +36,7 @@ export class UserResponseDto {
     dto.email = user.email;
     dto.phone = user.phone;
     dto.role = user.role;
-    dto.businessUnitId = user.businessUnitId;
+    dto.businessUnitIds = user.businessUnitIds;
     dto.isActive = user.isActive;
     return dto;
   }

@@ -7,10 +7,10 @@ import {
   type PromotionRepository,
 } from '../../domain/repositories/promotion.repository';
 import { PromotionNotEligibleError } from '../../domain/errors/promotion-not-eligible.error';
-import type { PromotionActor } from '../promotion-actor';
+import { actorOwnsUnit, type PromotionActor } from '../promotion-actor';
 
-/** The create payload minus the unit, which comes from the actor, not the body. */
-export type CreatePromotionDraft = Omit<CreatePromotionInput, 'businessUnitId'>;
+/** The full create payload. The target unit is now an explicit field of the body. */
+export type CreatePromotionDraft = CreatePromotionInput;
 
 @Injectable()
 export class CreatePromotionUseCase {
@@ -20,10 +20,10 @@ export class CreatePromotionUseCase {
   ) {}
 
   async execute(draft: CreatePromotionDraft, actor: PromotionActor): Promise<Promotion> {
-    // The unit is taken from the actor's claim, never the body. A global (null)
-    // ADMIN has no concrete unit to create in, so reject as not-found; staff with
-    // a null scope never reaches here (the guard stops it first).
-    if (actor.businessUnitId === null) {
+    // The unit comes from the body, but the actor must be scoped to it. ADMIN
+    // reaches any unit; a non-admin asking for a unit outside their claim reads
+    // as not-found so a foreign unit never leaks its existence.
+    if (!actorOwnsUnit(actor, draft.businessUnitId)) {
       throw new BusinessUnitScopeError();
     }
 
@@ -36,6 +36,6 @@ export class CreatePromotionUseCase {
       );
     }
 
-    return this.promotions.create({ ...draft, businessUnitId: actor.businessUnitId });
+    return this.promotions.create(draft);
   }
 }

@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [Unreleased]
+
+### ⚠ BREAKING CHANGES
+
+* **promotions:** `POST /api/promotions` now requires `businessUnitId` in the
+  request body. It was previously derived from the JWT claim; callers must now
+  send it explicitly. The use case still validates the value against the actor's
+  `businessUnitIds` claim.
+* **auth:** the JWT claim `businessUnitId: string | null` is replaced by
+  `businessUnitIds: string[]`. Access tokens issued before this change are
+  normalized by a temporary compatibility shim in `AuthGuard` until they expire.
+
+### Features
+
+* **identity:** migrate the User-BusinessUnit relationship from 1:1
+  (`User.businessUnitId`) to N:N via the `user_business_units` join table. The
+  legacy column is kept for now (expand phase) and dropped in a later migration.
+* **identity:** add `GET /api/users` (ADMIN/MANAGER, cursor-paginated; filters
+  `businessUnitId`/`username`/`email`; MANAGER scoped to its own units).
+* **identity:** add `PUT /api/users/:id/business-units` (ADMIN only; full replace
+  of a staff user's unit scope).
+* **identity:** scope deactivate/reactivate by unit intersection for MANAGER, and
+  validate unit binding against the actor's claim on user creation.
+
+### Changes
+
+* **identity:** restrict `PATCH /api/users/me` to the `CUSTOMER` role.
+
 ## [1.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.0.0...v1.3.0) (2026-06-28)
 
 

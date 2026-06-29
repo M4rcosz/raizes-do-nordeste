@@ -42,7 +42,7 @@ describe('AuthGuard', () => {
     sub: 'user-1',
     username: 'panic',
     role: 'KITCHEN',
-    businessUnitId: 'bu-1',
+    businessUnitIds: ['bu-1'],
     iat: 0,
     exp: 0,
   };
@@ -121,6 +121,43 @@ describe('AuthGuard', () => {
       const { ctx } = buildContext({ authorization: 'Bearer good.token' });
 
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    });
+  });
+
+  describe('legacy-token scope shim', () => {
+    it('normalizes a single businessUnitId claim into businessUnitIds', async () => {
+      mockReflector(false, undefined);
+      // A token minted before the N:N migration carried businessUnitId, not the array.
+      const legacy = {
+        sub: 'user-1',
+        username: 'panic',
+        role: 'KITCHEN',
+        businessUnitId: 'bu-9',
+        iat: 0,
+        exp: 0,
+      } as unknown as JwtPayload;
+      verifyAsync.mockResolvedValue(legacy);
+      const { ctx, request } = buildContext({ authorization: 'Bearer legacy.token' });
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      expect(request.user?.businessUnitIds).toEqual(['bu-9']);
+    });
+
+    it('normalizes a null legacy claim into an empty array', async () => {
+      mockReflector(false, undefined);
+      const legacy = {
+        sub: 'user-1',
+        username: 'panic',
+        role: 'KITCHEN',
+        businessUnitId: null,
+        iat: 0,
+        exp: 0,
+      } as unknown as JwtPayload;
+      verifyAsync.mockResolvedValue(legacy);
+      const { ctx, request } = buildContext({ authorization: 'Bearer legacy.token' });
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      expect(request.user?.businessUnitIds).toEqual([]);
     });
   });
 

@@ -118,7 +118,7 @@ describe('Orders (e2e)', () => {
         username,
         passwordHash,
         role: 'CUSTOMER',
-        businessUnitId: unit.id,
+        businessUnits: { create: [{ businessUnitId: unit.id }] },
       },
     });
     customerId = user.id;
@@ -140,7 +140,7 @@ describe('Orders (e2e)', () => {
         username: staffUsername,
         passwordHash,
         role: 'MANAGER',
-        businessUnitId: unit.id,
+        businessUnits: { create: [{ businessUnitId: unit.id }] },
       },
     });
     staffId = staff.id;
@@ -153,7 +153,7 @@ describe('Orders (e2e)', () => {
         username: otherUsername,
         passwordHash,
         role: 'CUSTOMER',
-        businessUnitId: unit.id,
+        businessUnits: { create: [{ businessUnitId: unit.id }] },
       },
     });
     otherCustomerId = other.id;
@@ -167,7 +167,7 @@ describe('Orders (e2e)', () => {
         username: freshUsername,
         passwordHash,
         role: 'CUSTOMER',
-        businessUnitId: unit.id,
+        businessUnits: { create: [{ businessUnitId: unit.id }] },
       },
     });
     freshCustomerId = fresh.id;

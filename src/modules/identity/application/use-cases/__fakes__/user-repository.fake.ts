@@ -19,6 +19,9 @@ export function createFakeUserRepository(overrides?: Partial<UserRepository>): U
     updateProfile: () => Promise.reject(new Error('FakeUserRepository.updateProfile not stubbed')),
     updatePasswordHash: () =>
       Promise.reject(new Error('FakeUserRepository.updatePasswordHash not stubbed')),
+    findMany: () => Promise.reject(new Error('FakeUserRepository.findMany not stubbed')),
+    replaceBusinessUnits: () =>
+      Promise.reject(new Error('FakeUserRepository.replaceBusinessUnits not stubbed')),
     ...overrides,
   };
 }

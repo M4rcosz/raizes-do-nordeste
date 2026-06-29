@@ -21,11 +21,11 @@ const principal: JwtPayload = {
   sub: 'user-1',
   username: 'manager',
   role: UserRole.MANAGER,
-  businessUnitId: 'bu-1',
+  businessUnitIds: ['bu-1'],
   iat: 0,
   exp: 0,
 };
-const actor: PromotionActor = { role: UserRole.MANAGER, businessUnitId: 'bu-1' };
+const actor: PromotionActor = { role: UserRole.MANAGER, businessUnitIds: ['bu-1'] };
 
 const buildPromotion = (id = 'promo-1'): Promotion =>
   new Promotion(
@@ -73,10 +73,11 @@ describe('PromotionsController', () => {
   });
 
   describe('create', () => {
-    it('derives the unit from the claim and maps the created promotion to its response DTO', async () => {
+    it('forwards the body (with target unit) and actor and maps the created promotion to its response DTO', async () => {
       createPromotion.execute.mockResolvedValue(buildPromotion('promo-9'));
 
       const body = {
+        businessUnitId: 'bu-1',
         name: 'Almoço',
         discountType: DiscountType.PERCENTAGE,
         discountValue: '10.00',

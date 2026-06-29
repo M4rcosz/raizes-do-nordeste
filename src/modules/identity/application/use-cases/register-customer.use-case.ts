@@ -49,7 +49,7 @@ export class RegisterCustomerUseCase {
       role: UserRole.CUSTOMER,
       email: command.email ?? null,
       phone: command.phone ?? null,
-      businessUnitId: null,
+      businessUnitIds: [],
     });
 
     const created = await this.users.create(user.toCreateInput());

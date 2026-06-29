@@ -25,7 +25,7 @@ class FakeUserRepository implements UserRepository {
   ): User {
     const user = new User(
       id,
-      'bu-1',
+      ['bu-1'],
       `user-${id}`,
       overrides?.name ?? `Name ${id}`,
       null,
@@ -82,7 +82,7 @@ class FakeUserRepository implements UserRepository {
     }
     const updated = new User(
       current.id,
-      current.businessUnitId,
+      current.businessUnitIds,
       current.username,
       data.name ?? current.name,
       current.email,
@@ -96,6 +96,18 @@ class FakeUserRepository implements UserRepository {
     );
     this.store.set(id, updated);
     return Promise.resolve(updated);
+  }
+
+  updatePasswordHash(): Promise<User | null> {
+    return Promise.reject(new Error('not used'));
+  }
+
+  findMany(): Promise<User[]> {
+    return Promise.reject(new Error('not used'));
+  }
+
+  replaceBusinessUnits(): Promise<User | null> {
+    return Promise.reject(new Error('not used'));
   }
 }
 

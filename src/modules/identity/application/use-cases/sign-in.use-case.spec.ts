@@ -35,7 +35,7 @@ describe('SignInUseCase', () => {
   }): User =>
     new User(
       overrides?.id ?? 'user-1',
-      'bu-1',
+      ['bu-1'],
       'panic',
       'Pedro Panic',
       'panic@example.com',
@@ -116,7 +116,7 @@ describe('SignInUseCase', () => {
         sub: 'user-1',
         username: 'panic',
         role: 'KITCHEN',
-        businessUnitId: 'bu-1',
+        businessUnitIds: ['bu-1'],
       });
       expect(result).toEqual({ access_token: 'signed.jwt.token', refresh_token: 'refresh-plain' });
 

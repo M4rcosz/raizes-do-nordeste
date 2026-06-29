@@ -476,7 +476,7 @@ npm run devs
 
 | Domain            | Tables                                                                 |
 | ----------------- | ---------------------------------------------------------------------- |
-| Identity & Access | `users`, `refresh_tokens`                                              |
+| Identity & Access | `users`, `refresh_tokens`, `user_business_units`                       |
 | Business Units    | `business_units`, `categories`, `products`, `business_unit_menu_items` |
 | Audit             | `audit_logs`                                                           |
 | Inventory         | `inventory`, `inventory_transactions`                                  |
@@ -553,10 +553,11 @@ or invalid and `403` when the role is insufficient.
 
 Beyond roles, **inventory**, **promotions** and **menu management** routes enforce
 unit scope via `UnitScopeGuard`. `ADMIN` bypasses the check (global reach). Any
-other role must carry a `businessUnitId` claim in the JWT matching the
-`:businessUnitId` route param; a null claim or a mismatch returns `404` so the
-existence of another unit's resources is not disclosed. Unit scope is set at user
-creation time and is encoded in the token on every login and refresh.
+other role must carry a `businessUnitIds` claim (array) in the JWT that includes
+the `:businessUnitId` route param; an empty array or a param not present in the
+array returns `404` so the existence of another unit's resources is not disclosed.
+Unit scope is set at user creation/update time and is encoded in the token on every
+login and refresh.
 
 | Method | Path                | Auth   | Description                                                                      |
 | ------ | ------------------- | ------ | ------------------------------------------------------------------------------- |
@@ -621,11 +622,13 @@ on its own short TTL. Rate-limited to 5 requests/min.
 | Method  | Path                          | Auth            | Description                                                            |
 | ------- | ----------------------------- | --------------- | --------------------------------------------------------------------- |
 | `POST`  | `/api/users/register`         | Public          | Self-register as a `CUSTOMER`. The role is forced server-side - the body has no role field, so a client cannot grant itself a privileged role. Rate-limited to 5 requests/min. |
-| `POST`  | `/api/users`                  | ADMIN / MANAGER | Create a staff or admin user. The target role is gated by a domain policy (see below). |
-| `PATCH` | `/api/users/me`               | Bearer          | Update the authenticated user's own `name` and/or `phone`. At least one field is required; email is out of scope (dedicated endpoint later), password has its own endpoint below. Returns `200`. |
+| `POST`  | `/api/users`                  | ADMIN / MANAGER | Create a staff or admin user. The target role is gated by a domain policy (see below). A non-admin actor may only bind the new user to units within its own claim. |
+| `GET`   | `/api/users`                  | ADMIN / MANAGER | List users (cursor-paginated). Optional `businessUnitId`, `username`, `email` filters (the last two match by case-insensitive substring). `MANAGER` is scoped to its own units; a `businessUnitId` outside the claim returns `404`. |
+| `PATCH` | `/api/users/me`               | CUSTOMER        | Update the authenticated customer's own `name` and/or `phone`. At least one field is required; email is out of scope (dedicated endpoint later), password has its own endpoint below. Staff use admin-managed flows. Returns `200`. |
 | `PATCH` | `/api/users/me/password`      | Bearer          | Change the authenticated user's own password. `currentPassword` and `newPassword` are required; the new one must be >= 10 chars and meet the strong-password criteria. On success all active refresh tokens are revoked. Returns `204 No Content`. Rate-limited to 5 requests/min. |
-| `PATCH` | `/api/users/:id/deactivate`   | ADMIN / MANAGER | Deactivate a user (`is_active = false`, not a soft-delete). Returns `200`. |
-| `PATCH` | `/api/users/:id/reactivate`   | ADMIN / MANAGER | Reactivate a user (`is_active = true`). Same target-role policy as deactivate. Returns `200`. |
+| `PATCH` | `/api/users/:id/deactivate`   | ADMIN / MANAGER | Deactivate a user (`is_active = false`, not a soft-delete). `MANAGER` may only act on a target sharing at least one unit; `ADMIN` cannot deactivate itself. Returns `200`. |
+| `PATCH` | `/api/users/:id/reactivate`   | ADMIN / MANAGER | Reactivate a user (`is_active = true`). Same target-role and unit-scope policy as deactivate. Returns `200`. |
+| `PUT`   | `/api/users/:id/business-units` | ADMIN         | Replace a staff user's unit scope (full replace; the list cannot be empty). `422` if any unit UUID does not exist; the target must be a unit-bound role. Returns `200`. |
 
 #### Changing your own password (`PATCH /api/users/me/password`)
 
@@ -678,7 +681,8 @@ field.
 #### Request body - `CreateUserDto` (`POST /api/users`)
 
 Same fields as registration plus a required `role` (`CUSTOMER` / `ATTENDANT` /
-`KITCHEN` / `MANAGER` / `ADMIN`) and an optional `businessUnitId` (uuid).
+`KITCHEN` / `MANAGER` / `ADMIN`) and an optional `businessUnitIds` (array of
+UUIDs). A non-admin actor may only list units within its own claim.
 
 ```json
 { "name": "João Atendente", "username": "joao.atendente", "password": "min-8-chars", "role": "ATTENDANT" }
@@ -696,7 +700,7 @@ The password hash is never serialized.
   "email": "maria@example.com",
   "phone": null,
   "role": "CUSTOMER",
-  "businessUnitId": null,
+  "businessUnitIds": [],
   "isActive": true
 }
 ```
@@ -1049,8 +1053,8 @@ rounding on the client.
 
 Stock is a management concern: `ATTENDANT`, `KITCHEN` and `CUSTOMER` are
 rejected with `403`. Access is also unit-scoped: `ADMIN` sees any unit;
-`MANAGER` must have a `businessUnitId` claim matching the `:businessUnitId`
-param (mismatch or null claim -> `404`). Every balance change is recorded as an
+`MANAGER` must carry the `:businessUnitId` param in its `businessUnitIds` claim
+(param not in the array, or an empty claim -> `404`). Every balance change is recorded as an
 `InventoryTransaction` (the balance is never mutated blind).
 
 #### Stock is deducted when an order is created
@@ -1121,12 +1125,14 @@ transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 
 Promotions carry a `discountType` (`PERCENTAGE` or `FIXED_AMOUNT`), a
 `discountValue`, a `minOrderValue` floor, and a `startDate`/`endDate` window.
-`FREE_ITEM` is rejected (the schema does not model a target item to price). The
-`businessUnitId` is derived from the actor's JWT claim, never accepted from the
-request body. All promotion routes are protected by `UnitScopeGuard`: a non-admin
-staff member can only create, read and update promotions for the unit they are
-scoped to in the token; a claim mismatch or a null claim returns `404` so the
-existence of another unit's promotions is not disclosed.
+`FREE_ITEM` is rejected (the schema does not model a target item to price).
+`businessUnitId` is **required in the request body** for `POST /api/promotions`;
+the use case validates it against the actor's `businessUnitIds` JWT claim, so a
+manager cannot create a promotion for a unit outside its scope (`ADMIN` bypasses
+the check). All promotion routes are protected by `UnitScopeGuard`: a non-admin
+staff member can only create, read and update promotions for units in their claim;
+a mismatch or an empty claim returns `404` so the existence of another unit's
+promotions is not disclosed.
 
 At most **one** promotion applies per order (MVP). On order creation the
 promotion is priced against the **gross** items subtotal first, then loyalty
@@ -1138,6 +1144,7 @@ only its own parcel in `discountApplied`.
 
 ```json
 {
+  "businessUnitId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "name": "Almoço executivo",
   "discountType": "PERCENTAGE",
   "discountValue": "10.00",

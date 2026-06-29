@@ -106,7 +106,7 @@ export class RefreshTokenUseCase {
       sub: user.id,
       username: user.username,
       role: user.role,
-      businessUnitId: user.businessUnitId,
+      businessUnitIds: user.businessUnitIds,
     });
 
     // Atomic rotation: the new row lands and the old one is revoked + linked in
