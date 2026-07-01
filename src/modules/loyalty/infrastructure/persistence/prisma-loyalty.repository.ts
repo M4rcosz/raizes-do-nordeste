@@ -4,11 +4,14 @@ import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { LoyaltyAccount } from '@modules/loyalty/domain/entities/loyalty-account.entity';
 import {
+  AdjustPointsInput,
   EarnPointsInput,
+  ExpirePointsInput,
   LoyaltyRepository,
   RedeemPointsInput,
 } from '@modules/loyalty/domain/repositories/loyalty.repository';
 import { LoyaltyTransactionType } from '@modules/loyalty/domain/value-objects/loyalty-transaction-type';
+import type { LoyaltyLedgerEntry } from '@modules/loyalty/domain/loyalty-expiry';
 import { PointsRedemptionConflictError } from '@modules/loyalty/application/errors/points-redemption-conflict.error';
 
 @Injectable()
@@ -53,6 +56,8 @@ export class PrismaLoyaltyRepository implements LoyaltyRepository {
         type: LoyaltyTransactionType.EARN,
         points: input.points,
         description: input.description,
+        // This lot expires 12 months out; the sweep nets it from totalPoints then.
+        expiresAt: LoyaltyAccount.earnExpiresAt(new Date()),
       },
     });
     await db.loyaltyAccount.update({
@@ -135,6 +140,93 @@ export class PrismaLoyaltyRepository implements LoyaltyRepository {
       }
       throw err;
     }
+  }
+
+  async findAccountIdsWithExpirablePoints(now: Date): Promise<string[]> {
+    const rows = await this.prisma.loyaltyAccount.findMany({
+      where: {
+        totalPoints: { gt: 0 },
+        loyaltyTransactions: {
+          some: { type: LoyaltyTransactionType.EARN, expiresAt: { lt: now } },
+        },
+      },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  async findLedger(
+    loyaltyAccountId: string,
+    tx: TransactionContext,
+  ): Promise<LoyaltyLedgerEntry[]> {
+    // TODO(scale): reads the account's whole ledger to rebuild remaining lots FIFO. The
+    // daily candidate filter (findAccountIdsWithExpirablePoints) already bounds how many
+    // accounts hit this, so the cost is deferred, not unbounded. The real fix is to
+    // materialize a per-lot remaining balance so a sweep only touches not-fully-consumed
+    // lots instead of replaying the full history. Bounding the read alone can't stay
+    // correct, since FIFO consumption needs every earlier earn/redeem to place a lot.
+    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
+    const rows = await db.loyaltyTransaction.findMany({
+      where: { loyaltyAccountId },
+      orderBy: { createdAt: 'asc' },
+      select: { type: true, points: true, createdAt: true, expiresAt: true },
+    });
+    return rows.map((row) => ({
+      type: row.type as LoyaltyTransactionType,
+      points: row.points,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+    }));
+  }
+
+  async expire(input: ExpirePointsInput, tx: TransactionContext): Promise<boolean> {
+    const db = tx as Prisma.TransactionClient;
+
+    // Decrement first under the same optimistic guard as redeem: if a concurrent debit
+    // already drained the balance the count is 0 and we write nothing (no orphan EXPIRE
+    // row, no need to roll back). Only on a successful decrement do we record the ledger
+    // entry, so the EXPIRE transaction always matches a real balance change.
+    const { count } = await db.loyaltyAccount.updateMany({
+      where: { id: input.loyaltyAccountId, totalPoints: { gte: input.points } },
+      data: { totalPoints: { decrement: input.points } },
+    });
+    if (count === 0) {
+      return false;
+    }
+
+    await db.loyaltyTransaction.create({
+      data: {
+        loyaltyAccountId: input.loyaltyAccountId,
+        orderId: null,
+        type: LoyaltyTransactionType.EXPIRE,
+        points: input.points,
+        description: input.description,
+        expiresAt: null,
+      },
+    });
+    return true;
+  }
+
+  async adjust(input: AdjustPointsInput, tx: TransactionContext): Promise<void> {
+    const db = tx as Prisma.TransactionClient;
+
+    // Signed ADJUSTMENT with no order: points carries the direction (positive credit,
+    // negative debit). The increment mirrors the sign, so totalPoints and the ledger
+    // move together. The caller sizes a debit against the balance (never below zero).
+    await db.loyaltyTransaction.create({
+      data: {
+        loyaltyAccountId: input.loyaltyAccountId,
+        orderId: null,
+        type: LoyaltyTransactionType.ADJUSTMENT,
+        points: input.points,
+        description: input.description,
+        expiresAt: null,
+      },
+    });
+    await db.loyaltyAccount.update({
+      where: { id: input.loyaltyAccountId },
+      data: { totalPoints: { increment: input.points } },
+    });
   }
 
   private toEntity(raw: LoyaltyAccountModel): LoyaltyAccount {

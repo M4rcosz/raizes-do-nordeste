@@ -20,6 +20,8 @@ import { CreatePromotionUseCase } from '@modules/promotions/application/use-case
 import { UpdatePromotionUseCase } from '@modules/promotions/application/use-cases/update-promotion.use-case';
 import { FindPromotionByIdUseCase } from '@modules/promotions/application/use-cases/find-promotion-by-id.use-case';
 import { ListPromotionsUseCase } from '@modules/promotions/application/use-cases/list-promotions.use-case';
+import { ActivatePromotionUseCase } from '@modules/promotions/application/use-cases/activate-promotion.use-case';
+import { DeactivatePromotionUseCase } from '@modules/promotions/application/use-cases/deactivate-promotion.use-case';
 import { CreatePromotionDto } from '../dto/create-promotion.dto';
 import { UpdatePromotionDto } from '../dto/update-promotion.dto';
 import { PromotionResponseDto } from '../dto/promotion-response.dto';
@@ -43,6 +45,8 @@ export class PromotionsController {
     private readonly updatePromotion: UpdatePromotionUseCase,
     private readonly findPromotionById: FindPromotionByIdUseCase,
     private readonly listPromotions: ListPromotionsUseCase,
+    private readonly activatePromotion: ActivatePromotionUseCase,
+    private readonly deactivatePromotion: DeactivatePromotionUseCase,
   ) {}
 
   // Reads the unit-scoping principal off the verified JWT claim.
@@ -115,6 +119,44 @@ export class PromotionsController {
   ): Promise<PromotionResponseDto> {
     // No unit in the path, so ownership is checked in the use case against the claim.
     const promotion = await this.updatePromotion.execute(promotionId, dto, this.actorOf(user));
+    return PromotionResponseDto.fromEntity(promotion);
+  }
+
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @ScopedToBusinessUnit()
+  @Patch(':promotionId/activate')
+  @ApiOperation({ summary: 'Activate a promotion' })
+  @ApiOkResponse({ type: PromotionResponseDto })
+  @ApiNotFoundResponse({ description: 'Promotion not found' })
+  async activate(
+    @Param() { promotionId }: PromotionIdParamDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PromotionResponseDto> {
+    // No unit in the path, so ownership is checked in the use case against the claim.
+    const promotion = await this.activatePromotion.execute(
+      promotionId,
+      this.actorOf(user),
+      user.sub,
+    );
+    return PromotionResponseDto.fromEntity(promotion);
+  }
+
+  @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @ScopedToBusinessUnit()
+  @Patch(':promotionId/deactivate')
+  @ApiOperation({ summary: 'Deactivate a promotion' })
+  @ApiOkResponse({ type: PromotionResponseDto })
+  @ApiNotFoundResponse({ description: 'Promotion not found' })
+  async deactivate(
+    @Param() { promotionId }: PromotionIdParamDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PromotionResponseDto> {
+    // No unit in the path, so ownership is checked in the use case against the claim.
+    const promotion = await this.deactivatePromotion.execute(
+      promotionId,
+      this.actorOf(user),
+      user.sub,
+    );
     return PromotionResponseDto.fromEntity(promotion);
   }
 }

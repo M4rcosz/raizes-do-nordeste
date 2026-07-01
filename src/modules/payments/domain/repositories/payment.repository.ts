@@ -58,6 +58,13 @@ export interface PaymentRepository {
    * need reconciliation, not auto-cancel. Returns how many rows were cancelled.
    */
   cancelStaleReservations(olderThan: Date): Promise<number>;
+  /**
+   * Order ids of APPROVED payments whose order is CANCELLED: a refund is owed but did not
+   * complete (the process crashed between the cancel commit and the refund call, or an
+   * earlier gateway refund failed). The reconciliation sweep re-runs the idempotent refund
+   * for these, which then settles them to REFUNDED so they stop matching.
+   */
+  findApprovedOrderIdsForCancelledOrders(): Promise<string[]>;
 }
 
 export const PAYMENT_REPOSITORY = Symbol('PaymentRepository');

@@ -42,6 +42,65 @@ import {
 } from '@modules/promotions/application/ports/promotion-application.port';
 import { PointsRedemptionRequiresCustomerError } from '../errors/points-redemption-requires-customer.error';
 import { InsufficientPointsError } from '@modules/loyalty/domain/errors/insufficient-points.error';
+import {
+  IDEMPOTENCY_STORE,
+  type ExistingIdempotencyRecord,
+  type IdempotencyScope,
+  type IdempotencyStore,
+  type RecordIdempotencyInput,
+} from '../ports/idempotency-store.port';
+import { IdempotencyKeyConflictError } from '../errors/idempotency-key-conflict.error';
+import { IdempotencyRaceError } from '../errors/idempotency-race.error';
+import type { OrderIdempotency } from './create-order.use-case';
+
+/**
+ * In-memory fake of the IdempotencyStore. find returns a seeded record; record stores
+ * the input and makes a later find return it, unless raceNext() is armed - then record
+ * rejects with IdempotencyRaceError, simulating a concurrent winner.
+ */
+class FakeIdempotencyStore implements IdempotencyStore {
+  private readonly rows = new Map<string, ExistingIdempotencyRecord>();
+  readonly recorded: RecordIdempotencyInput[] = [];
+  private race = false;
+
+  private keyOf(scope: IdempotencyScope): string {
+    return `${scope.userId}|${scope.endpoint}|${scope.key}`;
+  }
+
+  seed(scope: IdempotencyScope, record: ExistingIdempotencyRecord): void {
+    this.rows.set(this.keyOf(scope), record);
+  }
+
+  raceNext(): void {
+    this.race = true;
+  }
+
+  find(scope: IdempotencyScope): Promise<ExistingIdempotencyRecord | null> {
+    return Promise.resolve(this.rows.get(this.keyOf(scope)) ?? null);
+  }
+
+  record(input: RecordIdempotencyInput): Promise<void> {
+    if (this.race) {
+      this.race = false;
+      return Promise.reject(new IdempotencyRaceError());
+    }
+    this.recorded.push(input);
+    this.rows.set(this.keyOf(input), { requestHash: input.requestHash, orderId: input.orderId });
+    return Promise.resolve();
+  }
+
+  deleteExpired(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
+
+const idem = (overrides: Partial<OrderIdempotency> = {}): OrderIdempotency => ({
+  key: 'idem-1',
+  userId: 'u-1',
+  endpoint: 'POST /orders',
+  requestHash: 'hash-1',
+  ...overrides,
+});
 
 /**
  * Fake of the PROMOTION_APPLICATION port. Holds at most one promotion (MVP stacking) and
@@ -144,6 +203,8 @@ describe('CreateOrderUseCase', () => {
   const txContext: unknown = Symbol('tx-context');
   let useCase: CreateOrderUseCase;
   let create: jest.MockedFunction<OrderRepository['create']>;
+  let findById: jest.MockedFunction<OrderRepository['findById']>;
+  let idempotency: FakeIdempotencyStore;
   let resolveLookup: jest.MockedFunction<OrderProductLookup['resolve']>;
   let logAudit: jest.MockedFunction<AuditLogger['log']>;
   let deductForOrder: jest.MockedFunction<StockDeduction['deductForOrder']>;
@@ -178,6 +239,9 @@ describe('CreateOrderUseCase', () => {
     create = jest.fn() as jest.MockedFunction<OrderRepository['create']>;
     create.mockResolvedValue(persisted);
 
+    findById = jest.fn() as jest.MockedFunction<OrderRepository['findById']>;
+    idempotency = new FakeIdempotencyStore();
+
     resolveLookup = jest.fn() as jest.MockedFunction<OrderProductLookup['resolve']>;
     resolveLookup.mockResolvedValue(
       new Map([
@@ -206,7 +270,7 @@ describe('CreateOrderUseCase', () => {
           provide: ORDER_REPOSITORY,
           useValue: {
             create,
-            findById: jest.fn() as jest.MockedFunction<OrderRepository['findById']>,
+            findById,
             findMany: jest.fn() as jest.MockedFunction<OrderRepository['findMany']>,
             updateStatus: jest.fn() as jest.MockedFunction<OrderRepository['updateStatus']>,
           } satisfies OrderRepository,
@@ -223,6 +287,7 @@ describe('CreateOrderUseCase', () => {
         { provide: LOYALTY_ENROLLMENT, useValue: loyalty satisfies LoyaltyEnrollment },
         { provide: LOYALTY_REDEMPTION, useValue: loyalty satisfies LoyaltyRedemption },
         { provide: PROMOTION_APPLICATION, useValue: promotions satisfies PromotionApplication },
+        { provide: IDEMPOTENCY_STORE, useValue: idempotency satisfies IdempotencyStore },
       ],
     }).compile();
 
@@ -599,6 +664,72 @@ describe('CreateOrderUseCase', () => {
       ).rejects.toBeInstanceOf(InsufficientPointsError);
 
       expect(create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('idempotency', () => {
+    it('records the key in the order tx with a 24h TTL when a fresh key is supplied', async () => {
+      const before = Date.now();
+
+      await useCase.execute(command(), { id: 'u-1', canAttend: false }, idem());
+
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(idempotency.recorded).toHaveLength(1);
+      const recorded = idempotency.recorded[0];
+      expect(recorded).toMatchObject({
+        key: 'idem-1',
+        userId: 'u-1',
+        endpoint: 'POST /orders',
+        requestHash: 'hash-1',
+        orderId: 'o-1',
+      });
+      // expiresAt is ~24h out (allow slack for the test clock).
+      const ttlMs = recorded.expiresAt.getTime() - before;
+      expect(ttlMs).toBeGreaterThan(23 * 60 * 60 * 1000);
+      expect(ttlMs).toBeLessThan(25 * 60 * 60 * 1000);
+    });
+
+    it('replays the stored order on a repeat key without creating a new one', async () => {
+      idempotency.seed(idem(), { requestHash: 'hash-1', orderId: 'o-1' });
+      findById.mockResolvedValue(persisted);
+
+      const order = await useCase.execute(command(), { id: 'u-1', canAttend: false }, idem());
+
+      expect(order).toBe(persisted);
+      expect(create).not.toHaveBeenCalled();
+      expect(findById).toHaveBeenCalledWith('o-1');
+      // No side effects re-run on replay.
+      expect(logAudit).not.toHaveBeenCalled();
+    });
+
+    it('rejects the same key reused with a different body (409) and never creates', async () => {
+      idempotency.seed(idem(), { requestHash: 'hash-1', orderId: 'o-1' });
+
+      await expect(
+        useCase.execute(command(), { id: 'u-1', canAttend: false }, idem({ requestHash: 'other' })),
+      ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('on a lost race rolls back and replays the concurrent winner', async () => {
+      // The winner committed between our fast-path read and our insert: seed its row
+      // and arm record() to reject as the unique constraint would.
+      idempotency.seed(idem(), { requestHash: 'hash-1', orderId: 'o-1' });
+      idempotency.raceNext();
+      findById.mockResolvedValue(persisted);
+
+      const order = await useCase.execute(command(), { id: 'u-1', canAttend: false }, idem());
+
+      expect(order).toBe(persisted);
+      expect(findById).toHaveBeenCalledWith('o-1');
+    });
+
+    it('creates normally and records nothing when no key is supplied', async () => {
+      await useCase.execute(command(), { id: 'u-1', canAttend: false });
+
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(idempotency.recorded).toHaveLength(0);
     });
   });
 });

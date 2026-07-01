@@ -7,6 +7,8 @@ import { CreatePromotionUseCase } from '@modules/promotions/application/use-case
 import { UpdatePromotionUseCase } from '@modules/promotions/application/use-cases/update-promotion.use-case';
 import { FindPromotionByIdUseCase } from '@modules/promotions/application/use-cases/find-promotion-by-id.use-case';
 import { ListPromotionsUseCase } from '@modules/promotions/application/use-cases/list-promotions.use-case';
+import { ActivatePromotionUseCase } from '@modules/promotions/application/use-cases/activate-promotion.use-case';
+import { DeactivatePromotionUseCase } from '@modules/promotions/application/use-cases/deactivate-promotion.use-case';
 import { Promotion } from '@modules/promotions/domain/entities/promotion.entity';
 import { DiscountType } from '@modules/promotions/domain/value-objects/discount-type';
 import { PromotionResponseDto } from '../dto/promotion-response.dto';
@@ -48,12 +50,20 @@ describe('PromotionsController', () => {
   let updatePromotion: jest.Mocked<UpdatePromotionUseCase>;
   let findPromotionById: jest.Mocked<FindPromotionByIdUseCase>;
   let listPromotions: jest.Mocked<ListPromotionsUseCase>;
+  let activatePromotion: jest.Mocked<ActivatePromotionUseCase>;
+  let deactivatePromotion: jest.Mocked<DeactivatePromotionUseCase>;
 
   beforeAll(async () => {
     createPromotion = { execute: jest.fn() } as unknown as jest.Mocked<CreatePromotionUseCase>;
     updatePromotion = { execute: jest.fn() } as unknown as jest.Mocked<UpdatePromotionUseCase>;
     findPromotionById = { execute: jest.fn() } as unknown as jest.Mocked<FindPromotionByIdUseCase>;
     listPromotions = { execute: jest.fn() } as unknown as jest.Mocked<ListPromotionsUseCase>;
+    activatePromotion = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<ActivatePromotionUseCase>;
+    deactivatePromotion = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<DeactivatePromotionUseCase>;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [PromotionsController],
@@ -62,6 +72,8 @@ describe('PromotionsController', () => {
         { provide: UpdatePromotionUseCase, useValue: updatePromotion },
         { provide: FindPromotionByIdUseCase, useValue: findPromotionById },
         { provide: ListPromotionsUseCase, useValue: listPromotions },
+        { provide: ActivatePromotionUseCase, useValue: activatePromotion },
+        { provide: DeactivatePromotionUseCase, useValue: deactivatePromotion },
       ],
     }).compile();
 
@@ -147,6 +159,28 @@ describe('PromotionsController', () => {
       );
 
       expect(updatePromotion.execute).toHaveBeenCalledWith('promo-1', { isActive: false }, actor);
+      expect(response).toBeInstanceOf(PromotionResponseDto);
+    });
+  });
+
+  describe('activate', () => {
+    it('forwards the id, actor and actor id and returns the mapped DTO', async () => {
+      activatePromotion.execute.mockResolvedValue(buildPromotion('promo-1'));
+
+      const response = await controller.activate({ promotionId: 'promo-1' }, principal);
+
+      expect(activatePromotion.execute).toHaveBeenCalledWith('promo-1', actor, 'user-1');
+      expect(response).toBeInstanceOf(PromotionResponseDto);
+    });
+  });
+
+  describe('deactivate', () => {
+    it('forwards the id, actor and actor id and returns the mapped DTO', async () => {
+      deactivatePromotion.execute.mockResolvedValue(buildPromotion('promo-1'));
+
+      const response = await controller.deactivate({ promotionId: 'promo-1' }, principal);
+
+      expect(deactivatePromotion.execute).toHaveBeenCalledWith('promo-1', actor, 'user-1');
       expect(response).toBeInstanceOf(PromotionResponseDto);
     });
   });

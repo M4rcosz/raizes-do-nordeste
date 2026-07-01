@@ -52,18 +52,39 @@ describe('PrismaInventoryRepository', () => {
     repo = new PrismaInventoryRepository(prisma as unknown as PrismaService);
   });
 
-  it('lists the unit inventory mapped to domain entities', async () => {
+  it('lists the unit inventory paginated, mapped to domain entities', async () => {
     prisma.inventory.findMany.mockResolvedValue([rawInventory]);
 
-    const result = await repo.findByUnit('bu-1');
+    const result = await repo.findManyByUnit({
+      businessUnitId: 'bu-1',
+      pagination: { take: 21 },
+    });
 
     expect(prisma.inventory.findMany).toHaveBeenCalledWith({
       where: { businessUnitId: 'bu-1' },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 21,
     });
     expect(result).toHaveLength(1);
     expect(result[0].productId).toBe('p-1');
     expect(result[0].quantity).toBe(8);
+  });
+
+  it('applies the cursor with skip:1 to start after the previous page', async () => {
+    prisma.inventory.findMany.mockResolvedValue([rawInventory]);
+
+    await repo.findManyByUnit({
+      businessUnitId: 'bu-1',
+      pagination: { take: 3, cursor: 'inv-0' },
+    });
+
+    expect(prisma.inventory.findMany).toHaveBeenCalledWith({
+      where: { businessUnitId: 'bu-1' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 3,
+      cursor: { id: 'inv-0' },
+      skip: 1,
+    });
   });
 
   describe('applyMovement', () => {

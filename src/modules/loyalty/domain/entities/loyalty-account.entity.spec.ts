@@ -60,4 +60,18 @@ describe('LoyaltyAccount', () => {
       expect(LoyaltyAccount.discountForPoints(points)).toBe(expected);
     });
   });
+
+  describe('earnExpiresAt', () => {
+    it('is exactly 12 months after the earn date', () => {
+      expect(LoyaltyAccount.earnExpiresAt(new Date('2026-06-29T12:00:00.000Z'))).toEqual(
+        new Date('2027-06-29T12:00:00.000Z'),
+      );
+    });
+
+    it('does not mutate the input date', () => {
+      const earnedAt = new Date('2026-06-29T00:00:00.000Z');
+      LoyaltyAccount.earnExpiresAt(earnedAt);
+      expect(earnedAt).toEqual(new Date('2026-06-29T00:00:00.000Z'));
+    });
+  });
 });

@@ -12,6 +12,12 @@ import { EarnPointsUseCase } from './application/use-cases/earn-points.use-case'
 import { RedeemPointsUseCase } from './application/use-cases/redeem-points.use-case';
 import { GiveLoyaltyConsentUseCase } from './application/use-cases/give-loyalty-consent.use-case';
 import { RevokeLoyaltyConsentUseCase } from './application/use-cases/revoke-loyalty-consent.use-case';
+import { ExpireLoyaltyPointsUseCase } from './application/use-cases/expire-loyalty-points.use-case';
+import { LoyaltyExpirySweeper } from './infrastructure/scheduling/loyalty-expiry.sweeper';
+import { LOYALTY_REVERSAL } from './application/ports/loyalty-reversal.port';
+import { ReverseLoyaltyForOrderUseCase } from './application/use-cases/reverse-loyalty-for-order.use-case';
+import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
+import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
 
 @Module({
   imports: [AuditModule],
@@ -33,10 +39,20 @@ import { RevokeLoyaltyConsentUseCase } from './application/use-cases/revoke-loya
       provide: LOYALTY_REDEMPTION,
       useClass: RedeemPointsUseCase,
     },
+    {
+      provide: LOYALTY_REVERSAL,
+      useClass: ReverseLoyaltyForOrderUseCase,
+    },
+    {
+      provide: TRANSACTION_RUNNER,
+      useClass: PrismaTransactionRunner,
+    },
     GetMyLoyaltyAccountUseCase,
     GiveLoyaltyConsentUseCase,
     RevokeLoyaltyConsentUseCase,
+    ExpireLoyaltyPointsUseCase,
+    LoyaltyExpirySweeper,
   ],
-  exports: [LOYALTY_ENROLLMENT, LOYALTY_EARNING, LOYALTY_REDEMPTION],
+  exports: [LOYALTY_ENROLLMENT, LOYALTY_EARNING, LOYALTY_REDEMPTION, LOYALTY_REVERSAL],
 })
 export class LoyaltyModule {}

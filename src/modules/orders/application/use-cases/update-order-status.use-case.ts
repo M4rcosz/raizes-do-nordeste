@@ -4,12 +4,14 @@ import {
   ORDER_REPOSITORY,
   type OrderRepository,
 } from '@modules/orders/domain/repositories/order.repository';
-import type { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
+import { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
 import { AUDIT_LOGGER, type AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
 import { OrderStatusConflictError } from '../errors/order-status-conflict.error';
+import { CancellationNotAllowedViaStatusError } from '../errors/cancellation-not-via-status.error';
+import { actorCanAccessOrder, type OrderActor } from '../order-actor';
 
 export interface UpdateOrderStatusCommand {
   orderId: string;
@@ -29,11 +31,27 @@ export class UpdateOrderStatusUseCase {
     command: UpdateOrderStatusCommand,
     actorId: string | null,
     tx?: TransactionContext,
+    actor?: OrderActor,
   ): Promise<Order> {
+    // Cancellation is never a plain status transition: it must run its compensations
+    // (refund/restock/loyalty reversal) through CancelOrderUseCase. Reject it here so this
+    // endpoint can never silently cancel an order and skip them. No system path targets
+    // CANCELLED via this use case (the payment hook only moves to CONFIRMED).
+    if (command.orderStatus === OrderStatus.CANCELLED) {
+      throw new CancellationNotAllowedViaStatusError();
+    }
+
     // Read inside the caller's tx (when present) so this read and the write below share
     // one snapshot; the optimistic lock still guards the actual transition.
     const order = await this.orders.findById(command.orderId, tx);
     if (!order) {
+      throw new OrderNotFoundError(`Order ${command.orderId} was not found.`);
+    }
+
+    // HTTP callers pass an actor: a staff member can only move orders of a unit in
+    // their claim. Same 404 as missing so a foreign order never leaks. The system
+    // path (payment hook) passes no actor and is trusted.
+    if (actor && !actorCanAccessOrder(actor, order)) {
       throw new OrderNotFoundError(`Order ${command.orderId} was not found.`);
     }
 

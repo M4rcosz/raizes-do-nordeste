@@ -24,7 +24,12 @@ export interface CreateOrderInput {
 }
 
 export interface OrderFilters {
-  businessUnitId?: string;
+  /**
+   * Unit authorization scope: when present, results are restricted to these units
+   * (`businessUnitId IN (...)`). `undefined` is brand-wide (ADMIN); an empty array
+   * matches nothing (a scoped actor whose filter fell outside their claim).
+   */
+  businessUnitIds?: string[];
   orderChannel?: OrderChannel;
   orderStatus?: OrderStatus;
 }

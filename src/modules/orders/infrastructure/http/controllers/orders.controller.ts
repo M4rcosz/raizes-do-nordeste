@@ -1,11 +1,17 @@
-import { CreateOrderUseCase } from '@modules/orders/application/use-cases/create-order.use-case';
+import {
+  CreateOrderUseCase,
+  type OrderIdempotency,
+} from '@modules/orders/application/use-cases/create-order.use-case';
+import { CancelOrderUseCase } from '@modules/orders/application/use-cases/cancel-order.use-case';
 import { FindOrderByIdUseCase } from '@modules/orders/application/use-cases/find-order-by-id.use-case';
 import { ListOrdersUseCase } from '@modules/orders/application/use-cases/list-orders.use-case';
 import { UpdateOrderStatusUseCase } from '@modules/orders/application/use-cases/update-order-status.use-case';
+import { createHash } from 'node:crypto';
 import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -34,6 +40,11 @@ import { Roles } from '@shared/auth/roles.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 
+/** Endpoint identity for idempotency scoping; a key is unique per (user, endpoint). */
+const CREATE_ORDER_ENDPOINT = 'POST /orders';
+/** Cap on the client-supplied Idempotency-Key; longer values are ignored (treated as absent). */
+const MAX_IDEMPOTENCY_KEY_LENGTH = 255;
+
 /** Non-customer roles may list any order and change order status. */
 const STAFF_ROLES: UserRole[] = [
   UserRole.ADMIN,
@@ -54,6 +65,7 @@ const ATTENDING_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.MANAGER, UserRole.
 export class OrdersController {
   constructor(
     private readonly createOrder: CreateOrderUseCase,
+    private readonly cancelOrder: CancelOrderUseCase,
     private readonly findOrderById: FindOrderByIdUseCase,
     private readonly listOrders: ListOrdersUseCase,
     private readonly updateOrderStatus: UpdateOrderStatusUseCase,
@@ -66,19 +78,45 @@ export class OrdersController {
   async create(
     @Body() body: OrderCreateDto,
     @CurrentUser() user: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<OrderResponseDto> {
     const actor = { id: user.sub, canAttend: ATTENDING_ROLES.includes(user.role) };
 
-    const order = await this.createOrder.execute(body, actor);
+    const order = await this.createOrder.execute(
+      body,
+      actor,
+      this.idempotencyOf(idempotencyKey, user.sub, body),
+    );
 
     return OrderResponseDto.fromEntity(order);
+  }
+
+  /**
+   * Builds the idempotency envelope when the client sent a usable Idempotency-Key.
+   * The request hash lets the use case reject the same key reused with a different
+   * body. Absent/blank/oversized keys disable idempotency (the create runs normally).
+   */
+  private idempotencyOf(
+    rawKey: string | undefined,
+    userId: string,
+    body: OrderCreateDto,
+  ): OrderIdempotency | undefined {
+    const key = rawKey?.trim();
+    if (!key || key.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+      return undefined;
+    }
+    const requestHash = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    return { key, userId, endpoint: CREATE_ORDER_ENDPOINT, requestHash };
   }
 
   @Get()
   @Roles(STAFF_ROLES)
   @ApiOperation({ summary: 'List orders with optional filters (cursor-paginated). Staff only.' })
   @ApiOkResponse({ type: PaginatedOrderResponseDto })
-  async list(@Query() query: OrdersQueryDto): Promise<PaginatedResponseDto<OrderResponseDto>> {
+  async list(
+    @Query() query: OrdersQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PaginatedResponseDto<OrderResponseDto>> {
     const { limit: rawLimit, cursor, businessUnitId, orderChannel, orderStatus } = query;
     const limit = sanitizeLimit(rawLimit);
 
@@ -86,6 +124,7 @@ export class OrdersController {
       cursor,
       limit,
       filters: { businessUnitId, orderChannel, orderStatus },
+      actor: { id: user.sub, role: user.role, businessUnitIds: user.businessUnitIds },
     });
 
     return new PaginatedResponseDto(
@@ -102,7 +141,11 @@ export class OrdersController {
     @Param() { id }: OrderIdParamDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<OrderResponseDto> {
-    const order = await this.findOrderById.execute(id, { id: user.sub, role: user.role });
+    const order = await this.findOrderById.execute(id, {
+      id: user.sub,
+      role: user.role,
+      businessUnitIds: user.businessUnitIds,
+    });
     return OrderResponseDto.fromEntity(order);
   }
 
@@ -120,7 +163,31 @@ export class OrdersController {
     const order = await this.updateOrderStatus.execute(
       { orderId: id, orderStatus: body.orderStatus },
       user.sub,
+      undefined,
+      { id: user.sub, role: user.role, businessUnitIds: user.businessUnitIds },
     );
+    return OrderResponseDto.fromEntity(order);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Cancel an order and run its compensations (restock, refund, loyalty reversal). ' +
+      'Staff of the unit while PENDING/CONFIRMED; a customer only their own while PENDING.',
+  })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiNotFoundResponse({ description: 'Order not found or not visible to the requester.' })
+  @ApiUnprocessableEntityResponse({ description: 'Order is past the cancellation window.' })
+  async cancel(
+    @Param() { id }: OrderIdParamDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OrderResponseDto> {
+    const order = await this.cancelOrder.execute(id, {
+      id: user.sub,
+      role: user.role,
+      businessUnitIds: user.businessUnitIds,
+    });
     return OrderResponseDto.fromEntity(order);
   }
 }

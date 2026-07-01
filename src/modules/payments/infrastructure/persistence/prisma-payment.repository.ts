@@ -129,6 +129,17 @@ export class PrismaPaymentRepository implements PaymentRepository {
     return count;
   }
 
+  async findApprovedOrderIdsForCancelledOrders(): Promise<string[]> {
+    // An APPROVED payment on a CANCELLED order is the durable "refund owed" signal. Both
+    // the status and order.orderStatus columns are indexed. 'CANCELLED' is the DB enum
+    // literal (Prisma type-checks it); the join is a contained infra-level coupling.
+    const rows = await this.prisma.payment.findMany({
+      where: { status: PaymentStatus.APPROVED, order: { orderStatus: 'CANCELLED' } },
+      select: { orderId: true },
+    });
+    return rows.map((row) => row.orderId);
+  }
+
   private toEntity(raw: PaymentModel): Payment {
     return new Payment(
       raw.id,

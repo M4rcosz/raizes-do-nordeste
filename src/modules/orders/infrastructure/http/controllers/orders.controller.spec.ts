@@ -3,6 +3,7 @@ import { Money } from '@shared/domain/value-objects/money';
 import { Test } from '@nestjs/testing';
 import { OrdersController } from './orders.controller';
 import { CreateOrderUseCase } from '@modules/orders/application/use-cases/create-order.use-case';
+import { CancelOrderUseCase } from '@modules/orders/application/use-cases/cancel-order.use-case';
 import { FindOrderByIdUseCase } from '@modules/orders/application/use-cases/find-order-by-id.use-case';
 import { ListOrdersUseCase } from '@modules/orders/application/use-cases/list-orders.use-case';
 import { UpdateOrderStatusUseCase } from '@modules/orders/application/use-cases/update-order-status.use-case';
@@ -36,7 +37,7 @@ const jwt = (sub: string, role: UserRole): JwtPayload => ({
   sub,
   username: 'u',
   role,
-  businessUnitId: 'bu-1',
+  businessUnitIds: ['bu-1'],
   iat: 0,
   exp: 0,
 });
@@ -44,12 +45,14 @@ const jwt = (sub: string, role: UserRole): JwtPayload => ({
 describe('OrdersController', () => {
   let controller: OrdersController;
   let createOrder: jest.Mocked<CreateOrderUseCase>;
+  let cancelOrder: jest.Mocked<CancelOrderUseCase>;
   let findOrderById: jest.Mocked<FindOrderByIdUseCase>;
   let listOrders: jest.Mocked<ListOrdersUseCase>;
   let updateOrderStatus: jest.Mocked<UpdateOrderStatusUseCase>;
 
   beforeAll(async () => {
     createOrder = { execute: jest.fn() } as unknown as jest.Mocked<CreateOrderUseCase>;
+    cancelOrder = { execute: jest.fn() } as unknown as jest.Mocked<CancelOrderUseCase>;
     findOrderById = { execute: jest.fn() } as unknown as jest.Mocked<FindOrderByIdUseCase>;
     listOrders = { execute: jest.fn() } as unknown as jest.Mocked<ListOrdersUseCase>;
     updateOrderStatus = { execute: jest.fn() } as unknown as jest.Mocked<UpdateOrderStatusUseCase>;
@@ -58,6 +61,7 @@ describe('OrdersController', () => {
       controllers: [OrdersController],
       providers: [
         { provide: CreateOrderUseCase, useValue: createOrder },
+        { provide: CancelOrderUseCase, useValue: cancelOrder },
         { provide: FindOrderByIdUseCase, useValue: findOrderById },
         { provide: ListOrdersUseCase, useValue: listOrders },
         { provide: UpdateOrderStatusUseCase, useValue: updateOrderStatus },
@@ -78,7 +82,10 @@ describe('OrdersController', () => {
         meta: { limit: 100, hasMore: false, nextCursor: null },
       });
 
-      const response = await controller.list({ limit: 99999, orderChannel: OrderChannel.APP });
+      const response = await controller.list(
+        { limit: 99999, orderChannel: OrderChannel.APP },
+        jwt('staff-1', UserRole.MANAGER),
+      );
 
       expect(listOrders.execute).toHaveBeenCalledWith({
         cursor: undefined,
@@ -88,6 +95,7 @@ describe('OrdersController', () => {
           orderChannel: OrderChannel.APP,
           orderStatus: undefined,
         },
+        actor: { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] },
       });
       expect(response).toBeInstanceOf(PaginatedResponseDto);
       expect(response.data[0]).toBeInstanceOf(OrderResponseDto);
@@ -103,6 +111,7 @@ describe('OrdersController', () => {
       expect(findOrderById.execute).toHaveBeenCalledWith('o-42', {
         id: 'c-1',
         role: UserRole.CUSTOMER,
+        businessUnitIds: ['bu-1'],
       });
       expect(response).toBeInstanceOf(OrderResponseDto);
       expect(response.id).toBe('o-42');
@@ -122,9 +131,27 @@ describe('OrdersController', () => {
       expect(updateOrderStatus.execute).toHaveBeenCalledWith(
         { orderId: 'o-7', orderStatus: OrderStatus.CONFIRMED },
         'staff-1',
+        undefined,
+        { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] },
       );
       expect(response).toBeInstanceOf(OrderResponseDto);
       expect(response.orderStatus).toBe(OrderStatus.CONFIRMED);
+    });
+  });
+
+  describe('cancel', () => {
+    it('forwards the order id and actor and maps the cancelled order', async () => {
+      cancelOrder.execute.mockResolvedValue(buildOrder('o-3', OrderStatus.CANCELLED));
+
+      const response = await controller.cancel({ id: 'o-3' }, jwt('staff-1', UserRole.MANAGER));
+
+      expect(cancelOrder.execute).toHaveBeenCalledWith('o-3', {
+        id: 'staff-1',
+        role: UserRole.MANAGER,
+        businessUnitIds: ['bu-1'],
+      });
+      expect(response).toBeInstanceOf(OrderResponseDto);
+      expect(response.orderStatus).toBe(OrderStatus.CANCELLED);
     });
   });
 
@@ -140,7 +167,11 @@ describe('OrdersController', () => {
 
       const response = await controller.create(body, jwt('c-1', UserRole.CUSTOMER));
 
-      expect(createOrder.execute).toHaveBeenCalledWith(body, { id: 'c-1', canAttend: false });
+      expect(createOrder.execute).toHaveBeenCalledWith(
+        body,
+        { id: 'c-1', canAttend: false },
+        undefined,
+      );
       expect(response).toBeInstanceOf(OrderResponseDto);
       expect(response.id).toBe('o-9');
     });
@@ -156,7 +187,33 @@ describe('OrdersController', () => {
 
       await controller.create(body, jwt('u-1', role));
 
-      expect(createOrder.execute).toHaveBeenCalledWith(body, { id: 'u-1', canAttend });
+      expect(createOrder.execute).toHaveBeenCalledWith(body, { id: 'u-1', canAttend }, undefined);
+    });
+
+    it('forwards an Idempotency-Key as an envelope with the user id and a body hash', async () => {
+      createOrder.execute.mockResolvedValue(buildOrder('o-9'));
+
+      await controller.create(body, jwt('c-1', UserRole.CUSTOMER), '  my-key  ');
+
+      const idempotencyArg = createOrder.execute.mock.calls[0][2];
+      expect(idempotencyArg).toMatchObject({
+        key: 'my-key', // trimmed
+        userId: 'c-1',
+        endpoint: 'POST /orders',
+      });
+      expect(idempotencyArg?.requestHash).toMatch(/^[a-f0-9]{64}$/); // sha256 hex
+    });
+
+    it('ignores a blank Idempotency-Key (idempotency disabled)', async () => {
+      createOrder.execute.mockResolvedValue(buildOrder('o-9'));
+
+      await controller.create(body, jwt('c-1', UserRole.CUSTOMER), '   ');
+
+      expect(createOrder.execute).toHaveBeenCalledWith(
+        body,
+        { id: 'c-1', canAttend: false },
+        undefined,
+      );
     });
   });
 });

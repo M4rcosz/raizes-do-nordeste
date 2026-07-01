@@ -25,8 +25,25 @@ export interface ChargeResult {
   raw: Record<string, unknown>;
 }
 
+export interface RefundRequest {
+  /** The gateway transaction id of the original (approved) charge. */
+  extTransactionId: string;
+  orderId: string;
+}
+
+export interface RefundResult {
+  /** The gateway's own refund id. */
+  extRefundId: string;
+  raw: Record<string, unknown>;
+}
+
 export interface PaymentGateway {
   charge(amount: Money, request: ChargeRequest): Promise<ChargeResult>;
+  /**
+   * Reverses an approved charge. Throws PaymentGatewayError on a technical failure so the
+   * caller can flag the payment for manual reconciliation rather than treat it as refunded.
+   */
+  refund(request: RefundRequest): Promise<RefundResult>;
 }
 
 /**

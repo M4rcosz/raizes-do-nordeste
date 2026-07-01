@@ -25,7 +25,7 @@ describe('DeductStockForOrderUseCase', () => {
   beforeEach(() => {
     applyMovement = jest.fn() as jest.MockedFunction<InventoryRepository['applyMovement']>;
     const repo: InventoryRepository = {
-      findByUnit: jest.fn() as jest.MockedFunction<InventoryRepository['findByUnit']>,
+      findManyByUnit: jest.fn() as jest.MockedFunction<InventoryRepository['findManyByUnit']>,
       applyMovement,
     };
     useCase = new DeductStockForOrderUseCase(repo);
