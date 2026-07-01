@@ -197,6 +197,9 @@ model Inventory {
   inventoryTransactions InventoryTransaction[]
 
   @@unique([businessUnitId, productId])
+  // Supports the cursor page: filter by unit, order by (createdAt, id). Without it
+  // Postgres can't use the unique above for the sort and falls back to an in-memory sort.
+  @@index([businessUnitId, createdAt, id])
   @@map("inventories")
 }
 
@@ -314,6 +317,7 @@ enum PaymentStatus {
   APPROVED
   REFUSED
   CANCELLED
+  REFUNDED
 }
 
 model Payment {
@@ -425,6 +429,9 @@ model LoyaltyTransaction {
   points      Int
   description String
   createdAt   DateTime               @default(now()) @map("created_at")
+  // Only set on EARN: when this lot expires (createdAt + 12 months). The sweep nets
+  // out lots past this date FIFO. Null on REDEEM/EXPIRE/ADJUSTMENT (they never expire).
+  expiresAt   DateTime?              @map("expires_at")
 
   loyaltyAccount LoyaltyAccount @relation(fields: [loyaltyAccountId], references: [id])
   order          Order?         @relation(fields: [orderId], references: [id])
@@ -436,7 +443,33 @@ model LoyaltyTransaction {
   @@unique([orderId, type])
   @@index([loyaltyAccountId])
   @@index([orderId])
+  @@index([expiresAt])
   @@map("loyalty_transactions")
+}
+
+// ============================================================
+// IDEMPOTENCY
+// ============================================================
+
+// One row per (user, endpoint, key). Presence means the operation completed:
+// the row is inserted in the SAME transaction as the order, so it can never
+// exist without its order. orderId links the stored result for replay. A retry
+// with the same key returns that order; the same key with a different body is a
+// reuse error. Rows are reaped after expiresAt (TTL); orderId carries no FK so
+// the table stays decoupled from the orders schema.
+model IdempotencyKey {
+  id          String   @id @default(uuid())
+  key         String
+  userId      String   @map("user_id")
+  endpoint    String
+  requestHash String   @map("request_hash")
+  orderId     String?  @map("order_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiresAt   DateTime @map("expires_at")
+
+  @@unique([userId, endpoint, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
 }
 
 // ============================================================

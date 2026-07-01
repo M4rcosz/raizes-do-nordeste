@@ -3,6 +3,7 @@ import { Money } from '@shared/domain/value-objects/money';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { OrderNotFoundError } from '../errors/order-not-found.error';
 import { OrderStatusConflictError } from '../errors/order-status-conflict.error';
+import { CancellationNotAllowedViaStatusError } from '../errors/cancellation-not-via-status.error';
 import { InvalidOrderStatusTransitionError } from '../../domain/errors/invalid-order-status-transition.error';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
 import type { AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
@@ -10,6 +11,8 @@ import { AUDIT_ACTIONS } from '@modules/audit/domain/audit-actions';
 import { Order } from '../../domain/entities/order.entity';
 import { OrderChannel } from '../../domain/value-objects/order-channel';
 import { OrderStatus } from '../../domain/value-objects/order-status';
+import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import type { OrderActor } from '../order-actor';
 
 const makeOrder = (status: OrderStatus): Order =>
   new Order(
@@ -109,6 +112,27 @@ describe('UpdateOrderStatusUseCase', () => {
     expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
   });
 
+  it('rejects a CANCELLED target outright so cancellation cannot skip its compensations', async () => {
+    // The bypass: PATCH status to CANCELLED would otherwise cancel without refund/restock/loyalty.
+    await expect(
+      useCase.execute(
+        { orderId: 'o-1', orderStatus: OrderStatus.CANCELLED },
+        'staff-1',
+        undefined,
+        {
+          id: 'staff-1',
+          role: UserRole.MANAGER,
+          businessUnitIds: ['bu-1'],
+        },
+      ),
+    ).rejects.toBeInstanceOf(CancellationNotAllowedViaStatusError);
+
+    // Fails fast: never even reads the order, let alone writes or audits.
+    expect(findById).not.toHaveBeenCalled();
+    expect(updateStatus).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid transition without persisting or auditing', async () => {
     findById.mockResolvedValue(makeOrder(OrderStatus.PENDING));
 
@@ -128,6 +152,46 @@ describe('UpdateOrderStatusUseCase', () => {
     ).rejects.toBeInstanceOf(OrderNotFoundError);
 
     expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('hides an order of a unit outside the staff claim behind a 404 and never writes', async () => {
+    findById.mockResolvedValue(makeOrder(OrderStatus.PENDING)); // order is in bu-1
+    const foreignStaff: OrderActor = {
+      id: 'staff-1',
+      role: UserRole.MANAGER,
+      businessUnitIds: ['bu-2'],
+    };
+
+    await expect(
+      useCase.execute(
+        { orderId: 'o-1', orderStatus: OrderStatus.CONFIRMED },
+        'staff-1',
+        undefined,
+        foreignStaff,
+      ),
+    ).rejects.toBeInstanceOf(OrderNotFoundError);
+
+    expect(updateStatus).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('lets a staff member of the order unit transition it', async () => {
+    findById.mockResolvedValue(makeOrder(OrderStatus.PENDING));
+    updateStatus.mockResolvedValue(makeOrder(OrderStatus.CONFIRMED));
+    const ownStaff: OrderActor = {
+      id: 'staff-1',
+      role: UserRole.MANAGER,
+      businessUnitIds: ['bu-1'],
+    };
+
+    const result = await useCase.execute(
+      { orderId: 'o-1', orderStatus: OrderStatus.CONFIRMED },
+      'staff-1',
+      undefined,
+      ownStaff,
+    );
+
+    expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
   });
 
   it('throws OrderStatusConflictError when the status changed concurrently (null update)', async () => {

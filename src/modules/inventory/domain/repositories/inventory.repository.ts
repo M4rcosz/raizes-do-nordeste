@@ -1,4 +1,5 @@
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
+import type { CursorPaginationParams } from '@shared/pagination/pagination';
 import { Inventory } from '../entities/inventory.entity';
 import type { ManualMovementType } from '../value-objects/inventory-transaction-type';
 
@@ -15,8 +16,13 @@ export interface ApplyMovementInput {
   orderId?: string;
 }
 
+export interface FindInventoryByUnitInput {
+  businessUnitId: string;
+  pagination: CursorPaginationParams;
+}
+
 export interface InventoryRepository {
-  findByUnit(businessUnitId: string): Promise<Inventory[]>;
+  findManyByUnit(input: FindInventoryByUnitInput): Promise<Inventory[]>;
   /**
    * Applies the balance change and records the InventoryTransaction as one atomic
    * unit. `tx` is required: the update, re-read and ledger insert must share the

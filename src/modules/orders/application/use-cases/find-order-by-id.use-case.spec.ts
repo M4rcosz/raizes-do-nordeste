@@ -41,10 +41,34 @@ describe('FindOrderByIdUseCase', () => {
     useCase = new FindOrderByIdUseCase(repo);
   });
 
-  it('returns the order to a staff member regardless of owner', async () => {
+  it('returns the order to a staff member of the order unit, regardless of owner', async () => {
     findById.mockResolvedValue(makeOrder('someone-else'));
 
-    const order = await useCase.execute('o-1', { id: 'staff-1', role: UserRole.MANAGER });
+    const order = await useCase.execute('o-1', {
+      id: 'staff-1',
+      role: UserRole.MANAGER,
+      businessUnitIds: ['bu-1'],
+    });
+
+    expect(order.id).toBe('o-1');
+  });
+
+  it('hides an order of a unit outside a staff claim behind the same 404', async () => {
+    findById.mockResolvedValue(makeOrder('someone-else'));
+
+    await expect(
+      useCase.execute('o-1', { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-2'] }),
+    ).rejects.toBeInstanceOf(OrderNotFoundError);
+  });
+
+  it('returns any order to a global ADMIN', async () => {
+    findById.mockResolvedValue(makeOrder('someone-else'));
+
+    const order = await useCase.execute('o-1', {
+      id: 'admin-1',
+      role: UserRole.ADMIN,
+      businessUnitIds: [],
+    });
 
     expect(order.id).toBe('o-1');
   });
@@ -52,7 +76,11 @@ describe('FindOrderByIdUseCase', () => {
   it('returns the order to the customer that owns it', async () => {
     findById.mockResolvedValue(makeOrder('c-1'));
 
-    const order = await useCase.execute('o-1', { id: 'c-1', role: UserRole.CUSTOMER });
+    const order = await useCase.execute('o-1', {
+      id: 'c-1',
+      role: UserRole.CUSTOMER,
+      businessUnitIds: [],
+    });
 
     expect(order.customerId).toBe('c-1');
   });
@@ -61,7 +89,7 @@ describe('FindOrderByIdUseCase', () => {
     findById.mockResolvedValue(null);
 
     await expect(
-      useCase.execute('o-1', { id: 'staff-1', role: UserRole.MANAGER }),
+      useCase.execute('o-1', { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] }),
     ).rejects.toBeInstanceOf(OrderNotFoundError);
   });
 
@@ -69,7 +97,7 @@ describe('FindOrderByIdUseCase', () => {
     findById.mockResolvedValue(makeOrder('other-customer'));
 
     await expect(
-      useCase.execute('o-1', { id: 'c-1', role: UserRole.CUSTOMER }),
+      useCase.execute('o-1', { id: 'c-1', role: UserRole.CUSTOMER, businessUnitIds: [] }),
     ).rejects.toBeInstanceOf(OrderNotFoundError);
   });
 });

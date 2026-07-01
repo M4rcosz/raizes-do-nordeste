@@ -6,6 +6,9 @@ const EARN_RATE_BRL_PER_POINT = 10;
 /** Redemption rate: 1 point = R$0.10 (10 cents), mirroring the earn rate. */
 const REDEEM_RATE_CENTS_PER_POINT = 10;
 
+/** Earned points expire this many months after they are credited (RN-loyalty-expire). */
+const EARN_EXPIRY_MONTHS = 12;
+
 export class LoyaltyAccount {
   constructor(
     public readonly id: string,
@@ -49,5 +52,12 @@ export class LoyaltyAccount {
   /** Money value of points at the redeem rate: 150 points -> R$15.00. Returns a decimal string. */
   static discountForPoints(points: number): string {
     return Money.fromCents(points * REDEEM_RATE_CENTS_PER_POINT).toDecimalString();
+  }
+
+  /** When points credited at `earnedAt` expire: same day, EARN_EXPIRY_MONTHS ahead. */
+  static earnExpiresAt(earnedAt: Date): Date {
+    const expires = new Date(earnedAt);
+    expires.setMonth(expires.getMonth() + EARN_EXPIRY_MONTHS);
+    return expires;
   }
 }

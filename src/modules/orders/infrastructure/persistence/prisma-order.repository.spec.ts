@@ -218,12 +218,16 @@ describe('PrismaOrderRepository', () => {
       findMany.mockResolvedValue([persistedRow]);
 
       const orders = await repo.findMany({
-        filters: { businessUnitId: 'bu-1', orderChannel: OrderChannel.APP, orderStatus: 'PENDING' },
+        filters: {
+          businessUnitIds: ['bu-1'],
+          orderChannel: OrderChannel.APP,
+          orderStatus: 'PENDING',
+        },
         pagination: { cursor: 'order-0', take: 11 },
       });
 
       expect(findMany).toHaveBeenCalledWith({
-        where: { businessUnitId: 'bu-1', orderChannel: 'APP', orderStatus: 'PENDING' },
+        where: { businessUnitId: { in: ['bu-1'] }, orderChannel: 'APP', orderStatus: 'PENDING' },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 11,
         cursor: { id: 'order-0' },
@@ -241,6 +245,19 @@ describe('PrismaOrderRepository', () => {
 
       expect(findMany).toHaveBeenCalledWith({
         where: {},
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 20,
+        include: { orderItems: true },
+      });
+    });
+
+    it('turns an empty unit scope into IN () so a clamped-out staff sees no rows', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({ filters: { businessUnitIds: [] }, pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { businessUnitId: { in: [] } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 20,
         include: { orderItems: true },

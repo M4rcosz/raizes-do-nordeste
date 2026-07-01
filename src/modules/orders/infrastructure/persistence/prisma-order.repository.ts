@@ -109,14 +109,15 @@ export class PrismaOrderRepository implements OrderRepository {
   }
 
   private buildWhere(filters?: OrderFilters): Prisma.OrderWhereInput {
-    // TODO(multi-unit): businessUnitId is only an optional caller-supplied filter today.
-    // Once the JWT carries the staff member's unit, scope listings to it by default.
     if (!filters) {
       return {};
     }
     const where: Prisma.OrderWhereInput = {};
-    if (filters.businessUnitId) {
-      where.businessUnitId = filters.businessUnitId;
+    // Unit authorization scope. undefined = brand-wide (ADMIN). An empty array
+    // intentionally becomes `IN ()`, which matches no rows: a scoped actor asking
+    // for a unit outside their claim gets nothing, never another unit's orders.
+    if (filters.businessUnitIds !== undefined) {
+      where.businessUnitId = { in: filters.businessUnitIds };
     }
     if (filters.orderChannel) {
       where.orderChannel = filters.orderChannel;

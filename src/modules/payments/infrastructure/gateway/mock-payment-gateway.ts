@@ -7,6 +7,8 @@ import {
   type ChargeRequest,
   type ChargeResult,
   type PaymentGateway,
+  type RefundRequest,
+  type RefundResult,
 } from '../../application/ports/payment-gateway.port';
 import { PaymentStatus } from '../../domain/value-objects/payment-status';
 
@@ -53,5 +55,24 @@ export class MockPaymentGateway implements PaymentGateway {
 
     this.seen.set(request.idempotencyKey, result);
     return result;
+  }
+
+  async refund(request: RefundRequest): Promise<RefundResult> {
+    await delay(SIMULATED_LATENCY_MS);
+
+    // A transaction id carrying this marker simulates a refund that fails at the gateway,
+    // to drive the reconciliation path. Everything else refunds cleanly.
+    if (request.extTransactionId.includes('refund-fail')) {
+      throw new PaymentGatewayError('Mock gateway: refund could not be processed.', true);
+    }
+
+    return {
+      extRefundId: `mock_refund_${randomUUID()}`,
+      raw: {
+        extTransactionId: request.extTransactionId,
+        orderId: request.orderId,
+        status: 'refunded',
+      },
+    };
   }
 }

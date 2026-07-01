@@ -614,8 +614,13 @@ describe('Orders (e2e)', () => {
         .set('Authorization', `Bearer ${staffToken}`)
         .expect(200);
 
-      const rows = res.body as { productId: string; quantity: number; minQuantity: number }[];
-      expect(rows.some((row) => row.productId === productId)).toBe(true);
+      // GET /inventory is cursor-paginated: rows live under the { data, meta } envelope.
+      const body = res.body as {
+        data: { productId: string; quantity: number; minQuantity: number }[];
+        meta: { nextCursor: string | null; hasMore: boolean };
+      };
+      expect(body.data.some((row) => row.productId === productId)).toBe(true);
+      expect(body.meta).toEqual(expect.objectContaining({ hasMore: expect.any(Boolean) }));
 
       await request(server)
         .get(`/api/inventory/${unitId}`)

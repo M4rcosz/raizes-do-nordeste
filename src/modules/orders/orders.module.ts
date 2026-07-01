@@ -1,6 +1,8 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { OrdersController } from './infrastructure/http/controllers/orders.controller';
 import { CreateOrderUseCase } from './application/use-cases/create-order.use-case';
+import { CancelOrderUseCase } from './application/use-cases/cancel-order.use-case';
 import { FindOrderByIdUseCase } from './application/use-cases/find-order-by-id.use-case';
 import { ListOrdersUseCase } from './application/use-cases/list-orders.use-case';
 import { UpdateOrderStatusUseCase } from './application/use-cases/update-order-status.use-case';
@@ -16,9 +18,21 @@ import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
 import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { ORDER_FOR_PAYMENT } from './application/ports/order-for-payment.port';
 import { OrderForPaymentService } from './application/services/order-for-payment.service';
+import { IDEMPOTENCY_STORE } from './application/ports/idempotency-store.port';
+import { PrismaIdempotencyStore } from './infrastructure/persistence/prisma-idempotency-store';
+import { ExpireIdempotencyKeysUseCase } from './application/use-cases/expire-idempotency-keys.use-case';
+import { IdempotencyKeySweeper } from './infrastructure/scheduling/idempotency-key.sweeper';
 
 @Module({
-  imports: [AuditModule, InventoryModule, LoyaltyModule, PromotionsModule],
+  // forwardRef on PaymentsModule: orders needs PAYMENT_REFUND for cancellation and
+  // payments needs ORDER_FOR_PAYMENT, a legitimate bidirectional dependency.
+  imports: [
+    AuditModule,
+    InventoryModule,
+    LoyaltyModule,
+    PromotionsModule,
+    forwardRef(() => PaymentsModule),
+  ],
   controllers: [OrdersController],
   providers: [
     {
@@ -37,10 +51,17 @@ import { OrderForPaymentService } from './application/services/order-for-payment
       provide: ORDER_FOR_PAYMENT,
       useClass: OrderForPaymentService,
     },
+    {
+      provide: IDEMPOTENCY_STORE,
+      useClass: PrismaIdempotencyStore,
+    },
     CreateOrderUseCase,
+    CancelOrderUseCase,
     FindOrderByIdUseCase,
     ListOrdersUseCase,
     UpdateOrderStatusUseCase,
+    ExpireIdempotencyKeysUseCase,
+    IdempotencyKeySweeper,
   ],
   exports: [ORDER_FOR_PAYMENT],
 })

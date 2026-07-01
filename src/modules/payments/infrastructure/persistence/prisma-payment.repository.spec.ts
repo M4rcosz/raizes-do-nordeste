@@ -16,6 +16,7 @@ type PaymentDelegate = {
   create: DelegateFn;
   findUnique: DelegateFn;
   findFirst: DelegateFn;
+  findMany: DelegateFn;
   update: DelegateFn;
   updateMany: DelegateFn;
 };
@@ -27,6 +28,7 @@ const buildPrismaMock = (): { payment: PaymentDelegate } => ({
     create: delegateFn(),
     findUnique: delegateFn(),
     findFirst: delegateFn(),
+    findMany: delegateFn(),
     update: delegateFn(),
     updateMany: delegateFn(),
   },
@@ -226,6 +228,20 @@ describe('PrismaPaymentRepository', () => {
         data: { status: PaymentStatus.CANCELLED },
       });
       expect(count).toBe(3);
+    });
+  });
+
+  describe('findApprovedOrderIdsForCancelledOrders', () => {
+    it('selects APPROVED payments whose order is CANCELLED and returns their order ids', async () => {
+      prisma.payment.findMany.mockResolvedValue([{ orderId: 'o-1' }, { orderId: 'o-2' }]);
+
+      const orderIds = await repo.findApprovedOrderIdsForCancelledOrders();
+
+      expect(prisma.payment.findMany).toHaveBeenCalledWith({
+        where: { status: PaymentStatus.APPROVED, order: { orderStatus: 'CANCELLED' } },
+        select: { orderId: true },
+      });
+      expect(orderIds).toEqual(['o-1', 'o-2']);
     });
   });
 });

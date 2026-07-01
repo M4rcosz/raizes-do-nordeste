@@ -19,7 +19,7 @@ describe('AdjustInventoryUseCase', () => {
     applyMovement.mockResolvedValue(updated);
 
     const repo: InventoryRepository = {
-      findByUnit: jest.fn() as jest.MockedFunction<InventoryRepository['findByUnit']>,
+      findManyByUnit: jest.fn() as jest.MockedFunction<InventoryRepository['findManyByUnit']>,
       applyMovement,
     };
     // Fake unit of work: runs the work immediately, handing it a sentinel tx

@@ -42,6 +42,16 @@ import {
   type PromotionApplication,
 } from '@modules/promotions/application/ports/promotion-application.port';
 import { PointsRedemptionRequiresCustomerError } from '../errors/points-redemption-requires-customer.error';
+import {
+  IDEMPOTENCY_STORE,
+  type ExistingIdempotencyRecord,
+  type IdempotencyStore,
+} from '../ports/idempotency-store.port';
+import { IdempotencyKeyConflictError } from '../errors/idempotency-key-conflict.error';
+import { IdempotencyRaceError } from '../errors/idempotency-race.error';
+
+/** How long a recorded Idempotency-Key is honored before the sweeper may reap it. */
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 /** Who is performing the operation, resolved from the auth token by the HTTP layer. */
 export interface Actor {
@@ -52,6 +62,17 @@ export interface Actor {
    * stays free of the identity role taxonomy.
    */
   canAttend: boolean;
+}
+
+/**
+ * Optional idempotency envelope for a create attempt, built by the HTTP layer from the
+ * Idempotency-Key header and a hash of the request body. Absent = no idempotency.
+ */
+export interface OrderIdempotency {
+  key: string;
+  userId: string;
+  endpoint: string;
+  requestHash: string;
 }
 
 export interface CreateOrderCommand {
@@ -89,9 +110,15 @@ export class CreateOrderUseCase {
     private readonly redemption: LoyaltyRedemption,
     @Inject(PROMOTION_APPLICATION)
     private readonly promotions: PromotionApplication,
+    @Inject(IDEMPOTENCY_STORE)
+    private readonly idempotency: IdempotencyStore,
   ) {}
 
-  async execute(command: CreateOrderCommand, actor: Actor): Promise<Order> {
+  async execute(
+    command: CreateOrderCommand,
+    actor: Actor,
+    idempotency?: OrderIdempotency,
+  ): Promise<Order> {
     const {
       businessUnitId,
       orderChannel,
@@ -111,111 +138,148 @@ export class CreateOrderUseCase {
       );
     }
 
+    // Fast path: a key already on file means this exact create already ran. Replay its
+    // order (or 409 if the same key now carries a different body) without redoing work.
+    if (idempotency) {
+      const existing = await this.idempotency.find(idempotency);
+      if (existing) {
+        return this.replayOrder(existing, idempotency);
+      }
+    }
+
     // Validate and insert in one transaction, so the menu/product state can't change
     // between the read and the order insert.
-    const { order, deduction } = await this.transactions.run(async (tx) => {
-      await this.assertOrderableProducts(command, tx);
+    let committed: { order: Order; deduction: StockDeductionResult };
+    try {
+      committed = await this.transactions.run(async (tx) => {
+        await this.assertOrderableProducts(command, tx);
 
-      const orderItems = rawOrderItems.map((item) => ({
-        ...item,
-        subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toDecimalString(),
-      }));
+        const orderItems = rawOrderItems.map((item) => ({
+          ...item,
+          subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toDecimalString(),
+        }));
 
-      const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
+        const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
 
-      // Discount composition (RN-promo): the promotion prices against the GROSS subtotal
-      // first; loyalty then prices against the NET (subtotal - promo). Both ports are
-      // two-step and deterministic - they need the DB-generated orderId for their rows
-      // (OrderPromotion / REDEEM transaction), so we quote here to set the authoritative
-      // total, create the order, then commit each side keyed to that id, all in this tx.
-      // Order.discountAmount ends up promo + loyalty and Order.computeTotal re-checks the
-      // [0, subtotal] band as the net backstop.
-      const now = new Date();
-      const promoDiscount = await this.quotePromoDiscount(businessUnitId, itemsSubtotal, now, tx);
+        // Discount composition (RN-promo): the promotion prices against the GROSS subtotal
+        // first; loyalty then prices against the NET (subtotal - promo). Both ports are
+        // two-step and deterministic - they need the DB-generated orderId for their rows
+        // (OrderPromotion / REDEEM transaction), so we quote here to set the authoritative
+        // total, create the order, then commit each side keyed to that id, all in this tx.
+        // Order.discountAmount ends up promo + loyalty and Order.computeTotal re-checks the
+        // [0, subtotal] band as the net backstop.
+        const now = new Date();
+        const promoDiscount = await this.quotePromoDiscount(businessUnitId, itemsSubtotal, now, tx);
 
-      // Loyalty applies on what is left after the promotion, never on the gross.
-      const subtotalAfterPromo = itemsSubtotal.minus(promoDiscount);
-      const loyaltyDiscount = redeems
-        ? Money.fromDecimalString(
-            await this.redemption.quoteDiscount(
-              {
-                customerId: customerId as string,
-                points: pointsRedeemed as number,
-                subtotal: subtotalAfterPromo.toDecimalString(),
-              },
-              tx,
-            ),
-          )
-        : Money.zero();
+        // Loyalty applies on what is left after the promotion, never on the gross.
+        const subtotalAfterPromo = itemsSubtotal.minus(promoDiscount);
+        const loyaltyDiscount = redeems
+          ? Money.fromDecimalString(
+              await this.redemption.quoteDiscount(
+                {
+                  customerId: customerId as string,
+                  points: pointsRedeemed as number,
+                  subtotal: subtotalAfterPromo.toDecimalString(),
+                },
+                tx,
+              ),
+            )
+          : Money.zero();
 
-      const discountAmount = promoDiscount.plus(loyaltyDiscount);
-      const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toDecimalString();
+        const discountAmount = promoDiscount.plus(loyaltyDiscount);
+        const totalAmount = Order.computeTotal(itemsSubtotal, discountAmount).toDecimalString();
 
-      // pointsEarned stays at the DB default (0) on creation. Points (1 per R$10 of the
-      // paid amount, gated by LoyaltyAccount consent) are credited by the loyalty module
-      // when the payment is approved; LoyaltyTransaction is the source of truth.
+        // pointsEarned stays at the DB default (0) on creation. Points (1 per R$10 of the
+        // paid amount, gated by LoyaltyAccount consent) are credited by the loyalty module
+        // when the payment is approved; LoyaltyTransaction is the source of truth.
 
-      const created = await this.orders.create(
-        {
-          businessUnitId,
-          orderChannel,
-          notes,
-          pointsRedeemed,
-          customerId,
-          attendantId,
-          orderItems,
-          totalAmount,
-        },
-        tx,
-      );
+        const created = await this.orders.create(
+          {
+            businessUnitId,
+            orderChannel,
+            notes,
+            pointsRedeemed,
+            customerId,
+            attendantId,
+            orderItems,
+            totalAmount,
+          },
+          tx,
+        );
 
-      // Record the chosen promotion keyed to the new order id, in the same tx. The apply
-      // re-selects from the same snapshot with the same `now`, so it lands on the promotion
-      // the quote priced (deterministic). Only the promo's own discount is stored in
-      // OrderPromotion.discountApplied - the loyalty parcel is not a promotion.
-      if (promoDiscount.isPositive()) {
-        await this.promotions.applyForOrder(
+        // Record the chosen promotion keyed to the new order id, in the same tx. The apply
+        // re-selects from the same snapshot with the same `now`, so it lands on the promotion
+        // the quote priced (deterministic). Only the promo's own discount is stored in
+        // OrderPromotion.discountApplied - the loyalty parcel is not a promotion.
+        if (promoDiscount.isPositive()) {
+          await this.promotions.applyForOrder(
+            {
+              businessUnitId,
+              orderId: created.id,
+              subtotal: itemsSubtotal.toDecimalString(),
+              now,
+            },
+            tx,
+          );
+        }
+
+        if (redeems) {
+          // Debit the points in the same tx. Insufficient balance (INVALID) or a
+          // concurrent debit (CONFLICT) propagates and rolls back the order - redemption
+          // is not best-effort. customerId is non-null here (guarded above).
+          // TODO(loyalty-refund): when order cancellation/refund ships, credit the
+          // redeemed points back with a compensating transaction.
+          await this.redemption.redeemForOrder(
+            {
+              customerId: customerId as string,
+              orderId: created.id,
+              points: pointsRedeemed as number,
+              subtotal: itemsSubtotal.toDecimalString(),
+            },
+            tx,
+          );
+        }
+
+        // Stock goes out in the same transaction: any item without enough stock
+        // throws and rolls back the order plus every deduction already applied.
+        const deducted = await this.stock.deductForOrder(
           {
             businessUnitId,
             orderId: created.id,
-            subtotal: itemsSubtotal.toDecimalString(),
-            now,
+            actorId: actor.id,
+            items: rawOrderItems.map(({ productId, quantity }) => ({ productId, quantity })),
           },
           tx,
         );
+
+        // Record the key in THIS transaction so it commits with the order: the row can
+        // never exist without its order. A duplicate key means a concurrent request won
+        // the race - record throws IdempotencyRaceError and rolls this whole attempt back.
+        if (idempotency) {
+          await this.idempotency.record(
+            {
+              ...idempotency,
+              orderId: created.id,
+              expiresAt: new Date(now.getTime() + IDEMPOTENCY_TTL_MS),
+            },
+            tx,
+          );
+        }
+
+        return { order: created, deduction: deducted };
+      });
+    } catch (err) {
+      // Lost the race: a concurrent request with the same key committed between our
+      // fast-path read and our insert. Our attempt rolled back; replay the winner's.
+      if (idempotency && err instanceof IdempotencyRaceError) {
+        const existing = await this.idempotency.find(idempotency);
+        if (existing) {
+          return this.replayOrder(existing, idempotency);
+        }
       }
-
-      if (redeems) {
-        // Debit the points in the same tx. Insufficient balance (INVALID) or a
-        // concurrent debit (CONFLICT) propagates and rolls back the order - redemption
-        // is not best-effort. customerId is non-null here (guarded above).
-        // TODO(loyalty-refund): when order cancellation/refund ships, credit the
-        // redeemed points back with a compensating transaction.
-        await this.redemption.redeemForOrder(
-          {
-            customerId: customerId as string,
-            orderId: created.id,
-            points: pointsRedeemed as number,
-            subtotal: itemsSubtotal.toDecimalString(),
-          },
-          tx,
-        );
-      }
-
-      // Stock goes out in the same transaction: any item without enough stock
-      // throws and rolls back the order plus every deduction already applied.
-      const deducted = await this.stock.deductForOrder(
-        {
-          businessUnitId,
-          orderId: created.id,
-          actorId: actor.id,
-          items: rawOrderItems.map(({ productId, quantity }) => ({ productId, quantity })),
-        },
-        tx,
-      );
-
-      return { order: created, deduction: deducted };
-    });
+      throw err;
+    }
+    const { order, deduction } = committed;
 
     // Best-effort audit after the order is committed; failures here never roll it back.
     await this.audit.log({
@@ -238,6 +302,32 @@ export class CreateOrderUseCase {
       }
     }
 
+    return order;
+  }
+
+  /**
+   * Returns the order a prior attempt already created under this key. The same key
+   * with a different body is a reuse error (409); a vanished order is a referential
+   * fault. No side effects re-run: the original attempt already audited and enrolled.
+   */
+  private async replayOrder(
+    existing: ExistingIdempotencyRecord,
+    idempotency: OrderIdempotency,
+  ): Promise<Order> {
+    if (existing.requestHash !== idempotency.requestHash) {
+      throw new IdempotencyKeyConflictError();
+    }
+    // In the in-tx model the row always carries its order id; a null/missing order
+    // means the row outlived its order, a data fault rather than user error.
+    if (!existing.orderId) {
+      throw new OrderReferenceNotFoundError('Idempotency record has no associated order.');
+    }
+    const order = await this.orders.findById(existing.orderId);
+    if (!order) {
+      throw new OrderReferenceNotFoundError(
+        `Order ${existing.orderId} for this idempotency key no longer exists.`,
+      );
+    }
     return order;
   }
 

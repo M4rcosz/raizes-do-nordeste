@@ -12,12 +12,14 @@ type DelegateFn = jest.MockedFunction<(args?: unknown) => Promise<unknown>>;
 type PrismaMock = {
   loyaltyAccount: {
     findUnique: DelegateFn;
+    findMany: DelegateFn;
     create: DelegateFn;
     update: DelegateFn;
     updateMany: DelegateFn;
   };
   loyaltyTransaction: {
     create: DelegateFn;
+    findMany: DelegateFn;
   };
 };
 
@@ -26,12 +28,14 @@ const delegateFn = (): DelegateFn => jest.fn() as DelegateFn;
 const buildPrismaMock = (): PrismaMock => ({
   loyaltyAccount: {
     findUnique: delegateFn(),
+    findMany: delegateFn(),
     create: delegateFn(),
     update: delegateFn(),
     updateMany: delegateFn(),
   },
   loyaltyTransaction: {
     create: delegateFn(),
+    findMany: delegateFn(),
   },
 });
 
@@ -117,18 +121,39 @@ describe('PrismaLoyaltyRepository', () => {
       );
 
       expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
-        data: {
+        data: expect.objectContaining({
           loyaltyAccountId: 'la-1',
           orderId: 'o-1',
           type: LoyaltyTransactionType.EARN,
           points: 2,
           description: 'Points earned for order o-1',
-        },
+        }),
       });
       expect(prisma.loyaltyAccount.update).toHaveBeenCalledWith({
         where: { id: 'la-1' },
         data: { totalPoints: { increment: 2 } },
       });
+    });
+
+    it('stamps the EARN lot with a 12-month expiry', async () => {
+      prisma.loyaltyTransaction.create.mockResolvedValue({});
+      prisma.loyaltyAccount.update.mockResolvedValue(rawAccount);
+      const before = new Date();
+
+      await repo.earn(
+        { loyaltyAccountId: 'la-1', orderId: 'o-1', points: 2, description: 'x' },
+        prisma,
+      );
+
+      const data = prisma.loyaltyTransaction.create.mock.calls[0][0] as {
+        data: { expiresAt: Date };
+      };
+      const elevenMonths = new Date(before);
+      elevenMonths.setMonth(elevenMonths.getMonth() + 11);
+      const thirteenMonths = new Date(before);
+      thirteenMonths.setMonth(thirteenMonths.getMonth() + 13);
+      expect(data.data.expiresAt.getTime()).toBeGreaterThan(elevenMonths.getTime());
+      expect(data.data.expiresAt.getTime()).toBeLessThan(thirteenMonths.getTime());
     });
   });
 
@@ -186,6 +211,126 @@ describe('PrismaLoyaltyRepository', () => {
       prisma.loyaltyTransaction.create.mockRejectedValue(boom);
 
       await expect(repo.redeem(input, prisma)).rejects.toBe(boom);
+    });
+  });
+
+  describe('findAccountIdsWithExpirablePoints', () => {
+    it('selects accounts with a positive balance and an EARN lot already past expiry', async () => {
+      prisma.loyaltyAccount.findMany.mockResolvedValue([{ id: 'la-1' }, { id: 'la-2' }]);
+      const now = new Date('2026-06-29T00:00:00.000Z');
+
+      const ids = await repo.findAccountIdsWithExpirablePoints(now);
+
+      expect(prisma.loyaltyAccount.findMany).toHaveBeenCalledWith({
+        where: {
+          totalPoints: { gt: 0 },
+          loyaltyTransactions: {
+            some: { type: LoyaltyTransactionType.EARN, expiresAt: { lt: now } },
+          },
+        },
+        select: { id: true },
+      });
+      expect(ids).toEqual(['la-1', 'la-2']);
+    });
+  });
+
+  describe('findLedger', () => {
+    it('returns the account ledger chronologically mapped to plain entries', async () => {
+      const earnedAt = new Date('2025-06-01T00:00:00.000Z');
+      const expiresAt = new Date('2026-06-01T00:00:00.000Z');
+      prisma.loyaltyTransaction.findMany.mockResolvedValue([
+        { type: 'EARN', points: 5, createdAt: earnedAt, expiresAt },
+      ]);
+
+      const ledger = await repo.findLedger('la-1', prisma);
+
+      expect(prisma.loyaltyTransaction.findMany).toHaveBeenCalledWith({
+        where: { loyaltyAccountId: 'la-1' },
+        orderBy: { createdAt: 'asc' },
+        select: { type: true, points: true, createdAt: true, expiresAt: true },
+      });
+      expect(ledger).toEqual([
+        { type: LoyaltyTransactionType.EARN, points: 5, createdAt: earnedAt, expiresAt },
+      ]);
+    });
+  });
+
+  describe('adjust', () => {
+    it('records a positive ADJUSTMENT (refund) and increments the balance', async () => {
+      prisma.loyaltyTransaction.create.mockResolvedValue({});
+      prisma.loyaltyAccount.update.mockResolvedValue(rawAccount);
+
+      await repo.adjust({ loyaltyAccountId: 'la-1', points: 5, description: 'refund' }, prisma);
+
+      expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+        data: {
+          loyaltyAccountId: 'la-1',
+          orderId: null,
+          type: LoyaltyTransactionType.ADJUSTMENT,
+          points: 5,
+          description: 'refund',
+          expiresAt: null,
+        },
+      });
+      expect(prisma.loyaltyAccount.update).toHaveBeenCalledWith({
+        where: { id: 'la-1' },
+        data: { totalPoints: { increment: 5 } },
+      });
+    });
+
+    it('records a negative ADJUSTMENT (clawback) and decrements via a negative increment', async () => {
+      prisma.loyaltyTransaction.create.mockResolvedValue({});
+      prisma.loyaltyAccount.update.mockResolvedValue(rawAccount);
+
+      await repo.adjust({ loyaltyAccountId: 'la-1', points: -3, description: 'clawback' }, prisma);
+
+      expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: LoyaltyTransactionType.ADJUSTMENT,
+          points: -3,
+          orderId: null,
+        }),
+      });
+      expect(prisma.loyaltyAccount.update).toHaveBeenCalledWith({
+        where: { id: 'la-1' },
+        data: { totalPoints: { increment: -3 } },
+      });
+    });
+  });
+
+  describe('expire', () => {
+    const input = { loyaltyAccountId: 'la-1', points: 4, description: 'expired' };
+
+    it('decrements under the balance guard then records the EXPIRE movement', async () => {
+      prisma.loyaltyAccount.updateMany.mockResolvedValue({ count: 1 });
+      prisma.loyaltyTransaction.create.mockResolvedValue({});
+
+      const applied = await repo.expire(input, prisma);
+
+      expect(prisma.loyaltyAccount.updateMany).toHaveBeenCalledWith({
+        where: { id: 'la-1', totalPoints: { gte: 4 } },
+        data: { totalPoints: { decrement: 4 } },
+      });
+      expect(prisma.loyaltyTransaction.create).toHaveBeenCalledWith({
+        data: {
+          loyaltyAccountId: 'la-1',
+          orderId: null,
+          type: LoyaltyTransactionType.EXPIRE,
+          points: 4,
+          description: 'expired',
+          expiresAt: null,
+        },
+      });
+      expect(applied).toBe(true);
+    });
+
+    it('writes nothing and returns false when a concurrent debit drained the balance', async () => {
+      prisma.loyaltyAccount.updateMany.mockResolvedValue({ count: 0 });
+
+      const applied = await repo.expire(input, prisma);
+
+      expect(applied).toBe(false);
+      expect(prisma.loyaltyTransaction.create).not.toHaveBeenCalled();
     });
   });
 });

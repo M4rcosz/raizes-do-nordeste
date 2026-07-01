@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '@modules/audit/audit.module';
 import { PromotionsController } from './infrastructure/http/controllers/promotions.controller';
 import { PROMOTION_REPOSITORY } from './domain/repositories/promotion.repository';
 import { PrismaPromotionRepository } from './infrastructure/persistence/prisma-promotion.repository';
@@ -8,8 +9,11 @@ import { CreatePromotionUseCase } from './application/use-cases/create-promotion
 import { UpdatePromotionUseCase } from './application/use-cases/update-promotion.use-case';
 import { FindPromotionByIdUseCase } from './application/use-cases/find-promotion-by-id.use-case';
 import { ListPromotionsUseCase } from './application/use-cases/list-promotions.use-case';
+import { ActivatePromotionUseCase } from './application/use-cases/activate-promotion.use-case';
+import { DeactivatePromotionUseCase } from './application/use-cases/deactivate-promotion.use-case';
 
 @Module({
+  imports: [AuditModule],
   controllers: [PromotionsController],
   providers: [
     {
@@ -24,6 +28,8 @@ import { ListPromotionsUseCase } from './application/use-cases/list-promotions.u
     UpdatePromotionUseCase,
     FindPromotionByIdUseCase,
     ListPromotionsUseCase,
+    ActivatePromotionUseCase,
+    DeactivatePromotionUseCase,
   ],
   exports: [PROMOTION_APPLICATION],
 })

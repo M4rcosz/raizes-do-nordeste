@@ -5,6 +5,7 @@ import { TransactionContext } from '@shared/transaction/transaction-runner.port'
 import { Inventory } from '@modules/inventory/domain/entities/inventory.entity';
 import {
   ApplyMovementInput,
+  FindInventoryByUnitInput,
   InventoryRepository,
 } from '@modules/inventory/domain/repositories/inventory.repository';
 import { InventoryTransactionType } from '@modules/inventory/domain/value-objects/inventory-transaction-type';
@@ -15,10 +16,19 @@ import { InventoryNotFoundError } from '@modules/inventory/domain/errors/invento
 export class PrismaInventoryRepository implements InventoryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByUnit(businessUnitId: string): Promise<Inventory[]> {
+  async findManyByUnit(input: FindInventoryByUnitInput): Promise<Inventory[]> {
+    const { businessUnitId, pagination } = input;
+
+    // Stable order for cursoring: createdAt then id as the tiebreaker. The cursor
+    // is the last item's id; skip:1 starts the next page after it.
     const raws = await this.prisma.inventory.findMany({
       where: { businessUnitId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
+      ...(pagination.cursor && {
+        cursor: { id: pagination.cursor },
+        skip: 1,
+      }),
     });
     return raws.map((raw) => this.toEntity(raw));
   }

@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -23,11 +24,15 @@ import { ScopedToBusinessUnit } from '@shared/auth/scoped-to-business-unit.decor
 import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
+import { sanitizeLimit } from '@shared/pagination/pagination';
 import { GetInventoryUseCase } from '@modules/inventory/application/use-cases/get-inventory.use-case';
 import { AdjustInventoryUseCase } from '@modules/inventory/application/use-cases/adjust-inventory.use-case';
 import { InventoryUnitParamDto } from '../dto/inventory-params.dto';
 import { AdjustInventoryDto } from '../dto/adjust-inventory.dto';
 import { InventoryResponseDto } from '../dto/inventory-response.dto';
+import { InventoryQueryDto } from '../dto/inventory-query.dto';
+import { PaginatedInventoryResponseDto } from '../dto/paginated-inventory-response.dto';
 
 /** Stock is a management concern: ATTENDANT/KITCHEN/CUSTOMER never touch it. */
 const INVENTORY_ROLES: UserRole[] = [UserRole.MANAGER, UserRole.ADMIN];
@@ -47,13 +52,20 @@ export class InventoryController {
 
   @Get(':businessUnitId')
   @Roles(INVENTORY_ROLES)
-  @ApiOperation({ summary: 'List the stock balances of a business unit. Managers only.' })
-  @ApiOkResponse({ type: [InventoryResponseDto] })
-  async list(@Param() { businessUnitId }: InventoryUnitParamDto): Promise<InventoryResponseDto[]> {
-    // TODO(pagination): plain list for now - per-unit inventory volume is bounded
-    // by the menu size. Revisit with cursor pagination if units grow past that.
-    const inventories = await this.getInventory.execute(businessUnitId);
-    return inventories.map((inventory) => InventoryResponseDto.fromEntity(inventory));
+  @ApiOperation({
+    summary: 'List the stock balances of a business unit (cursor-paginated). Managers only.',
+  })
+  @ApiOkResponse({ type: PaginatedInventoryResponseDto })
+  async list(
+    @Param() { businessUnitId }: InventoryUnitParamDto,
+    @Query() query: InventoryQueryDto,
+  ): Promise<PaginatedResponseDto<InventoryResponseDto>> {
+    const limit = sanitizeLimit(query.limit);
+    const result = await this.getInventory.execute({ businessUnitId, cursor: query.cursor, limit });
+    return new PaginatedResponseDto(
+      result.data.map((inventory) => InventoryResponseDto.fromEntity(inventory)),
+      result.meta,
+    );
   }
 
   @Post(':businessUnitId/adjust')
