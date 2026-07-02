@@ -1,14 +1,14 @@
 #!/bin/sh
 set -e
 
-echo "Waiting database..."
-until npx prisma migrate deploy; do
-    echo "Migration failed, retrying in 3s..."
-    sleep 3
-done
+# One-shot migration. A managed DB (Supabase) is always up, so there is no DB
+# to wait for. If this fails we exit non-zero and let the container crash loud
+# instead of retrying forever and hanging the deploy.
+echo "Applying migrations..."
+npx prisma migrate deploy
 
-echo "Running seed..."
-npx prisma db seed
+# No seed on boot. Seeding is a manual, one-off operation (npm run db:seed),
+# never part of the container lifecycle. seed.ts still hard-refuses in prod.
 
-echo "Initializing application..."
+echo "Starting application..."
 exec node dist/main.js

@@ -6,7 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
-import { parseTrustProxy } from '@shared/config/env';
+import { parseCorsOrigins, parseTrustProxy } from '@shared/config/env';
 
 function readAppVersion(): string {
   const raw: unknown = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
@@ -26,7 +26,10 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
-  app.enableCors(); // TODO: Configure CORS properly for production
+  // CORS_ORIGINS is a comma-separated allowlist. Unset reflects any origin
+  // (dev default); set in production to the front-end origin(s), e.g. the
+  // Vercel domain.
+  app.enableCors({ origin: parseCorsOrigins(process.env.CORS_ORIGINS) });
   app.enableShutdownHooks();
 
   // Trust proxy is off by default. Enable it ONLY when a trusted reverse proxy

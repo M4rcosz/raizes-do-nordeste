@@ -61,6 +61,31 @@ export function parseDurationMsEnv(
   return Number(count) * DURATION_UNIT_MS[unit];
 }
 
+// Parse CORS_ORIGINS into what the express cors option understands. Absent or
+// empty means no allowlist is configured, so we reflect any origin
+// (origin: true) and preserve the permissive dev default. A present value is a
+// comma-separated allowlist; entries are trimmed and blanks dropped. A value
+// that is present but resolves to no origins (e.g. ",,") throws instead of
+// silently reflecting all origins, since that signals a misconfiguration.
+export function parseCorsOrigins(raw: string | undefined): boolean | string[] {
+  if (raw === undefined || raw === '') {
+    return true;
+  }
+
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  if (origins.length === 0) {
+    throw new Error(
+      `Invalid env CORS_ORIGINS: expected a comma-separated list of origins, received "${raw}"`,
+    );
+  }
+
+  return origins;
+}
+
 // Map TRUST_PROXY into what express understands: a boolean for the on/off cases
 // or a hop count when a non negative integer is given. Absent means off. A
 // present but unrecognized value throws instead of silently falling back to off.
