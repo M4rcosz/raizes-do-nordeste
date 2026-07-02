@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -44,23 +43,20 @@ async function bootstrap(): Promise<void> {
 
   const port = Number(process.env.PORT) || 3000;
 
-  const configService = app.get(ConfigService);
-  const isProduction = configService.get<string>('NODE_ENV') === 'production';
+  // Swagger is intentionally exposed in every environment, production included,
+  // so the API stays self-documenting for this portfolio project.
+  const config = new DocumentBuilder()
+    .setTitle('Raízes do Nordeste')
+    .setDescription('Multi-unit restaurant management API for Raízes do Nordeste')
+    .setVersion(readAppVersion())
+    .addBearerAuth()
+    .build();
 
-  if (!isProduction) {
-    const config = new DocumentBuilder()
-      .setTitle('Raízes do Nordeste')
-      .setDescription('Multi-unit restaurant management API for Raízes do Nordeste')
-      .setVersion(readAppVersion())
-      .addBearerAuth()
-      .build();
+  const documentFactory = (): ReturnType<typeof SwaggerModule.createDocument> =>
+    SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('docs', app, documentFactory, { useGlobalPrefix: true });
 
-    const documentFactory = (): ReturnType<typeof SwaggerModule.createDocument> =>
-      SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('docs', app, documentFactory, { useGlobalPrefix: true });
-
-    logger.log(`Swagger UI available at http://localhost:${port}/api/docs`);
-  }
+  logger.log(`Swagger UI available at /api/docs`);
 
   await app.listen(port);
 
