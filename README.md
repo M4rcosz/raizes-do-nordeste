@@ -851,6 +851,7 @@ Errors follow the standard envelope: `MenuItemAlreadyExistsError` -> `409`,
 | `GET`   | `/api/orders`             | Staff       | List orders (cursor-paginated) with optional `businessUnitId`/`orderChannel`/`orderStatus` filters. `CUSTOMER` is rejected with `403`. |
 | `GET`   | `/api/orders/:id`         | Bearer      | Get one order. A `CUSTOMER` only sees their own; otherwise `404`.                                      |
 | `PATCH` | `/api/orders/:id/status`  | Staff       | Advance an order's status. The state machine rejects invalid transitions with `422`; a concurrent change loses the optimistic lock with `409`. |
+| `POST`  | `/api/orders/:id/cancel`  | Bearer      | Cancel an order and run its compensations (restock, loyalty reversal, refund). Staff act within their unit scope; a `CUSTOMER` may cancel only while the order is `PENDING`. Returns `200` with the cancelled order. |
 
 #### Channel policies
 
@@ -866,6 +867,14 @@ When the channel requires a staff actor (`COUNTER` / `PICKUP`), a JWT
 belonging to a `CUSTOMER` is rejected with `403 AttendantRequiredError`.
 For these channels `attendantId` is taken from the JWT (`sub`) - never from
 the request body.
+
+#### Idempotent creation (`Idempotency-Key` header)
+
+`POST /api/orders` accepts an optional `Idempotency-Key` request header. The key
+is scoped per user with a 24h TTL: a blank or oversized key is ignored (creation
+runs normally). Replaying the key with the **same** body returns the original
+order; replaying it with a **different** body returns `409`. Expired keys are
+reaped hourly by a background sweeper.
 
 #### Request body - `OrderCreateDto`
 
@@ -1053,7 +1062,7 @@ rounding on the client.
 
 | Method | Path                                | Auth            | Description                                              |
 | ------ | ----------------------------------- | --------------- | ------------------------------------------------------- |
-| `GET`  | `/api/inventory/:businessUnitId`    | MANAGER / ADMIN | List stock balances for a business unit.                |
+| `GET`  | `/api/inventory/:businessUnitId`    | MANAGER / ADMIN | List stock balances for a business unit (cursor-paginated; `?cursor=` / `?limit=`). |
 | `POST` | `/api/inventory/:businessUnitId/adjust` | MANAGER / ADMIN | Apply a manual `IN`/`OUT` stock movement.           |
 
 Stock is a management concern: `ATTENDANT`, `KITCHEN` and `CUSTOMER` are
@@ -1082,6 +1091,8 @@ balance below zero returns `422`.
 
 #### Response - `InventoryResponseDto`
 
+`POST /adjust` returns the single updated balance:
+
 ```json
 {
   "id": "a1b2...",
@@ -1090,6 +1101,27 @@ balance below zero returns `422`.
   "quantity": 110,
   "minQuantity": 5,
   "updatedAt": "2026-06-14T12:00:00.000Z"
+}
+```
+
+`GET /api/inventory/:businessUnitId` returns those same items in the standard
+cursor envelope `{ data: [...], meta: { nextCursor, hasMore } }` (consistent with
+orders, promotions and audit logs). It accepts `?cursor=` (the last item id of the
+previous page) and `?limit=` (default 20, max 100).
+
+```json
+{
+  "data": [
+    {
+      "id": "a1b2...",
+      "businessUnitId": "e36e29da-...",
+      "productId": "cebe6acf-...",
+      "quantity": 110,
+      "minQuantity": 5,
+      "updatedAt": "2026-06-14T12:00:00.000Z"
+    }
+  ],
+  "meta": { "nextCursor": "a1b2...", "hasMore": true }
 }
 ```
 
@@ -1319,14 +1351,16 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
 - [x] **Orders** - channel-aware creation, cursor-paginated reads, owner-scoped
       single read, and a status state machine (optimistic-locked transitions).
       Decimal-string money, server-side total, `unitPrice` anti-tampering and
-      `Product.isActive` enforcement. Item updates and idempotent creation
-      still pending.
+      `Product.isActive` enforcement, idempotent creation via `Idempotency-Key`,
+      and cancellation with a compensation saga. Item updates still pending.
 - [x] **Payments** - mock gateway charge, HMAC-signed webhook that confirms the
-      order in the same transaction, and a sweeper that expires stale
-      `PROCESSING` payments. Refunds still pending.
+      order in the same transaction, a sweeper that expires stale `PROCESSING`
+      payments, and refunds via the order-cancellation saga (`REFUNDED` status)
+      with a refund-reconciliation sweeper.
 - [x] **Inventory** - per-unit stock, an `InventoryTransaction` ledger, atomic
-      deduction on order creation, manual `IN`/`OUT` adjustments, and a
-      `STOCK_ALERT` audit on low balance. Reservations still pending.
+      deduction on order creation, restock on cancellation, manual `IN`/`OUT`
+      adjustments, cursor-paginated listing, and a `STOCK_ALERT` audit on low
+      balance. Reservations still pending.
 - [x] **Promotions** - percentage / fixed-amount discounts, CRUD (create / list
       by business unit / get / update) and at most one promotion applied per
       order, priced on the gross subtotal before the loyalty discount and
@@ -1336,7 +1370,8 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
 - [x] **Loyalty** - auto-enrolment on the first order, consent tracking (LGPD),
       `floor(paidAmount / 10)` points credited on approved payments, and
       redemption at order creation (1 point = `R$0.10` discount), balance-validated
-      and debited in the same transaction.
+      and debited in the same transaction. Points expire after a rolling 12-month
+      window (daily sweep), and are reversed when an order is cancelled.
 
 ---
 

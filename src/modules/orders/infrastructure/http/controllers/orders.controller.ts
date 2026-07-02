@@ -21,7 +21,9 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -74,7 +76,14 @@ export class OrdersController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create an order for the current channel.' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Optional per-user key (24h TTL). A replay with the same body returns the original order.',
+  })
   @ApiCreatedResponse({ type: OrderResponseDto })
+  @ApiConflictResponse({ description: 'Idempotency-Key reused with a different request body.' })
   async create(
     @Body() body: OrderCreateDto,
     @CurrentUser() user: JwtPayload,

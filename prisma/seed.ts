@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     create: {
       categoryId: chickenCategory.id,
       name: 'Chicken Stroganoff',
-      basePrice: 20.0,
+      basePrice: 20,
       imageUrl: '@example4.com',
     },
   });

@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file. See [commit
 * **auth:** the JWT claim `businessUnitId: string | null` is replaced by
   `businessUnitIds: string[]`. Access tokens issued before this change are
   normalized by a temporary compatibility shim in `AuthGuard` until they expire.
+* **inventory:** `GET /api/inventory/:businessUnitId` is now cursor-paginated. It
+  previously returned a raw array; it now returns the standard envelope
+  `{ data: [...], meta: { nextCursor, hasMore } }` and accepts `?cursor=` and
+  `?limit=` query params.
 
 ### Features
 
@@ -36,6 +40,19 @@ All notable changes to this project will be documented in this file. See [commit
   `DELETE /api/loyalty/me/consent`, recording `consentDate`/`consentRevokedAt`.
 * **audit:** record toggle and loyalty-consent events (`BUSINESS_UNIT_*`,
   `PRODUCT_*`, `MENU_ITEM_*`, `LOYALTY_CONSENT_GIVEN`/`LOYALTY_CONSENT_REVOKED`).
+* **orders:** add `POST /api/orders/:id/cancel` - cancels an order and runs the
+  compensation saga (restock + loyalty reversal + refund). Staff may cancel within
+  their unit scope; a customer may cancel only while the order is `PENDING`.
+  Returns `200` with the cancelled order.
+* **orders:** `POST /api/orders` accepts an optional `Idempotency-Key` header
+  (per-user, 24h TTL). A replay with the same body returns the original order; a
+  replay with a divergent body returns `409`.
+* **payments:** add the `REFUNDED` `PaymentStatus`, set by the cancellation refund
+  flow.
+* **loyalty:** expire points after a rolling 12-month window (daily sweep).
+* **platform:** add background sweepers - idempotency-key expiry (hourly), loyalty
+  point expiry (daily), and refund reconciliation of an `APPROVED` payment left on
+  a `CANCELLED` order (every 10 min).
 
 ### Changes
 
