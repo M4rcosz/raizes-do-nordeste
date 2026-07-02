@@ -14,6 +14,7 @@ import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
 import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { RequestLoggingMiddleware } from '@shared/observability/request-logging.middleware';
+import { HealthController } from '@shared/observability/health.controller';
 import { parseIntEnv } from '@shared/config/env';
 
 // Global rate limit defaults to 100 req / 60s per IP. Both values are read from
@@ -46,6 +47,7 @@ const THROTTLE_LIMIT = parseIntEnv('THROTTLE_LIMIT', process.env.THROTTLE_LIMIT,
     OrdersModule,
     PaymentsModule,
   ],
+  controllers: [HealthController],
   providers: [
     // ThrottlerGuard runs before AuthGuard so even @Public() routes (login) are
     // rate limited. APP_GUARD order follows the providers array order.
