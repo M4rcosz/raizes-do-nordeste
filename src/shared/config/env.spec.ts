@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseDurationMsEnv, parseIntEnv, parseTrustProxy } from './env';
+import { parseCorsOrigins, parseDurationMsEnv, parseIntEnv, parseTrustProxy } from './env';
 
 describe('parseDurationMsEnv', () => {
   it('returns the default when the var is absent or empty', () => {
@@ -49,6 +49,37 @@ describe('parseIntEnv', () => {
 
   it('accepts a value at the min boundary', () => {
     expect(parseIntEnv('THROTTLE_LIMIT', '1', 100, { min: 1 })).toBe(1);
+  });
+});
+
+describe('parseCorsOrigins', () => {
+  it('reflects any origin when absent or empty', () => {
+    expect(parseCorsOrigins(undefined)).toBe(true);
+    expect(parseCorsOrigins('')).toBe(true);
+  });
+
+  it('returns a single-element allowlist', () => {
+    expect(parseCorsOrigins('https://app.vercel.app')).toEqual(['https://app.vercel.app']);
+  });
+
+  it('splits a comma-separated allowlist and trims entries', () => {
+    expect(parseCorsOrigins('https://a.com, https://b.com ,https://c.com')).toEqual([
+      'https://a.com',
+      'https://b.com',
+      'https://c.com',
+    ]);
+  });
+
+  it('drops blank entries between commas', () => {
+    expect(parseCorsOrigins('https://a.com,,https://b.com')).toEqual([
+      'https://a.com',
+      'https://b.com',
+    ]);
+  });
+
+  it('throws when present but resolving to no origins', () => {
+    expect(() => parseCorsOrigins(',,')).toThrow(/CORS_ORIGINS/);
+    expect(() => parseCorsOrigins('  ')).toThrow(/CORS_ORIGINS/);
   });
 });
 
