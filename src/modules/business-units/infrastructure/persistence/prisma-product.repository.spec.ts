@@ -12,6 +12,7 @@ import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
 
 type ProductCreateFn = (args: unknown) => Promise<PrismaProduct>;
 type ProductFindUniqueFn = (args: unknown) => Promise<PrismaProduct | null>;
+type ProductUpdateFn = (args: unknown) => Promise<PrismaProduct>;
 
 const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
   new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
@@ -23,6 +24,7 @@ const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
 describe('PrismaProductRepository', () => {
   let create: jest.MockedFunction<ProductCreateFn>;
   let findUnique: jest.MockedFunction<ProductFindUniqueFn>;
+  let update: jest.MockedFunction<ProductUpdateFn>;
   let repo: PrismaProductRepository;
 
   const input: CreateProductInput = {
@@ -48,7 +50,8 @@ describe('PrismaProductRepository', () => {
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<ProductCreateFn>;
     findUnique = jest.fn() as jest.MockedFunction<ProductFindUniqueFn>;
-    const prisma = { product: { create, findUnique } } as unknown as PrismaService;
+    update = jest.fn() as jest.MockedFunction<ProductUpdateFn>;
+    const prisma = { product: { create, findUnique, update } } as unknown as PrismaService;
     repo = new PrismaProductRepository(prisma);
   });
 
@@ -107,6 +110,83 @@ describe('PrismaProductRepository', () => {
       create.mockRejectedValue(genericError);
 
       await expect(repo.create(input)).rejects.toBe(genericError);
+    });
+  });
+
+  describe('update', () => {
+    const domainProduct = new Product(
+      'uuid-1',
+      'Vatapá',
+      'Creamy shrimp paste',
+      Money.fromDecimalString('20.00'),
+      true,
+      'category-2',
+      new Date('2026-01-01T00:00:00Z'),
+      new Date('2026-01-02T00:00:00Z'),
+      'https://example.com/vatapa.jpg',
+    );
+
+    it('writes the editable fields with the price as a decimal string and maps the row back', async () => {
+      update.mockResolvedValue({
+        ...persistedRow,
+        name: 'Vatapá',
+        description: 'Creamy shrimp paste',
+        basePrice: new Prisma.Decimal('20.00'),
+        categoryId: 'category-2',
+        imageUrl: 'https://example.com/vatapa.jpg',
+      });
+
+      const result = await repo.update(domainProduct);
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'uuid-1' },
+        data: {
+          name: 'Vatapá',
+          description: 'Creamy shrimp paste',
+          basePrice: '20.00',
+          categoryId: 'category-2',
+          imageUrl: 'https://example.com/vatapa.jpg',
+        },
+      });
+      expect(result).toBeInstanceOf(Product);
+      expect(result?.name).toBe('Vatapá');
+      expect(result?.price.equals(Money.fromDecimalString('20.00'))).toBe(true);
+    });
+
+    it('translates a P2002 unique-constraint violation into ProductAlreadyExistsError, chaining the cause', async () => {
+      const prismaError = knownError('P2002');
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.update(domainProduct)).rejects.toBeInstanceOf(ProductAlreadyExistsError);
+      await expect(repo.update(domainProduct)).rejects.toMatchObject({ cause: prismaError });
+    });
+
+    it('translates a P2003 foreign-key violation into CategoryNotFoundError, chaining the cause', async () => {
+      const prismaError = knownError('P2003');
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.update(domainProduct)).rejects.toBeInstanceOf(CategoryNotFoundError);
+      await expect(repo.update(domainProduct)).rejects.toMatchObject({ cause: prismaError });
+    });
+
+    it('returns null on P2025 when no product matches the id', async () => {
+      update.mockRejectedValue(knownError('P2025'));
+
+      await expect(repo.update(domainProduct)).resolves.toBeNull();
+    });
+
+    it('rethrows unmapped Prisma error codes unchanged', async () => {
+      const prismaError = knownError('P2000');
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.update(domainProduct)).rejects.toBe(prismaError);
+    });
+
+    it('rethrows non-Prisma errors unchanged', async () => {
+      const genericError = new Error('connection lost');
+      update.mockRejectedValue(genericError);
+
+      await expect(repo.update(domainProduct)).rejects.toBe(genericError);
     });
   });
 

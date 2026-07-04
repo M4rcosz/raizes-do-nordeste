@@ -113,6 +113,44 @@ export class PrismaProductRepository implements ProductRepository {
     }
   }
 
+  async update(product: Product): Promise<Product | null> {
+    try {
+      const updated = await this.prisma.product.update({
+        where: { id: product.id },
+        data: {
+          name: product.name,
+          description: product.description,
+          // Money write-border: forward the 2dp decimal string, never a float.
+          basePrice: product.price.toDecimalString(),
+          categoryId: product.categoryId,
+          imageUrl: product.imageUrl,
+        },
+      });
+
+      return this.toEntity(updated);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2002') {
+          throw new ProductAlreadyExistsError(`A product named "${product.name}" already exists.`, {
+            cause: err,
+          });
+        }
+        if (err.code === 'P2003') {
+          throw new CategoryNotFoundError(`Category "${product.categoryId}" does not exist.`, {
+            cause: err,
+          });
+        }
+        // P2025 when no product matches the id. Honor the null contract so the
+        // use case raises ProductNotFoundError (404) instead of leaking a 500.
+        if (err.code === 'P2025') {
+          return null;
+        }
+      }
+
+      throw err;
+    }
+  }
+
   async setActive(id: string, isActive: boolean): Promise<Product | null> {
     try {
       const updated = await this.prisma.product.update({
