@@ -26,6 +26,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ChangePasswordUseCase } from '@modules/identity/application/use-cases/change-password.use-case';
 import { CreateUserUseCase } from '@modules/identity/application/use-cases/create-user.use-case';
 import { DeactivateUserUseCase } from '@modules/identity/application/use-cases/deactivate-user.use-case';
+import { GetMyProfileUseCase } from '@modules/identity/application/use-cases/get-my-profile.use-case';
 import { ListUsersUseCase } from '@modules/identity/application/use-cases/list-users.use-case';
 import { ReactivateUserUseCase } from '@modules/identity/application/use-cases/reactivate-user.use-case';
 import { RegisterCustomerUseCase } from '@modules/identity/application/use-cases/register-customer.use-case';
@@ -56,6 +57,7 @@ export class UsersController {
     private readonly deactivateUser: DeactivateUserUseCase,
     private readonly reactivateUser: ReactivateUserUseCase,
     private readonly updateUserProfile: UpdateUserProfileUseCase,
+    private readonly getMyProfile: GetMyProfileUseCase,
     private readonly changePassword: ChangePasswordUseCase,
     private readonly listUsers: ListUsersUseCase,
     private readonly updateUserBusinessUnits: UpdateUserBusinessUnitsUseCase,
@@ -112,6 +114,17 @@ export class UsersController {
       result.data.map((user) => UserResponseDto.fromEntity(user)),
       result.meta,
     );
+  }
+
+  // Declared before any :id route so NestJS matches /me literally, not as a UUID
+  // param. Open to any authenticated role: everyone may read their own record.
+  @Get('me')
+  @ApiOperation({ summary: 'Get own account info' })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'Authenticated user not found' })
+  async me(@CurrentUser() actor: JwtPayload): Promise<UserResponseDto> {
+    const user = await this.getMyProfile.execute(actor.sub);
+    return UserResponseDto.fromEntity(user);
   }
 
   // Declared before any :id route so NestJS matches /me literally, not as a UUID param.

@@ -251,6 +251,19 @@ describe('PrismaOrderRepository', () => {
       });
     });
 
+    it('scopes by customerId for the customer self-listing path', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({ filters: { customerId: 'c-1' }, pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { customerId: 'c-1' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 20,
+        include: { orderItems: true },
+      });
+    });
+
     it('turns an empty unit scope into IN () so a clamped-out staff sees no rows', async () => {
       findMany.mockResolvedValue([]);
 

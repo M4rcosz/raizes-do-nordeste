@@ -50,3 +50,22 @@ export function buildCursorMeta(
     hasMore,
   };
 }
+
+/**
+ * Turns an over-fetched row set into the paginated envelope. Callers fetch one
+ * extra row (`take: limit + 1`); its presence means another page exists, so we
+ * trim the probe row, derive hasMore and build the cursor meta from the last
+ * kept id. T only needs an `id` for the cursor.
+ */
+export function buildCursorPage<T extends { id: string }>(
+  items: T[],
+  limit: number,
+): CursorPaginatedResult<T> {
+  const hasMore = items.length > limit;
+  const trimmed = hasMore ? items.slice(0, limit) : items;
+  const lastItemId = trimmed[trimmed.length - 1]?.id;
+  return {
+    data: trimmed,
+    meta: buildCursorMeta(limit, hasMore, lastItemId),
+  };
+}

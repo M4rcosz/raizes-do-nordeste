@@ -30,6 +30,8 @@ export interface OrderFilters {
    * matches nothing (a scoped actor whose filter fell outside their claim).
    */
   businessUnitIds?: string[];
+  /** Restrict to a single customer's own orders (the customer self-listing path). */
+  customerId?: string;
   orderChannel?: OrderChannel;
   orderStatus?: OrderStatus;
 }
