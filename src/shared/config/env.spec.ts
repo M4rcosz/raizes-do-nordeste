@@ -1,5 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseCorsOrigins, parseDurationMsEnv, parseIntEnv, parseTrustProxy } from './env';
+import {
+  parseCookieSecure,
+  parseCorsOrigins,
+  parseDurationMsEnv,
+  parseIntEnv,
+  parseSameSite,
+  parseTrustProxy,
+} from './env';
 
 describe('parseDurationMsEnv', () => {
   it('returns the default when the var is absent or empty', () => {
@@ -110,5 +117,41 @@ describe('parseTrustProxy', () => {
 
   it('throws on a negative hop count', () => {
     expect(() => parseTrustProxy('-1')).toThrow(/TRUST_PROXY/);
+  });
+});
+
+describe('parseCookieSecure', () => {
+  it('defaults to true when absent or empty', () => {
+    expect(parseCookieSecure(undefined)).toBe(true);
+    expect(parseCookieSecure('')).toBe(true);
+  });
+
+  it('returns true for "true"', () => {
+    expect(parseCookieSecure('true')).toBe(true);
+  });
+
+  it('returns false for "false"', () => {
+    expect(parseCookieSecure('false')).toBe(false);
+  });
+
+  it('throws on an unrecognized value, naming the var and value', () => {
+    expect(() => parseCookieSecure('yes')).toThrow(/COOKIE_SECURE.*yes/);
+  });
+});
+
+describe('parseSameSite', () => {
+  it('defaults to "strict" when absent or empty', () => {
+    expect(parseSameSite(undefined)).toBe('strict');
+    expect(parseSameSite('')).toBe('strict');
+  });
+
+  it('accepts "strict", "lax" and "none"', () => {
+    expect(parseSameSite('strict')).toBe('strict');
+    expect(parseSameSite('lax')).toBe('lax');
+    expect(parseSameSite('none')).toBe('none');
+  });
+
+  it('throws on an unrecognized value, naming the var and value', () => {
+    expect(() => parseSameSite('Strict')).toThrow(/COOKIE_SAMESITE.*Strict/);
   });
 });

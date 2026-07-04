@@ -109,3 +109,37 @@ export function parseTrustProxy(raw: string | undefined): boolean | number {
     `Invalid env TRUST_PROXY: expected "true", "false" or an integer >= 0, received "${raw}"`,
   );
 }
+
+// Parse COOKIE_SECURE into the boolean for the cookie "secure" attribute.
+// Absent means secure (production default: cookies only over https). Set to
+// "false" for local http dev. A present but unrecognized value throws instead
+// of silently defaulting.
+export function parseCookieSecure(raw: string | undefined): boolean {
+  if (raw === undefined || raw === '') {
+    return true;
+  }
+  if (raw === 'true') {
+    return true;
+  }
+  if (raw === 'false') {
+    return false;
+  }
+
+  throw new Error(`Invalid env COOKIE_SECURE: expected "true" or "false", received "${raw}"`);
+}
+
+// Parse COOKIE_SAMESITE into the SameSite attribute the express res.cookie
+// option understands. Absent means the safe default "strict". A present but
+// unrecognized value throws instead of silently defaulting.
+export function parseSameSite(raw: string | undefined): 'strict' | 'lax' | 'none' {
+  if (raw === undefined || raw === '') {
+    return 'strict';
+  }
+  if (raw === 'strict' || raw === 'lax' || raw === 'none') {
+    return raw;
+  }
+
+  throw new Error(
+    `Invalid env COOKIE_SAMESITE: expected "strict", "lax" or "none", received "${raw}"`,
+  );
+}

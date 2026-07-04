@@ -27,8 +27,19 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api');
   // CORS_ORIGINS is a comma-separated allowlist. Unset reflects any origin
   // (dev default); set in production to the front-end origin(s), e.g. the
-  // Vercel domain.
-  app.enableCors({ origin: parseCorsOrigins(process.env.CORS_ORIGINS) });
+  // Vercel domain. credentials: true lets the browser send/receive the
+  // httpOnly refresh cookie cross-origin (origin stays a specific reflection,
+  // which is required alongside credentials).
+  const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
+  // Fail closed in production: reflecting any origin together with credentials
+  // would let any site make credentialed calls and read the response, so an
+  // unset allowlist crashes the boot instead of silently opening up.
+  if (process.env.NODE_ENV === 'production' && corsOrigins === true) {
+    throw new Error(
+      'CORS_ORIGINS must be set in production: credentialed CORS cannot reflect any origin.',
+    );
+  }
+  app.enableCors({ origin: corsOrigins, credentials: true });
   app.enableShutdownHooks();
 
   // Trust proxy is off by default. Enable it ONLY when a trusted reverse proxy
