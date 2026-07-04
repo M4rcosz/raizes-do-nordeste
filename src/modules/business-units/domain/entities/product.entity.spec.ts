@@ -26,6 +26,63 @@ describe('Product', () => {
     });
   });
 
+  describe('withUpdatedFields', () => {
+    it('overwrites only the provided fields', () => {
+      const product = buildProduct(true);
+
+      const updated = product.withUpdatedFields({
+        name: 'Vatapá',
+        price: Money.fromDecimalString('20.00'),
+      });
+
+      expect(updated.name).toBe('Vatapá');
+      expect(updated.price.equals(Money.fromDecimalString('20.00'))).toBe(true);
+      // Untouched fields carry over.
+      expect(updated.description).toBe(product.description);
+      expect(updated.categoryId).toBe(product.categoryId);
+      expect(updated.imageUrl).toBe(product.imageUrl);
+    });
+
+    it('preserves identity and lifecycle fields', () => {
+      const product = buildProduct(false);
+
+      const updated = product.withUpdatedFields({ name: 'Vatapá' });
+
+      expect(updated.id).toBe(product.id);
+      expect(updated.isActive).toBe(product.isActive);
+      expect(updated.createdAt).toBe(product.createdAt);
+      expect(updated.updatedAt).toBe(product.updatedAt);
+    });
+
+    it('does not mutate the receiver', () => {
+      const product = buildProduct(true);
+
+      product.withUpdatedFields({ name: 'Vatapá' });
+
+      expect(product.name).toBe('Açaí');
+    });
+
+    it('leaves everything unchanged when the patch is empty', () => {
+      const product = buildProduct(true);
+
+      const updated = product.withUpdatedFields({});
+
+      expect(updated.name).toBe(product.name);
+      expect(updated.description).toBe(product.description);
+      expect(updated.price).toBe(product.price);
+      expect(updated.categoryId).toBe(product.categoryId);
+      expect(updated.imageUrl).toBe(product.imageUrl);
+    });
+
+    it('clears description when null is explicitly provided', () => {
+      const product = buildProduct(true);
+
+      const updated = product.withUpdatedFields({ description: null });
+
+      expect(updated.description).toBeNull();
+    });
+  });
+
   describe('constructor', () => {
     it('should preserve all immutable fields', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');

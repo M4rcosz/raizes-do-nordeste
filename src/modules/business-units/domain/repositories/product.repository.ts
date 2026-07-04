@@ -38,6 +38,14 @@ export interface ProductRepository {
   findAllActive(input: FindProductsInput): Promise<Product[]>;
   create(input: CreateProductInput): Promise<Product>;
   /**
+   * Persists the editable fields of an already-built Product (domain-first
+   * contract). Only catalog attributes are written (name, description, price,
+   * categoryId, imageUrl); isActive and timestamps are left to their own paths.
+   * Returns null when no product matches the id so the use case can raise a
+   * not-found.
+   */
+  update(product: Product): Promise<Product | null>;
+  /**
    * Flips the active flag. Idempotent by design: setting the value it already
    * holds is a no-op write that still returns the product. Returns null when no
    * product matches the id so the use case can raise a not-found.

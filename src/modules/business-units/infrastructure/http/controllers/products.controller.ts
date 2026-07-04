@@ -22,8 +22,10 @@ import {
   ProductsQueryDto,
 } from '../dto/product-query.dto';
 import { ProductCreateDto } from '../dto/product-create.dto';
+import { ProductUpdateDto } from '../dto/product-update.dto';
 import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
 import { SetProductActiveUseCase } from '@modules/business-units/application/use-cases/set-product-active.use-case';
+import { UpdateProductUseCase } from '@modules/business-units/application/use-cases/update-product.use-case';
 import { Roles } from '@shared/auth/roles.decorator';
 import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
@@ -37,6 +39,7 @@ export class ProductsController {
     private readonly getProductById: GetProductByIdUseCase,
     private readonly createProduct: CreateProductUseCase,
     private readonly setProductActive: SetProductActiveUseCase,
+    private readonly updateProduct: UpdateProductUseCase,
   ) {}
 
   @Public()
@@ -112,6 +115,23 @@ export class ProductsController {
   @ApiNotFoundResponse({ description: 'The referenced category does not exist' })
   async create(@Body() productCreateDto: ProductCreateDto): Promise<ProductResponseDto> {
     const product = await this.createProduct.execute(productCreateDto);
+    return ProductResponseDto.fromEntity(product);
+  }
+
+  @Roles(['ADMIN'])
+  @Patch(':productId')
+  @ApiOperation({ summary: 'Update a product (partial edit of catalog fields)' })
+  @ApiOkResponse({ type: ProductResponseDto })
+  @ApiNotFoundResponse({
+    description: 'Product not found or the referenced category does not exist',
+  })
+  @ApiConflictResponse({ description: 'A product with the same name already exists' })
+  async update(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { productId }: ProductIdParamDto,
+    @Body() productUpdateDto: ProductUpdateDto,
+  ): Promise<ProductResponseDto> {
+    const product = await this.updateProduct.execute(productId, productUpdateDto, actor.sub);
     return ProductResponseDto.fromEntity(product);
   }
 
