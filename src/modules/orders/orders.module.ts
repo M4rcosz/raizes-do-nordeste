@@ -4,6 +4,7 @@ import { OrdersController } from './infrastructure/http/controllers/orders.contr
 import { CreateOrderUseCase } from './application/use-cases/create-order.use-case';
 import { CancelOrderUseCase } from './application/use-cases/cancel-order.use-case';
 import { FindOrderByIdUseCase } from './application/use-cases/find-order-by-id.use-case';
+import { ListMyOrdersUseCase } from './application/use-cases/list-my-orders.use-case';
 import { ListOrdersUseCase } from './application/use-cases/list-orders.use-case';
 import { UpdateOrderStatusUseCase } from './application/use-cases/update-order-status.use-case';
 import { ORDER_REPOSITORY } from './domain/repositories/order.repository';
@@ -58,6 +59,7 @@ import { IdempotencyKeySweeper } from './infrastructure/scheduling/idempotency-k
     CreateOrderUseCase,
     CancelOrderUseCase,
     FindOrderByIdUseCase,
+    ListMyOrdersUseCase,
     ListOrdersUseCase,
     UpdateOrderStatusUseCase,
     ExpireIdempotencyKeysUseCase,

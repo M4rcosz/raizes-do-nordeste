@@ -119,6 +119,11 @@ export class PrismaOrderRepository implements OrderRepository {
     if (filters.businessUnitIds !== undefined) {
       where.businessUnitId = { in: filters.businessUnitIds };
     }
+    // Compare against undefined (not truthiness) so an empty customerId narrows
+    // to no rows instead of silently dropping the scope and matching every order.
+    if (filters.customerId !== undefined) {
+      where.customerId = filters.customerId;
+    }
     if (filters.orderChannel) {
       where.orderChannel = filters.orderChannel;
     }

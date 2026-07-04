@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { BusinessUnitScopeError } from '@shared/errors/application/business-unit-scope.error';
-import { buildCursorMeta, type CursorPaginatedResult } from '@shared/pagination/pagination';
+import {
+  buildCursorMeta,
+  buildCursorPage,
+  type CursorPaginatedResult,
+} from '@shared/pagination/pagination';
 import { User } from '@modules/identity/domain/entities/user.entity';
 import {
   type ListUsersFilters,
@@ -68,11 +72,7 @@ export class ListUsersUseCase {
       throw new UsersFetchError('Could not retrieve users.', { cause: err });
     }
 
-    const hasMore = items.length > limit;
-    const trimmed = hasMore ? items.slice(0, limit) : items;
-    const lastItemId = trimmed[trimmed.length - 1]?.id;
-
-    return { data: trimmed, meta: buildCursorMeta(limit, hasMore, lastItemId) };
+    return buildCursorPage(items, limit);
   }
 
   // ADMIN: free businessUnitId filter, or none (all units). MANAGER: pinned to

@@ -5,6 +5,7 @@ import { OrdersController } from './orders.controller';
 import { CreateOrderUseCase } from '@modules/orders/application/use-cases/create-order.use-case';
 import { CancelOrderUseCase } from '@modules/orders/application/use-cases/cancel-order.use-case';
 import { FindOrderByIdUseCase } from '@modules/orders/application/use-cases/find-order-by-id.use-case';
+import { ListMyOrdersUseCase } from '@modules/orders/application/use-cases/list-my-orders.use-case';
 import { ListOrdersUseCase } from '@modules/orders/application/use-cases/list-orders.use-case';
 import { UpdateOrderStatusUseCase } from '@modules/orders/application/use-cases/update-order-status.use-case';
 import { Order } from '@modules/orders/domain/entities/order.entity';
@@ -47,6 +48,7 @@ describe('OrdersController', () => {
   let createOrder: jest.Mocked<CreateOrderUseCase>;
   let cancelOrder: jest.Mocked<CancelOrderUseCase>;
   let findOrderById: jest.Mocked<FindOrderByIdUseCase>;
+  let listMyOrders: jest.Mocked<ListMyOrdersUseCase>;
   let listOrders: jest.Mocked<ListOrdersUseCase>;
   let updateOrderStatus: jest.Mocked<UpdateOrderStatusUseCase>;
 
@@ -54,6 +56,7 @@ describe('OrdersController', () => {
     createOrder = { execute: jest.fn() } as unknown as jest.Mocked<CreateOrderUseCase>;
     cancelOrder = { execute: jest.fn() } as unknown as jest.Mocked<CancelOrderUseCase>;
     findOrderById = { execute: jest.fn() } as unknown as jest.Mocked<FindOrderByIdUseCase>;
+    listMyOrders = { execute: jest.fn() } as unknown as jest.Mocked<ListMyOrdersUseCase>;
     listOrders = { execute: jest.fn() } as unknown as jest.Mocked<ListOrdersUseCase>;
     updateOrderStatus = { execute: jest.fn() } as unknown as jest.Mocked<UpdateOrderStatusUseCase>;
 
@@ -63,6 +66,7 @@ describe('OrdersController', () => {
         { provide: CreateOrderUseCase, useValue: createOrder },
         { provide: CancelOrderUseCase, useValue: cancelOrder },
         { provide: FindOrderByIdUseCase, useValue: findOrderById },
+        { provide: ListMyOrdersUseCase, useValue: listMyOrders },
         { provide: ListOrdersUseCase, useValue: listOrders },
         { provide: UpdateOrderStatusUseCase, useValue: updateOrderStatus },
       ],
@@ -96,6 +100,29 @@ describe('OrdersController', () => {
           orderStatus: undefined,
         },
         actor: { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] },
+      });
+      expect(response).toBeInstanceOf(PaginatedResponseDto);
+      expect(response.data[0]).toBeInstanceOf(OrderResponseDto);
+    });
+  });
+
+  describe('listMine', () => {
+    it('scopes the listing to the caller sub, forwards filters and clamps the limit', async () => {
+      listMyOrders.execute.mockResolvedValue({
+        data: [buildOrder()],
+        meta: { limit: 100, hasMore: false, nextCursor: null },
+      });
+
+      const response = await controller.listMine(
+        { limit: 99999, orderStatus: OrderStatus.PENDING },
+        jwt('c-1', UserRole.CUSTOMER),
+      );
+
+      expect(listMyOrders.execute).toHaveBeenCalledWith({
+        customerId: 'c-1',
+        filters: { orderChannel: undefined, orderStatus: OrderStatus.PENDING },
+        cursor: undefined,
+        limit: 100,
       });
       expect(response).toBeInstanceOf(PaginatedResponseDto);
       expect(response.data[0]).toBeInstanceOf(OrderResponseDto);

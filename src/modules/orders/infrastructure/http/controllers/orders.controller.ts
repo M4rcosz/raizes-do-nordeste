@@ -4,6 +4,7 @@ import {
 } from '@modules/orders/application/use-cases/create-order.use-case';
 import { CancelOrderUseCase } from '@modules/orders/application/use-cases/cancel-order.use-case';
 import { FindOrderByIdUseCase } from '@modules/orders/application/use-cases/find-order-by-id.use-case';
+import { ListMyOrdersUseCase } from '@modules/orders/application/use-cases/list-my-orders.use-case';
 import { ListOrdersUseCase } from '@modules/orders/application/use-cases/list-orders.use-case';
 import { UpdateOrderStatusUseCase } from '@modules/orders/application/use-cases/update-order-status.use-case';
 import { createHash } from 'node:crypto';
@@ -32,6 +33,7 @@ import {
 } from '@nestjs/swagger';
 import { OrderCreateDto } from '../dto/order-create.dto';
 import { OrderResponseDto } from '../dto/order-response.dto';
+import { MyOrdersQueryDto } from '../dto/my-orders-query.dto';
 import { OrderIdParamDto, OrdersQueryDto } from '../dto/order-query.dto';
 import { OrderUpdateStatusDto } from '../dto/order-update-status.dto';
 import { PaginatedOrderResponseDto } from '../dto/paginated-order-response.dto';
@@ -69,6 +71,7 @@ export class OrdersController {
     private readonly createOrder: CreateOrderUseCase,
     private readonly cancelOrder: CancelOrderUseCase,
     private readonly findOrderById: FindOrderByIdUseCase,
+    private readonly listMyOrders: ListMyOrdersUseCase,
     private readonly listOrders: ListOrdersUseCase,
     private readonly updateOrderStatus: UpdateOrderStatusUseCase,
   ) {}
@@ -134,6 +137,31 @@ export class OrdersController {
       limit,
       filters: { businessUnitId, orderChannel, orderStatus },
       actor: { id: user.sub, role: user.role, businessUnitIds: user.businessUnitIds },
+    });
+
+    return new PaginatedResponseDto(
+      result.data.map((order) => OrderResponseDto.fromEntity(order)),
+      result.meta,
+    );
+  }
+
+  // Declared before GET :id so NestJS matches /me literally, not as a UUID param.
+  @Get('me')
+  @Roles([UserRole.CUSTOMER])
+  @ApiOperation({ summary: "List the authenticated customer's own orders (cursor-paginated)." })
+  @ApiOkResponse({ type: PaginatedOrderResponseDto })
+  async listMine(
+    @Query() query: MyOrdersQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PaginatedResponseDto<OrderResponseDto>> {
+    const { limit: rawLimit, cursor, orderChannel, orderStatus } = query;
+    const limit = sanitizeLimit(rawLimit);
+
+    const result = await this.listMyOrders.execute({
+      customerId: user.sub,
+      filters: { orderChannel, orderStatus },
+      cursor,
+      limit,
     });
 
     return new PaginatedResponseDto(
