@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file. See [commit
   previously returned a raw array; it now returns the standard envelope
   `{ data: [...], meta: { nextCursor, hasMore } }` and accepts `?cursor=` and
   `?limit=` query params.
+* **auth/deploy:** `CORS_ORIGINS` is now **required in production**. The API now
+  sends CORS with `credentials: true` (for the httpOnly refresh cookie), and
+  reflecting any origin with credentials is unsafe, so an unset allowlist crashes
+  the boot when `NODE_ENV=production` instead of opening up.
 
 ### Features
 
@@ -29,6 +33,10 @@ All notable changes to this project will be documented in this file. See [commit
   of a staff user's unit scope).
 * **identity:** scope deactivate/reactivate by unit intersection for MANAGER, and
   validate unit binding against the actor's claim on user creation.
+* **identity:** add `GET /api/users/me` - the authenticated user reads their own
+  record (any role; never exposes the password hash).
+* **orders:** add `GET /api/orders/me` (CUSTOMER, cursor-paginated) - a customer
+  lists their own orders, scoped by `customerId` from the JWT (no unit scope).
 * **business-units:** add idempotent `PATCH /api/business-units/:id/activate` and
   `/deactivate` (ADMIN), toggling `isActive`.
 * **business-units:** add idempotent `PATCH /api/products/:productId/activate` and
@@ -53,6 +61,13 @@ All notable changes to this project will be documented in this file. See [commit
 * **platform:** add background sweepers - idempotency-key expiry (hourly), loyalty
   point expiry (daily), and refund reconciliation of an `APPROVED` payment left on
   a `CANCELLED` order (every 10 min).
+* **identity:** support an opt-in httpOnly-cookie transport for the refresh token.
+  `POST /api/auth/login` with header `X-Auth-Transport: cookie` returns the refresh
+  token as an httpOnly cookie (`path=/api/auth`) and omits it from the body; without
+  the header the body pair is returned as before. `POST /api/auth/refresh` and
+  `POST /api/auth/logout` autodetect cookie-or-body (`400` if neither). New envs
+  `COOKIE_SECURE` (default `true`) and `COOKIE_SAMESITE` (default `strict`; `none`
+  requires `COOKIE_SECURE=true`).
 
 ### Changes
 

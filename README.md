@@ -467,6 +467,9 @@ npm run devs
 | `JWT_ACCESS_TTL`    | Lifetime of the short-lived access JWT. Accepts `ms`/`s`/`m`/`h`/`d` suffixes. Default `15m`. | `15m` |
 | `JWT_REFRESH_TTL`   | Lifetime of the stateful refresh token. Accepts the same suffixes. Default `7d`. | `7d` |
 | `PAYMENT_WEBHOOK_SECRET` | HMAC secret the payment webhook is signed with. If unset, the webhook guard **fails closed** (every callback returns `401`). | `dev-webhook-secret` |
+| `CORS_ORIGINS`      | Comma-separated browser origin allowlist. Unset reflects any origin (dev). **Required in production** - the app sends credentialed CORS (refresh cookie), so the boot **fails** if unset when `NODE_ENV=production`. | `https://app.vercel.app` |
+| `COOKIE_SECURE`     | `Secure` attribute of the refresh cookie. Default `true`. Set `false` only for local http dev. | `true` |
+| `COOKIE_SAMESITE`   | `SameSite` attribute of the refresh cookie: `strict`/`lax`/`none`. Default `strict`. `none` requires `COOKIE_SECURE=true` (boot fails otherwise) and is for cross-site deploys only. | `strict` |
 
 ---
 
@@ -577,6 +580,14 @@ Response - `200 OK`:
 { "access_token": "eyJhbGciOiJI...", "refresh_token": "..." }
 ```
 
+**Refresh transport (opt-in cookie).** By default (no header) the refresh token
+is returned in the body as above - this is the transport used by mobile clients,
+Postman and tests. Send the header `X-Auth-Transport: cookie` to instead receive
+the refresh token as an httpOnly cookie (`Set-Cookie: refresh_token=...`); in that
+mode the body carries only `{ "access_token": "..." }` and omits `refresh_token`.
+The cookie is `httpOnly`, `Secure`/`SameSite` per `COOKIE_SECURE`/`COOKIE_SAMESITE`,
+scoped to `path=/api/auth`, with `maxAge` = `JWT_REFRESH_TTL`.
+
 Invalid credentials return `401` (see [Error responses](#error-responses)).
 
 Every login attempt - successful **and** failed - is persisted to the
@@ -588,7 +599,12 @@ swallowed so they cannot break the login outcome.
 
 #### `POST /api/auth/refresh`
 
-Request body - `RefreshTokenDto`:
+Accepts the refresh token from the httpOnly cookie **or** the body (autodetected:
+if the cookie is present it is used and the response stays in cookie mode - a
+rotated cookie is set and the body omits `refresh_token`; otherwise the body token
+is used). Sending neither returns `400`.
+
+Request body - `RefreshTokenDto` (optional when the cookie is present):
 
 ```json
 { "refresh_token": "..." }
@@ -607,7 +623,11 @@ revoked and `TOKEN_REUSE_DETECTED` is written to the audit log. Rate-limited to
 
 #### `POST /api/auth/logout`
 
-Request body - `LogoutDto`:
+Accepts the refresh token from the httpOnly cookie **or** the body (same
+autodetection as refresh). In cookie mode the cookie is cleared. Sending neither
+returns `400`.
+
+Request body - `LogoutDto` (optional when the cookie is present):
 
 ```json
 { "refresh_token": "..." }

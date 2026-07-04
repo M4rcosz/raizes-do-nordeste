@@ -9,11 +9,16 @@ import { CreateUserUseCase } from './application/use-cases/create-user.use-case'
 import { DeactivateUserUseCase } from './application/use-cases/deactivate-user.use-case';
 import { ReactivateUserUseCase } from './application/use-cases/reactivate-user.use-case';
 import { UpdateUserProfileUseCase } from './application/use-cases/update-user-profile.use-case';
+import { GetMyProfileUseCase } from './application/use-cases/get-my-profile.use-case';
 import { ChangePasswordUseCase } from './application/use-cases/change-password.use-case';
 import { ListUsersUseCase } from './application/use-cases/list-users.use-case';
 import { UpdateUserBusinessUnitsUseCase } from './application/use-cases/update-user-business-units.use-case';
 import { AuthController } from './infrastructure/http/controllers/auth.controller';
 import { UsersController } from './infrastructure/http/controllers/users.controller';
+import {
+  REFRESH_COOKIE_OPTIONS,
+  resolveRefreshCookieOptions,
+} from './infrastructure/http/refresh-cookie';
 import { JwtModule, type JwtModuleOptions } from '@nestjs/jwt';
 import { JwtTokenSigner } from './infrastructure/security/jwt-token-signer';
 import { PASSWORD_HASHER } from './domain/ports/password-hasher.port';
@@ -80,6 +85,12 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
       useClass: PrismaTransactionRunner,
     },
     {
+      // Resolve the cookie attributes once at boot so an invalid COOKIE_* value
+      // crashes startup instead of throwing on the first cookie request.
+      provide: REFRESH_COOKIE_OPTIONS,
+      useFactory: resolveRefreshCookieOptions,
+    },
+    {
       provide: REFRESH_TOKEN_TTL_MS,
       inject: [ConfigService],
       useFactory: (cfg: ConfigService): number =>
@@ -99,6 +110,7 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     DeactivateUserUseCase,
     ReactivateUserUseCase,
     UpdateUserProfileUseCase,
+    GetMyProfileUseCase,
     ChangePasswordUseCase,
     ListUsersUseCase,
     UpdateUserBusinessUnitsUseCase,
