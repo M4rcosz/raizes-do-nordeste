@@ -2,76 +2,36 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [Unreleased]
+## [2.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.3.0...v2.0.0) (2026-07-04)
+
 
 ### ⚠ BREAKING CHANGES
 
-* **promotions:** `POST /api/promotions` now requires `businessUnitId` in the
-  request body. It was previously derived from the JWT claim; callers must now
-  send it explicitly. The use case still validates the value against the actor's
-  `businessUnitIds` claim.
-* **auth:** the JWT claim `businessUnitId: string | null` is replaced by
-  `businessUnitIds: string[]`. Access tokens issued before this change are
-  normalized by a temporary compatibility shim in `AuthGuard` until they expire.
-* **inventory:** `GET /api/inventory/:businessUnitId` is now cursor-paginated. It
-  previously returned a raw array; it now returns the standard envelope
-  `{ data: [...], meta: { nextCursor, hasMore } }` and accepts `?cursor=` and
-  `?limit=` query params.
-* **auth/deploy:** `CORS_ORIGINS` is now **required in production**. The API now
-  sends CORS with `credentials: true` (for the httpOnly refresh cookie), and
-  reflecting any origin with credentials is unsafe, so an unset allowlist crashes
-  the boot when `NODE_ENV=production` instead of opening up.
+* **identity:** CORS_ORIGINS is now required in production; boot fails closed when it is unset.
+* **identity:** JWT claim businessUnitId (string|null) is now businessUnitIds (string[]); AuthGuard provides shim for legacy tokens; clients must update to array-based scoping
+* **identity:** POST /api/promotions now requires businessUnitId in request body (previously derived from claim), validated against actor's units
 
 ### Features
 
-* **identity:** migrate the User-BusinessUnit relationship from 1:1
-  (`User.businessUnitId`) to N:N via the `user_business_units` join table. The
-  legacy column is kept for now (expand phase) and dropped in a later migration.
-* **identity:** add `GET /api/users` (ADMIN/MANAGER, cursor-paginated; filters
-  `businessUnitId`/`username`/`email`; MANAGER scoped to its own units).
-* **identity:** add `PUT /api/users/:id/business-units` (ADMIN only; full replace
-  of a staff user's unit scope).
-* **identity:** scope deactivate/reactivate by unit intersection for MANAGER, and
-  validate unit binding against the actor's claim on user creation.
-* **identity:** add `GET /api/users/me` - the authenticated user reads their own
-  record (any role; never exposes the password hash).
-* **orders:** add `GET /api/orders/me` (CUSTOMER, cursor-paginated) - a customer
-  lists their own orders, scoped by `customerId` from the JWT (no unit scope).
-* **business-units:** add idempotent `PATCH /api/business-units/:id/activate` and
-  `/deactivate` (ADMIN), toggling `isActive`.
-* **business-units:** add idempotent `PATCH /api/products/:productId/activate` and
-  `/deactivate` (ADMIN), toggling `isActive`.
-* **business-units:** add `PATCH /api/business-units/:businessUnitId/menu/:menuItemId/activate`
-  (ADMIN/MANAGER, unit-scoped), mirroring the existing deactivate.
-* **loyalty:** add LGPD consent management for customers - `POST /api/loyalty/me/consent`
-  (idempotent upsert that creates the account if absent) and
-  `DELETE /api/loyalty/me/consent`, recording `consentDate`/`consentRevokedAt`.
-* **audit:** record toggle and loyalty-consent events (`BUSINESS_UNIT_*`,
-  `PRODUCT_*`, `MENU_ITEM_*`, `LOYALTY_CONSENT_GIVEN`/`LOYALTY_CONSENT_REVOKED`).
-* **orders:** add `POST /api/orders/:id/cancel` - cancels an order and runs the
-  compensation saga (restock + loyalty reversal + refund). Staff may cancel within
-  their unit scope; a customer may cancel only while the order is `PENDING`.
-  Returns `200` with the cancelled order.
-* **orders:** `POST /api/orders` accepts an optional `Idempotency-Key` header
-  (per-user, 24h TTL). A replay with the same body returns the original order; a
-  replay with a divergent body returns `409`.
-* **payments:** add the `REFUNDED` `PaymentStatus`, set by the cancellation refund
-  flow.
-* **loyalty:** expire points after a rolling 12-month window (daily sweep).
-* **platform:** add background sweepers - idempotency-key expiry (hourly), loyalty
-  point expiry (daily), and refund reconciliation of an `APPROVED` payment left on
-  a `CANCELLED` order (every 10 min).
-* **identity:** support an opt-in httpOnly-cookie transport for the refresh token.
-  `POST /api/auth/login` with header `X-Auth-Transport: cookie` returns the refresh
-  token as an httpOnly cookie (`path=/api/auth`) and omits it from the body; without
-  the header the body pair is returned as before. `POST /api/auth/refresh` and
-  `POST /api/auth/logout` autodetect cookie-or-body (`400` if neither). New envs
-  `COOKIE_SECURE` (default `true`) and `COOKIE_SAMESITE` (default `strict`; `none`
-  requires `COOKIE_SECURE=true`).
+* add idempotent activation toggles and LGPD consent lifecycle ([1fc3a9a](https://github.com/M4rcosz/raizes-do-nordeste/commit/1fc3a9afcaabc463fcd1cc47c922e7fe89e7bc53))
+* **business-units:** add ADMIN-only partial product update endpoint ([b136531](https://github.com/M4rcosz/raizes-do-nordeste/commit/b1365315d907e9f57f34d020f1c4de4116d5bbb5))
+* **deploy:** production-ready container and CORS allowlist ([a0947b5](https://github.com/M4rcosz/raizes-do-nordeste/commit/a0947b5264c0c4333c81a8a88da1a120bbb01168))
+* **identity,orders:** self-service /me read endpoints ([acc9c48](https://github.com/M4rcosz/raizes-do-nordeste/commit/acc9c48f22e0d39aee0c5d2bb76f6af7f2fb8e85))
+* **identity:** opt-in httpOnly cookie transport for refresh token ([458af10](https://github.com/M4rcosz/raizes-do-nordeste/commit/458af103e5eaf3a164d7528dd67c5f71c3197f51))
+* **identity:** support multi-unit user assignment via JWT array claim ([98922f0](https://github.com/M4rcosz/raizes-do-nordeste/commit/98922f015f5fb5d0a002fab27ddc672e4409ff22))
+* **observability:** add liveness health probe ([7aa3b8c](https://github.com/M4rcosz/raizes-do-nordeste/commit/7aa3b8c65660b7bc4fb52ca3fcb0045f5cc91b5c))
+* platform-hardening batch (idempotency, cancel/refund, loyalty expiry) ([76cd576](https://github.com/M4rcosz/raizes-do-nordeste/commit/76cd5768649d6721ce424af653cbb4b6f59b0edb))
+* **swagger:** expose the API docs in production ([8ff09ca](https://github.com/M4rcosz/raizes-do-nordeste/commit/8ff09ca7e12163db416feb294c5c0ecd8e698041))
 
-### Changes
 
-* **identity:** restrict `PATCH /api/users/me` to the `CUSTOMER` role.
+### Bug Fixes
+
+* **prisma:** verify runtime TLS against the database CA cert ([21e793e](https://github.com/M4rcosz/raizes-do-nordeste/commit/21e793ebefc33d49192e057eec0bdecb46498f15))
+
+
+### Documentation
+
+* document cancel/refund, idempotency-key, inventory pagination and loyalty expiry ([3a60efa](https://github.com/M4rcosz/raizes-do-nordeste/commit/3a60efa6f60334fe7853869d2eaa73b223793335))
 
 ## [1.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.0.0...v1.3.0) (2026-06-28)
 
