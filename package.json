@@ -25,6 +25,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "bootstrap:admin": "node dist/scripts/bootstrap-admin.js",
     "dev": "npm run db:up && nest start --watch",
     "devs": "npm run db:down && npm run db:generate && npm run db:up && npm run db:migrate && npm run db:seed && nest start --watch",
     "fl": "npm run format && npm run lint",
