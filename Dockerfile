@@ -41,6 +41,20 @@ RUN npm ci --omit=dev
 COPY prisma ./prisma
 RUN npx prisma generate
 
+# Supabase's Postgres TLS cert chains to Supabase's own self-signed root CA,
+# absent from any default trust store. Prisma 7 verifies the full chain, so
+# without the CA the boot dies with "self-signed certificate in certificate
+# chain" and Render restarts forever. Install one CA file into the two stores
+# that different clients actually read:
+#  - update-ca-certificates -> system/OpenSSL store, read by the native
+#    `prisma migrate deploy` schema engine. NODE_EXTRA_CA_CERTS does NOT reach it.
+#  - NODE_EXTRA_CA_CERTS -> Node's own store, read by the pg adapter (runtime
+#    queries) and the bootstrap-admin script. Node does not read the system store.
+# CA valid until 2031-04-26; rotate before then.
+COPY certs/prod-ca-2021.crt /usr/local/share/ca-certificates/supabase-prod-ca.crt
+RUN update-ca-certificates
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/supabase-prod-ca.crt
+
 # Compiled app from the builder.
 COPY --from=builder /app/dist ./dist
 # Prisma 7 keeps the datasource url in prisma.config.ts (not the schema);
