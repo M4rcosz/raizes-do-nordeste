@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.1.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.0.0...v2.1.0) (2026-07-05)
+
+
+### Features
+
+* **business-units:** expose category CRUD via REST API ([03726fc](https://github.com/M4rcosz/raizes-do-nordeste/commit/03726fcfbd23d34254c0addbd15039b1b4e6a2b6))
+
 ## [2.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v1.3.0...v2.0.0) (2026-07-04)
 
 
