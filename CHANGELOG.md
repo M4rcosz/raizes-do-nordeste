@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.2.1](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.2.0...v2.2.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* **deploy:** trust Supabase root CA for prod TLS verification ([b2b6e2f](https://github.com/M4rcosz/raizes-do-nordeste/commit/b2b6e2f44cdef87c8ad50121f63505c7e348ef3e))
+
 ## [2.2.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.0.0...v2.2.0) (2026-07-05)
 
 
