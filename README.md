@@ -266,7 +266,7 @@ src/
     ├── business-units/           ← Business Units, Products, Categories, Menu Items
     │   ├── business-units.module.ts
     │   ├── domain/               ← Pure rules (no framework imports)
-    │   │   ├── entities/         ← BusinessUnit, Product, BusinessUnitMenuItem
+    │   │   ├── entities/         ← BusinessUnit, Product, Category, BusinessUnitMenuItem
     │   │   ├── errors/           ← Domain errors (extend shared DomainError)
     │   │   └── repositories/     ← Interfaces + DI tokens
     │   ├── application/          ← Orchestration
@@ -765,6 +765,28 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
   "createdAt": "2026-01-01T12:00:00.000Z",
   "updatedAt": "2026-01-01T12:00:00.000Z",
   "imageUrl": "https://example.com/images/acai-fitness.jpg"
+}
+```
+
+### Categories
+
+| Method  | Path                          | Auth   | Description                                                                                                              |
+| ------- | ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/api/categories`             | Public | List active categories (cursor-paginated). Optional `search` filter.                                                   |
+| `GET`   | `/api/categories/:categoryId` | Public | Get a single category by id. Returns `404` if missing.                                                                  |
+| `POST`  | `/api/categories`             | ADMIN  | Create a category. `201` on success, `409` if the name already exists.                                                  |
+| `PATCH` | `/api/categories/:categoryId` | ADMIN  | Partial update (`name`/`description`/`isActive`). At least one field is required. `404` if missing, `409` on name clash. |
+
+`description` is optional on create. Response shape:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Bebidas",
+  "description": "Sucos, refrigerantes e água",
+  "isActive": true,
+  "createdAt": "2026-05-18T10:30:00.000Z",
+  "updatedAt": "2026-05-18T10:30:00.000Z"
 }
 ```
 

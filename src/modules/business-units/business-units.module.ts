@@ -25,10 +25,22 @@ import { AddMenuItemUseCase } from './application/use-cases/add-menu-item.use-ca
 import { UpdateMenuItemUseCase } from './application/use-cases/update-menu-item.use-case';
 import { DeactivateMenuItemUseCase } from './application/use-cases/deactivate-menu-item.use-case';
 import { ActivateMenuItemUseCase } from './application/use-cases/activate-menu-item.use-case';
+import { CATEGORY_REPOSITORY } from './domain/repositories/category.repository';
+import { PrismaCategoryRepository } from './infrastructure/persistence/prisma-category.repository';
+import { CategoriesController } from './infrastructure/http/controllers/categories.controller';
+import { ListCategoriesUseCase } from './application/use-cases/list-categories.use-case';
+import { GetCategoryByIdUseCase } from './application/use-cases/get-category-by-id.use-case';
+import { CreateCategoryUseCase } from './application/use-cases/create-category.use-case';
+import { UpdateCategoryUseCase } from './application/use-cases/update-category.use-case';
 
 @Module({
   imports: [AuditModule],
-  controllers: [ProductsController, BusinessUnitsController, MenuItemsController],
+  controllers: [
+    ProductsController,
+    BusinessUnitsController,
+    MenuItemsController,
+    CategoriesController,
+  ],
   providers: [
     {
       provide: PRODUCT_REPOSITORY,
@@ -58,6 +70,14 @@ import { ActivateMenuItemUseCase } from './application/use-cases/activate-menu-i
     UpdateMenuItemUseCase,
     DeactivateMenuItemUseCase,
     ActivateMenuItemUseCase,
+    {
+      provide: CATEGORY_REPOSITORY,
+      useClass: PrismaCategoryRepository,
+    },
+    ListCategoriesUseCase,
+    GetCategoryByIdUseCase,
+    CreateCategoryUseCase,
+    UpdateCategoryUseCase,
   ],
 })
 export class BusinessUnitsModule {}
