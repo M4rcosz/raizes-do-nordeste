@@ -25,6 +25,54 @@ describe('BusinessUnit', () => {
     });
   });
 
+  describe('withUpdatedFields', () => {
+    it('overwrites only the provided fields', () => {
+      const unit = buildBusinessUnit(true);
+
+      const updated = unit.withUpdatedFields({
+        name: 'Raízes Rio Vermelho',
+        phone: '7133334455',
+      });
+
+      expect(updated.name).toBe('Raízes Rio Vermelho');
+      expect(updated.phone).toBe('7133334455');
+      // Untouched fields carry over.
+      expect(updated.address).toBe(unit.address);
+      expect(updated.city).toBe(unit.city);
+    });
+
+    it('preserves identity and lifecycle fields', () => {
+      const unit = buildBusinessUnit(false);
+
+      const updated = unit.withUpdatedFields({ name: 'Raízes Rio Vermelho' });
+
+      expect(updated.id).toBe(unit.id);
+      expect(updated.cnpj).toBe(unit.cnpj);
+      expect(updated.isActive).toBe(unit.isActive);
+      expect(updated.createdAt).toBe(unit.createdAt);
+      expect(updated.updatedAt).toBe(unit.updatedAt);
+    });
+
+    it('does not mutate the receiver', () => {
+      const unit = buildBusinessUnit(true);
+
+      unit.withUpdatedFields({ name: 'Raízes Rio Vermelho' });
+
+      expect(unit.name).toBe('Raízes Pelourinho');
+    });
+
+    it('leaves everything unchanged when the patch is empty', () => {
+      const unit = buildBusinessUnit(true);
+
+      const updated = unit.withUpdatedFields({});
+
+      expect(updated.name).toBe(unit.name);
+      expect(updated.address).toBe(unit.address);
+      expect(updated.city).toBe(unit.city);
+      expect(updated.phone).toBe(unit.phone);
+    });
+  });
+
   describe('constructor', () => {
     it('should preserve all immutable fields', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');

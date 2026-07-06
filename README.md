@@ -543,7 +543,8 @@ reads** (`GET /api/business-units/:businessUnitId/menu`,
 webhook** and **customer self-registration** (`POST /api/users/register`) are
 public; everything else needs a `Bearer` JWT in the `Authorization` header. Some
 routes additionally require a role via `@Roles()` - `POST /api/products` needs
-`ADMIN`/`MANAGER`, `POST /api/business-units` needs `ADMIN`, the business-unit
+`ADMIN`/`MANAGER`, `POST /api/business-units` and `PATCH /api/business-units/:id`
+need `ADMIN`, the business-unit
 `internal` reads need `ADMIN`/`MANAGER`, menu management (`POST`, `PATCH` and the
 internal manage list under `/api/business-units/:id/menu`) needs
 `ADMIN`/`MANAGER`, inventory needs `MANAGER`/`ADMIN`, all
@@ -799,6 +800,7 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 | `GET`  | `/api/business-units/internal`     | ADMIN / MANAGER | List all units (cursor-paginated), full detail. Optional `search`/`city`/`isActive` filters.      |
 | `GET`  | `/api/business-units/internal/:id` | ADMIN / MANAGER | Get a single unit by id, full detail (any status).                                                |
 | `POST` | `/api/business-units`              | ADMIN           | Create a unit. `201` on success, `409` if the `cnpj` or `phone` already exists.                   |
+| `PATCH` | `/api/business-units/:id`            | ADMIN          | Partially update `name`, `address`, `city` and/or `phone`. At least one field required. `404` if missing, `409` if the `phone` already exists. |
 | `PATCH` | `/api/business-units/:id/activate`   | ADMIN          | Activate a business unit (`isActive = true`). Returns `200`; idempotent. `404` if missing.        |
 | `PATCH` | `/api/business-units/:id/deactivate` | ADMIN          | Deactivate a business unit (`isActive = false`). Returns `200`; idempotent. `404` if missing.     |
 
@@ -816,7 +818,22 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
 }
 ```
 
-#### Response - `BusinessUnitResponseDto` (internal / create)
+#### Request body - `BusinessUnitUpdateDto` (`PATCH /api/business-units/:id`)
+
+All fields optional, but at least one must be present. `cnpj` is immutable
+(fiscal identity) and `isActive` is managed by the dedicated
+activate/deactivate routes.
+
+```json
+{
+  "name": "Raízes Pelourinho",
+  "address": "Largo do Pelourinho, 10",
+  "city": "Salvador",
+  "phone": "7132223344"
+}
+```
+
+#### Response - `BusinessUnitResponseDto` (internal / create / update)
 
 ```json
 {

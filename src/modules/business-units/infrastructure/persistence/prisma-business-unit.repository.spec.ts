@@ -7,6 +7,7 @@ import { BusinessUnit } from '../../domain/entities/business-unit.entity';
 import { BusinessUnitAlreadyExistsError } from '../../domain/errors/business-unit-already-exists.error';
 
 type BusinessUnitCreateFn = (args: unknown) => Promise<PrismaBusinessUnit>;
+type BusinessUnitUpdateFn = (args: unknown) => Promise<PrismaBusinessUnit>;
 
 const knownError = (code: string, target: string[]): Prisma.PrismaClientKnownRequestError =>
   new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
@@ -17,6 +18,7 @@ const knownError = (code: string, target: string[]): Prisma.PrismaClientKnownReq
 
 describe('PrismaBusinessUnitRepository', () => {
   let create: jest.MockedFunction<BusinessUnitCreateFn>;
+  let update: jest.MockedFunction<BusinessUnitUpdateFn>;
   let repo: PrismaBusinessUnitRepository;
 
   const input: CreateBusinessUnitInput = {
@@ -41,7 +43,8 @@ describe('PrismaBusinessUnitRepository', () => {
 
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<BusinessUnitCreateFn>;
-    const prisma = { businessUnit: { create } } as unknown as PrismaService;
+    update = jest.fn() as jest.MockedFunction<BusinessUnitUpdateFn>;
+    const prisma = { businessUnit: { create, update } } as unknown as PrismaService;
     repo = new PrismaBusinessUnitRepository(prisma);
   });
 
@@ -103,6 +106,75 @@ describe('PrismaBusinessUnitRepository', () => {
       create.mockRejectedValue(genericError);
 
       await expect(repo.create(input)).rejects.toBe(genericError);
+    });
+  });
+
+  describe('update', () => {
+    const domainUnit = new BusinessUnit(
+      'uuid-1',
+      'Raízes Rio Vermelho',
+      '12345678000190',
+      'Rua da Paciência, 20',
+      'Salvador',
+      '7133334455',
+      true,
+      new Date('2026-01-01T00:00:00Z'),
+      new Date('2026-01-02T00:00:00Z'),
+    );
+
+    it('persists only the editable fields and maps the row back to a domain BusinessUnit', async () => {
+      update.mockResolvedValue({
+        ...persistedRow,
+        name: 'Raízes Rio Vermelho',
+        address: 'Rua da Paciência, 20',
+        phone: '7133334455',
+      });
+
+      const result = await repo.update(domainUnit);
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'uuid-1' },
+        data: {
+          name: 'Raízes Rio Vermelho',
+          address: 'Rua da Paciência, 20',
+          city: 'Salvador',
+          phone: '7133334455',
+        },
+      });
+      expect(result).toBeInstanceOf(BusinessUnit);
+      expect(result?.name).toBe('Raízes Rio Vermelho');
+      expect(result?.phone).toBe('7133334455');
+    });
+
+    it('translates a P2002 on phone into BusinessUnitAlreadyExistsError naming the phone', async () => {
+      const prismaError = knownError('P2002', ['phone']);
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.update(domainUnit)).rejects.toBeInstanceOf(BusinessUnitAlreadyExistsError);
+      await expect(repo.update(domainUnit)).rejects.toMatchObject({
+        cause: prismaError,
+        message: expect.stringContaining('phone') as unknown as string,
+      });
+    });
+
+    it('returns null on P2025 (row deleted between read and write)', async () => {
+      update.mockRejectedValue(knownError('P2025', []));
+
+      await expect(repo.update(domainUnit)).resolves.toBeNull();
+    });
+
+    it('rethrows unmapped Prisma error codes unchanged', async () => {
+      const prismaError = knownError('P2000', ['phone']);
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.update(domainUnit)).rejects.toBe(prismaError);
+    });
+
+    it('rethrows non-Prisma errors unchanged', async () => {
+      const genericError = new Error('connection lost');
+      update.mockRejectedValue(genericError);
+
+      await expect(repo.update(domainUnit)).rejects.toBe(genericError);
     });
   });
 });
