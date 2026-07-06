@@ -41,6 +41,7 @@ customer loyalty program - across multiple business units (franchises).
 - [API Reference](#api-reference)
 - [Testing](#testing)
 - [Code Quality](#code-quality)
+- [Deployment (Production)](#deployment-production)
 - [Roadmap](#roadmap)
 - [License](#license)
 
@@ -470,6 +471,11 @@ npm run devs
 | `CORS_ORIGINS`      | Comma-separated browser origin allowlist. Unset reflects any origin (dev). **Required in production** - the app sends credentialed CORS (refresh cookie), so the boot **fails** if unset when `NODE_ENV=production`. | `https://app.vercel.app` |
 | `COOKIE_SECURE`     | `Secure` attribute of the refresh cookie. Default `true`. Set `false` only for local http dev. | `true` |
 | `COOKIE_SAMESITE`   | `SameSite` attribute of the refresh cookie: `strict`/`lax`/`none`. Default `strict`. `none` requires `COOKIE_SECURE=true` (boot fails otherwise) and is for cross-site deploys only. | `strict` |
+| `DATABASE_CA_CERT`  | Optional. PEM **contents** (not a path) of the DB's CA, used by the runtime `pg` pool to verify TLS scoped to the DB connection. Leave unset in the Docker deploy - the image bakes Supabase's CA into both trust stores (see [Deployment](#deployment-production)). | `-----BEGIN CERTIFICATE-----...` |
+| `INITIAL_ADMIN_USERNAME` | Username of the bootstrap `ADMIN` created on first container boot. Required until the admin exists. | `admin` |
+| `INITIAL_ADMIN_NAME`     | Display name of the bootstrap admin. | `Site Admin` |
+| `INITIAL_ADMIN_EMAIL`    | Email of the bootstrap admin. | `admin@raizes.com` |
+| `INITIAL_ADMIN_PASSWORD` | Initial password (argon2-hashed on first boot). Set via the host's secret store; removable once the admin exists. | `a-strong-password` |
 
 ---
 
@@ -1380,6 +1386,87 @@ with.
 - **GitHub Actions CI** (`.github/workflows/ci.yml`) - installs
   dependencies, generates the Prisma client, lints, tests and builds on
   every push to `main`/`develop` and on every PR to `main`.
+
+---
+
+## Deployment (Production)
+
+The production target is a **Docker image on [Render](https://render.com)** (web
+service) talking to a managed **[Supabase](https://supabase.com) PostgreSQL**.
+The image is the multi-stage `Dockerfile` - not `docker-compose.prod.yml`, which
+is only the local full-stack convenience file (and, unlike production, seeds the
+database).
+
+### Container lifecycle
+
+The runtime stage builds on **`node:24-slim`** (glibc, so argon2's prebuilt
+binary matches - alpine/musl would force a native compile). On boot,
+`entrypoint.sh` runs, in order:
+
+1. **`prisma migrate deploy`** - applies pending migrations. There is **no seed
+   in production** (`seed.ts` hard-refuses when `NODE_ENV=production`). `set -e`
+   makes a migration failure crash the container loudly instead of serving a
+   half-migrated schema.
+2. **`node dist/scripts/bootstrap-admin.js`** - idempotently ensures the first
+   `ADMIN` exists (see below).
+3. **`node dist/main.js`** - starts the API.
+
+Because `prisma migrate deploy` runs at boot, `prisma` is a **runtime**
+dependency (it survives `npm ci --omit=dev`) and the runtime image installs
+`openssl` + `ca-certificates`.
+
+### Database connection (Supabase)
+
+Point `DATABASE_URL` at the Supabase **session pooler** (port `5432`), **not**
+the transaction pooler (`6543`) - the latter does not support the prepared
+statements / advisory locks that `prisma migrate deploy` needs. Render is
+IPv4-only and the session pooler is IPv4, so it is the correct choice on Render.
+
+```
+DATABASE_URL=postgresql://postgres.[REF]:[PASSWORD]@aws-[REGION].pooler.supabase.com:5432/postgres?sslmode=verify-full
+```
+
+### TLS (self-signed Supabase CA)
+
+Prisma 7 verifies the **full** TLS chain (the `pg` driver now treats
+`sslmode=require` as `verify-full`), and Supabase signs its Postgres cert with
+its **own self-signed root CA**, absent from the default trust stores. Without
+the CA, `prisma migrate deploy` fails with `self-signed certificate in
+certificate chain` and Render restarts the container forever.
+
+The fix bakes Supabase's public root CA (`certs/prod-ca-2021.crt`, downloaded
+from *Supabase -> Settings -> Database -> SSL Configuration*) into the image, in
+**both** trust stores, because different clients read different ones:
+
+- **`update-ca-certificates`** installs it into the system / OpenSSL store, read
+  by the native `prisma migrate deploy` schema engine.
+- **`NODE_EXTRA_CA_CERTS`** points Node at it, read by the `pg` adapter (runtime
+  queries) and the `bootstrap-admin` script. Node does not read the system store
+  and OpenSSL does not read `NODE_EXTRA_CA_CERTS`, so both installs are required.
+
+> The CA is a **public** trust anchor, safe to commit. It expires **2031-04-26** -
+> rotate it before then. `DATABASE_CA_CERT` is an optional alternative that scopes
+> trust to just the DB connection (PEM contents, not a path); leave it unset in
+> the Docker deploy since the baked-in CA already covers both paths.
+
+### Initial admin bootstrap
+
+A fresh instance has no users. On every boot, `scripts/bootstrap-admin.ts`
+ensures the first `ADMIN` exists, reading its credentials from the
+`INITIAL_ADMIN_*` env vars (see [Environment Variables](#environment-variables)).
+It is **idempotent**: once the admin is present it skips entirely - no re-hash,
+and it never resets a password the operator may have changed. If the vars are
+unset while the admin still has to be created, the boot fails fast (a loud crash
+beats a password-less admin). Set them in Render's secret store, never in a
+committed file.
+
+### Other Render configuration
+
+Set the same secrets the app validates on boot - `JWT_SECRET_KEY`,
+`PAYMENT_WEBHOOK_SECRET`, `CORS_ORIGINS` (required in production) - plus any TTL /
+cookie / proxy overrides from [Environment Variables](#environment-variables).
+Point Render's health check at the shallow liveness route **`GET /api/health`**
+(`@Public()`, no DB touch).
 
 ---
 
