@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.2.1...v2.3.0) (2026-07-06)
+
+
+### Features
+
+* **business-units:** add endpoint to update business unit fields ([3033664](https://github.com/M4rcosz/raizes-do-nordeste/commit/30336643a3950c05ccd3b72d3da7dbb54b7d5fd7))
+
+
+### Documentation
+
+* **deploy:** document Render + Supabase production deployment ([5d73bc2](https://github.com/M4rcosz/raizes-do-nordeste/commit/5d73bc21a0857f1430d96cd99af14c4d5f608e3c))
+
 ## [2.2.1](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.2.0...v2.2.1) (2026-07-05)
 
 
