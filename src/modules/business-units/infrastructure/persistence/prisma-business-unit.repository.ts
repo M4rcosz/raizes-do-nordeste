@@ -61,6 +61,41 @@ export class PrismaBusinessUnitRepository implements BusinessUnitRepository {
     }
   }
 
+  async update(unit: BusinessUnit): Promise<BusinessUnit | null> {
+    try {
+      const updated = await this.prisma.businessUnit.update({
+        where: { id: unit.id },
+        data: {
+          name: unit.name,
+          address: unit.address,
+          city: unit.city,
+          phone: unit.phone,
+        },
+      });
+
+      return this.toEntity(updated);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        // cnpj is immutable through this path, so in practice only phone can
+        // clash, but the resolver is shared with create() and stays generic.
+        if (err.code === 'P2002') {
+          const field = this.conflictingField(err);
+          throw new BusinessUnitAlreadyExistsError(
+            `A business unit with ${field} "${unit[field]}" already exists.`,
+            { cause: err },
+          );
+        }
+        // P2025 when no unit matches the id. Honor the null contract so the use
+        // case raises BusinessUnitNotFoundError (404) instead of leaking a 500.
+        if (err.code === 'P2025') {
+          return null;
+        }
+      }
+
+      throw err;
+    }
+  }
+
   async setActive(id: string, isActive: boolean): Promise<BusinessUnit | null> {
     try {
       const updated = await this.prisma.businessUnit.update({

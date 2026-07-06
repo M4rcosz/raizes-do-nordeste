@@ -16,6 +16,7 @@ import { CreateBusinessUnitUseCase } from './application/use-cases/create-busine
 import { ListBusinessUnitsUseCase } from './application/use-cases/list-business-units.use-case';
 import { GetBusinessUnitByIdUseCase } from './application/use-cases/get-business-unit-by-id.use-case';
 import { SetBusinessUnitActiveUseCase } from './application/use-cases/set-business-unit-active.use-case';
+import { UpdateBusinessUnitUseCase } from './application/use-cases/update-business-unit.use-case';
 import { MENU_ITEM_REPOSITORY } from './domain/repositories/menu-item.repository';
 import { PrismaMenuItemRepository } from './infrastructure/persistence/prisma-menu-item.repository';
 import { MenuItemsController } from './infrastructure/http/controllers/menu-items.controller';
@@ -60,6 +61,7 @@ import { UpdateCategoryUseCase } from './application/use-cases/update-category.u
     ListBusinessUnitsUseCase,
     GetBusinessUnitByIdUseCase,
     SetBusinessUnitActiveUseCase,
+    UpdateBusinessUnitUseCase,
     {
       provide: MENU_ITEM_REPOSITORY,
       useClass: PrismaMenuItemRepository,

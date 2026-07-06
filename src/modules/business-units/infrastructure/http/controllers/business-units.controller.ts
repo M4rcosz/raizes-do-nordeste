@@ -11,6 +11,7 @@ import { CreateBusinessUnitUseCase } from '../../../application/use-cases/create
 import { ListBusinessUnitsUseCase } from '../../../application/use-cases/list-business-units.use-case';
 import { GetBusinessUnitByIdUseCase } from '../../../application/use-cases/get-business-unit-by-id.use-case';
 import { SetBusinessUnitActiveUseCase } from '../../../application/use-cases/set-business-unit-active.use-case';
+import { UpdateBusinessUnitUseCase } from '../../../application/use-cases/update-business-unit.use-case';
 import { BusinessUnitResponseDto } from '../dto/business-unit-response.dto';
 import { PublicBusinessUnitResponseDto } from '../dto/business-unit-public-response.dto';
 import {
@@ -18,6 +19,7 @@ import {
   PaginatedPublicBusinessUnitResponseDto,
 } from '../dto/paginated-business-unit-response.dto';
 import { BusinessUnitCreateDto } from '../dto/business-unit-create.dto';
+import { BusinessUnitUpdateDto } from '../dto/business-unit-update.dto';
 import { BusinessUnitByIdParamDto, BusinessUnitsQueryDto } from '../dto/business-unit-query.dto';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
 import { sanitizeLimit } from '@shared/pagination/pagination';
@@ -35,6 +37,7 @@ export class BusinessUnitsController {
     private readonly listBusinessUnits: ListBusinessUnitsUseCase,
     private readonly getBusinessUnitById: GetBusinessUnitByIdUseCase,
     private readonly setBusinessUnitActive: SetBusinessUnitActiveUseCase,
+    private readonly updateBusinessUnit: UpdateBusinessUnitUseCase,
   ) {}
 
   @Roles(['ADMIN'])
@@ -46,6 +49,21 @@ export class BusinessUnitsController {
   })
   async create(@Body() dto: BusinessUnitCreateDto): Promise<BusinessUnitResponseDto> {
     const unit = await this.createBusinessUnit.execute(dto);
+    return BusinessUnitResponseDto.fromEntity(unit);
+  }
+
+  @Roles(['ADMIN'])
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a business unit (partial edit of contact fields)' })
+  @ApiOkResponse({ type: BusinessUnitResponseDto })
+  @ApiNotFoundResponse({ description: 'Business unit not found' })
+  @ApiConflictResponse({ description: 'A business unit with the same phone already exists' })
+  async update(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { id }: BusinessUnitByIdParamDto,
+    @Body() dto: BusinessUnitUpdateDto,
+  ): Promise<BusinessUnitResponseDto> {
+    const unit = await this.updateBusinessUnit.execute(id, dto, actor.sub);
     return BusinessUnitResponseDto.fromEntity(unit);
   }
 

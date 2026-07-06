@@ -5,6 +5,7 @@ import { CreateBusinessUnitUseCase } from '../../../application/use-cases/create
 import { ListBusinessUnitsUseCase } from '../../../application/use-cases/list-business-units.use-case';
 import { GetBusinessUnitByIdUseCase } from '../../../application/use-cases/get-business-unit-by-id.use-case';
 import { SetBusinessUnitActiveUseCase } from '../../../application/use-cases/set-business-unit-active.use-case';
+import { UpdateBusinessUnitUseCase } from '../../../application/use-cases/update-business-unit.use-case';
 import { BusinessUnit } from '../../../domain/entities/business-unit.entity';
 import { BusinessUnitResponseDto } from '../dto/business-unit-response.dto';
 import { PublicBusinessUnitResponseDto } from '../dto/business-unit-public-response.dto';
@@ -21,6 +22,7 @@ describe('BusinessUnitsController', () => {
   let listBusinessUnits: jest.Mocked<ListBusinessUnitsUseCase>;
   let getBusinessUnitById: jest.Mocked<GetBusinessUnitByIdUseCase>;
   let setBusinessUnitActive: jest.Mocked<SetBusinessUnitActiveUseCase>;
+  let updateBusinessUnit: jest.Mocked<UpdateBusinessUnitUseCase>;
 
   const buildBusinessUnit = (id = 'uuid-1'): BusinessUnit =>
     new BusinessUnit(
@@ -48,6 +50,9 @@ describe('BusinessUnitsController', () => {
     setBusinessUnitActive = {
       execute: jest.fn(),
     } as unknown as jest.Mocked<SetBusinessUnitActiveUseCase>;
+    updateBusinessUnit = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<UpdateBusinessUnitUseCase>;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [BusinessUnitsController],
@@ -56,6 +61,7 @@ describe('BusinessUnitsController', () => {
         { provide: ListBusinessUnitsUseCase, useValue: listBusinessUnits },
         { provide: GetBusinessUnitByIdUseCase, useValue: getBusinessUnitById },
         { provide: SetBusinessUnitActiveUseCase, useValue: setBusinessUnitActive },
+        { provide: UpdateBusinessUnitUseCase, useValue: updateBusinessUnit },
       ],
     }).compile();
 
@@ -84,6 +90,30 @@ describe('BusinessUnitsController', () => {
       expect(response).toBeInstanceOf(BusinessUnitResponseDto);
       expect(response.id).toBe('uuid-43');
       expect(response.cnpj).toBe('12345678000190');
+    });
+  });
+
+  describe('update', () => {
+    it('should forward the patch with the actor and map the result to the full DTO', async () => {
+      updateBusinessUnit.execute.mockResolvedValue(buildBusinessUnit('uuid-7'));
+
+      const body = { name: 'Raízes Rio Vermelho', phone: '7133334455' };
+
+      const response = await controller.update(actor, { id: 'uuid-7' }, body);
+
+      expect(updateBusinessUnit.execute).toHaveBeenCalledWith('uuid-7', body, 'admin-1');
+      expect(response).toBeInstanceOf(BusinessUnitResponseDto);
+      expect(response.id).toBe('uuid-7');
+    });
+
+    it('should propagate BusinessUnitNotFoundError raised by the use-case', async () => {
+      updateBusinessUnit.execute.mockRejectedValue(
+        new BusinessUnitNotFoundError('Business unit not found.'),
+      );
+
+      await expect(
+        controller.update(actor, { id: 'missing' }, { name: 'Raízes Rio Vermelho' }),
+      ).rejects.toBeInstanceOf(BusinessUnitNotFoundError);
     });
   });
 
