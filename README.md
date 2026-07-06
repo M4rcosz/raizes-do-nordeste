@@ -1,9 +1,14 @@
 # Raízes do Nordeste - Backend API
 
 [![CI](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml/badge.svg)](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml)
-[![version](https://img.shields.io/github/package-json/v/M4rcosz/raizes-do-nordeste?color=blue)](https://github.com/M4rcosz/raizes-do-nordeste/releases)
+[![version](https://img.shields.io/github/package-json/v/M4rcosz/raizes-do-nordeste/development?color=blue)](https://github.com/M4rcosz/raizes-do-nordeste/releases)
 
 Repository: <https://github.com/M4rcosz/raizes-do-nordeste>
+
+> **Upcoming rename:** this project will be renamed from **Raízes do Nordeste**
+> to **nexio-core** in a future release. When it lands, the repository URL, the
+> package name and the version badge above change with it; every current
+> reference to "Raízes do Nordeste" in this document predates that switch.
 
 REST API for a multi-unit restaurant ordering system. The platform powers menu
 browsing, order management, payment processing, inventory control and a
