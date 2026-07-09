@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.4.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.3.0...v2.4.0) (2026-07-09)
+
+
+### Features
+
+* **identity:** harden username rules and make it case-insensitive ([76b497e](https://github.com/M4rcosz/raizes-do-nordeste/commit/76b497e361d359795809b7abdc8cf0b76a825e18))
+* **inventory:** add stock-item init endpoint and harden write path ([138cbe5](https://github.com/M4rcosz/raizes-do-nordeste/commit/138cbe54c379fe58c53e1e0334096e052feef77b))
+
+
+### Documentation
+
+* pin version badge to development and flag upcoming rename ([b0f4c6e](https://github.com/M4rcosz/raizes-do-nordeste/commit/b0f4c6ef83c47b53d8e6340a7859e1d4d840f605))
+
 ## [2.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.2.1...v2.3.0) (2026-07-06)
 
 
