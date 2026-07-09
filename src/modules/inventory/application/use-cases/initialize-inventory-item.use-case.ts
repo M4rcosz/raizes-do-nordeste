@@ -10,18 +10,17 @@ import {
   INVENTORY_REPOSITORY,
   type InventoryRepository,
 } from '../../domain/repositories/inventory.repository';
-import type { ManualMovementType } from '../../domain/value-objects/inventory-transaction-type';
 
-export interface AdjustInventoryCommand {
+export interface InitializeInventoryItemCommand {
   businessUnitId: string;
   productId: string;
-  type: ManualMovementType;
   quantity: number;
+  minQuantity: number;
   reason: string;
 }
 
 @Injectable()
-export class AdjustInventoryUseCase {
+export class InitializeInventoryItemUseCase {
   constructor(
     @Inject(INVENTORY_REPOSITORY)
     private readonly inventories: InventoryRepository,
@@ -32,32 +31,32 @@ export class AdjustInventoryUseCase {
   ) {}
 
   /**
-   * Applies a manual IN/OUT movement. The balance update and the
-   * InventoryTransaction insert share one transaction, so the ledger can never
-   * record a movement whose balance change did not land (or vice versa).
+   * Creates the first inventory row for a product at a unit. The row insert and
+   * the opening IN ledger entry share one transaction, so a row can never land
+   * without its ledger entry (or vice versa).
    */
-  async execute(command: AdjustInventoryCommand, actorId: string): Promise<Inventory> {
-    const updated = await this.transactions.run((tx) =>
-      this.inventories.applyMovement({ ...command, createdBy: actorId }, tx),
+  async execute(command: InitializeInventoryItemCommand, actorId: string): Promise<Inventory> {
+    const created = await this.transactions.run((tx) =>
+      this.inventories.initialize({ ...command, createdBy: actorId }, tx),
     );
 
     // Audited after the commit: this use case owns the transaction, so a log line
-    // here can never describe a movement that rolled back.
+    // here can never describe a write that rolled back. A zero opening balance
+    // writes no ledger entry, so this is the only record of who seeded the row.
     await this.audit.log({
       userId: actorId,
-      action: AUDIT_ACTIONS.INVENTORY_ADJUSTED,
+      action: AUDIT_ACTIONS.INVENTORY_ITEM_INITIALIZED,
       entity: 'Inventory',
-      entityId: updated.id,
+      entityId: created.id,
       metadata: {
-        businessUnitId: updated.businessUnitId,
-        productId: updated.productId,
-        type: command.type,
-        quantity: command.quantity,
-        balanceAfter: updated.quantity,
+        businessUnitId: created.businessUnitId,
+        productId: created.productId,
+        quantity: created.quantity,
+        minQuantity: created.minQuantity,
         reason: command.reason,
       },
     });
 
-    return updated;
+    return created;
   }
 }

@@ -35,6 +35,10 @@ export const AUDIT_ACTIONS = {
   PROMOTION_DEACTIVATED: 'PROMOTION_DEACTIVATED',
   /** A deduction left a product at or below its minQuantity threshold. */
   STOCK_ALERT: 'STOCK_ALERT',
+  /** The first stock row for a product at a unit was created. */
+  INVENTORY_ITEM_INITIALIZED: 'INVENTORY_ITEM_INITIALIZED',
+  /** A manual IN/OUT stock movement was applied by a manager. */
+  INVENTORY_ADJUSTED: 'INVENTORY_ADJUSTED',
   /** Customer granted LGPD consent for the loyalty program. */
   LOYALTY_CONSENT_GIVEN: 'LOYALTY_CONSENT_GIVEN',
   /** Customer withdrew LGPD consent for the loyalty program. */
