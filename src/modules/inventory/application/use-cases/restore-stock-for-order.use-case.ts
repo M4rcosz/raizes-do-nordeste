@@ -15,6 +15,13 @@ import type {
  * Implements the STOCK_RESTORATION port: returns an order's deducted units to stock as
  * guarded IN movements, the mirror of DeductStockForOrder. Runs inside the caller's
  * cancellation transaction, so a failure rolls the whole cancellation back.
+ *
+ * An IN whose balance would exceed MAX_INVENTORY_QUANTITY throws
+ * InventoryQuantityOverflowError and blocks the cancellation. That is deliberate: the
+ * units cannot be returned without corrupting the balance, and silently dropping them
+ * would break `balance derives from the ledger`. It needs a stock within a hair of
+ * int4 max to trigger, and it aborts before the refund runs, so the saga stays
+ * consistent. Previously this same case surfaced as a raw 500 from Postgres.
  */
 @Injectable()
 export class RestoreStockForOrderUseCase implements StockRestoration {

@@ -6,11 +6,16 @@ import { Inventory } from '@modules/inventory/domain/entities/inventory.entity';
 import {
   ApplyMovementInput,
   FindInventoryByUnitInput,
+  InitializeInventoryInput,
   InventoryRepository,
 } from '@modules/inventory/domain/repositories/inventory.repository';
 import { InventoryTransactionType } from '@modules/inventory/domain/value-objects/inventory-transaction-type';
+import { MAX_INVENTORY_QUANTITY } from '@modules/inventory/domain/value-objects/inventory-quantity';
 import { InsufficientStockError } from '@modules/inventory/domain/errors/insufficient-stock.error';
 import { InventoryNotFoundError } from '@modules/inventory/domain/errors/inventory-not-found.error';
+import { InventoryQuantityOverflowError } from '@modules/inventory/domain/errors/inventory-quantity-overflow.error';
+import { InventoryAlreadyExistsError } from '@modules/inventory/domain/errors/inventory-already-exists.error';
+import { InventoryProductNotFoundError } from '@modules/inventory/domain/errors/inventory-product-not-found.error';
 
 @Injectable()
 export class PrismaInventoryRepository implements InventoryRepository {
@@ -37,14 +42,18 @@ export class PrismaInventoryRepository implements InventoryRepository {
     const db = tx as Prisma.TransactionClient;
     const isOut = input.type === InventoryTransactionType.OUT;
 
-    // Guarded atomic update: an OUT only lands while the row still holds enough
-    // stock (quantity >= amount in the WHERE), so concurrent movements can never
-    // drive the balance below zero. count === 0 means not enough stock or no row.
+    // Guarded atomic update, both ends of the int4 range. An OUT only lands while
+    // the row still holds enough stock (quantity >= amount); an IN only lands
+    // while the result still fits (quantity <= MAX - amount). Both guards live in
+    // the WHERE, so concurrent movements can never drive the balance below zero
+    // nor past int4 - a check-then-update would race.
     const { count } = await db.inventory.updateMany({
       where: {
         businessUnitId: input.businessUnitId,
         productId: input.productId,
-        ...(isOut && { quantity: { gte: input.quantity } }),
+        ...(isOut
+          ? { quantity: { gte: input.quantity } }
+          : { quantity: { lte: MAX_INVENTORY_QUANTITY - input.quantity } }),
       },
       data: { quantity: isOut ? { decrement: input.quantity } : { increment: input.quantity } },
     });
@@ -53,6 +62,24 @@ export class PrismaInventoryRepository implements InventoryRepository {
       if (isOut) {
         throw new InsufficientStockError(
           `Not enough stock of product ${input.productId} at this business unit.`,
+        );
+      }
+      // An IN misses for two different reasons now, so ask which one it was. A
+      // missing row is 404; an existing row that cannot absorb the units is 422.
+      // This read is a second statement, so a concurrent commit between it and the
+      // update can flip which of the two we report. Only the message is affected -
+      // the balance guard is in the WHERE above and stays race-free either way.
+      const existing = await db.inventory.findUnique({
+        where: {
+          businessUnitId_productId: {
+            businessUnitId: input.businessUnitId,
+            productId: input.productId,
+          },
+        },
+      });
+      if (existing) {
+        throw new InventoryQuantityOverflowError(
+          `Adding ${input.quantity} units would push product ${input.productId} past the maximum stock of ${MAX_INVENTORY_QUANTITY}.`,
         );
       }
       throw new InventoryNotFoundError(
@@ -81,6 +108,60 @@ export class PrismaInventoryRepository implements InventoryRepository {
         orderId: input.orderId ?? null,
         createdBy: input.createdBy,
         type: input.type,
+        quantity: input.quantity,
+        reason: input.reason,
+      },
+    });
+
+    return this.toEntity(raw);
+  }
+
+  async initialize(input: InitializeInventoryInput, tx: TransactionContext): Promise<Inventory> {
+    const db = tx as Prisma.TransactionClient;
+
+    // Only the row insert is wrapped. The ledger insert below carries its own FK
+    // (createdBy -> users), and a P2003 from it means the actor vanished, not that
+    // the product is missing - catching both here would report that as a 404 about
+    // the product. An absent actor is a server-side inconsistency: let it surface.
+    let raw;
+    try {
+      raw = await db.inventory.create({
+        data: {
+          businessUnitId: input.businessUnitId,
+          productId: input.productId,
+          quantity: input.quantity,
+          minQuantity: input.minQuantity,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        // Unique (businessUnitId, productId): the row already exists.
+        if (err.code === 'P2002') {
+          throw new InventoryAlreadyExistsError(
+            `Product ${input.productId} already has inventory at this business unit.`,
+            { cause: err },
+          );
+        }
+        // FK violation: productId or businessUnitId does not reference an existing row.
+        if (err.code === 'P2003') {
+          throw new InventoryProductNotFoundError(
+            `Product ${input.productId} or business unit ${input.businessUnitId} does not exist.`,
+            { cause: err },
+          );
+        }
+      }
+      throw err;
+    }
+
+    // Written unconditionally, including a zero opening balance. The balance derives
+    // from the ledger, so a row with no entry has no genesis: nothing records who
+    // seeded it or why. A zero-quantity IN keeps the sum right and the provenance.
+    await db.inventoryTransaction.create({
+      data: {
+        inventoryId: raw.id,
+        orderId: null,
+        createdBy: input.createdBy,
+        type: InventoryTransactionType.IN,
         quantity: input.quantity,
         reason: input.reason,
       },
