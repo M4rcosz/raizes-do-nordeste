@@ -27,7 +27,9 @@ model User {
   businessUnitId String? @map("business_unit_id")
 
   name         String
-  username     String   @unique
+  // citext: the @unique index compares case-insensitively, so "joao" and "Joao"
+  // cannot coexist even if a seed or raw SQL bypasses the DTO regex.
+  username     String   @unique @db.Citext
   email        String?  @unique
   passwordHash String   @map("password_hash")
   phone        String?  @unique

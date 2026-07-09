@@ -31,6 +31,7 @@ async function main(): Promise<void> {
     where: { cnpj: '00.000.000/0002-00' },
     update: {},
     create: {
+      id: 'f47e30eb-63bf-4db0-bf41-602f9c72d9b2', // uuid static for api tests
       name: 'Ark Drinks - Araguari',
       cnpj: '00.000.000/0002-00',
       address: 'Street Z, 987',
@@ -45,19 +46,19 @@ async function main(): Promise<void> {
   // =======================================================
 
   const [kitchenHash, adminHash, managerHash, customerHash] = await Promise.all([
-    hashPassword('password1'),
-    hashPassword('password2'),
-    hashPassword('password3'),
-    hashPassword('password4'),
+    hashPassword('P@ssword1'),
+    hashPassword('P@ssword2'),
+    hashPassword('P@ssword3'),
+    hashPassword('P@ssword4'),
   ]);
 
   await prisma.user.upsert({
-    where: { username: 'Panic' },
+    where: { username: 'pedro.panic' },
     update: {},
     create: {
-      username: 'Panic',
+      username: 'pedro.panic',
       name: 'Pedro Panic',
-      email: 'r6-squad@raizes.com',
+      email: 'pedro.panic@nexio.com',
       passwordHash: kitchenHash,
       role: 'KITCHEN',
       businessUnits: { create: [{ businessUnitId: unit1.id }] },
@@ -65,12 +66,12 @@ async function main(): Promise<void> {
   });
 
   const admin = await prisma.user.upsert({
-    where: { username: 'davi151413' },
+    where: { username: 'nexio.admin' },
     update: {},
     create: {
-      username: 'davi151413',
-      name: 'Everton Steve Jobs',
-      email: 'admin-tribes@raizes.com',
+      username: 'nexio.admin',
+      name: 'Nexio Administrator',
+      email: 'admin@nomail.com',
       passwordHash: adminHash,
       role: 'ADMIN',
       businessUnits: { create: [{ businessUnitId: unit2.id }] },
@@ -78,12 +79,12 @@ async function main(): Promise<void> {
   });
 
   await prisma.user.upsert({
-    where: { username: 'gustavojogadorps' },
+    where: { username: 'gustavo.linhares' },
     update: {},
     create: {
-      username: 'gustavojogadorps',
-      name: 'Gustavo Player',
-      email: 'chief@raizes.com',
+      username: 'gustavo.linhares',
+      name: 'Gustavo Linhares',
+      email: 'gustavo.linhares@nexio.com',
       passwordHash: managerHash,
       role: 'MANAGER',
       businessUnits: { create: [{ businessUnitId: unit2.id }] },
@@ -91,11 +92,12 @@ async function main(): Promise<void> {
   });
 
   await prisma.user.upsert({
-    where: { username: 'customer1' },
+    where: { username: 'gregor.customer' },
     update: {},
     create: {
-      username: 'customer1',
-      name: 'Customer Number 1',
+      username: 'gregor.customer',
+      name: 'Gregor Customer',
+      email: 'gregor.customer@nexio.com',
       passwordHash: customerHash,
       role: 'CUSTOMER',
     },

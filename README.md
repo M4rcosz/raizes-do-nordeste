@@ -1420,6 +1420,23 @@ Because `prisma migrate deploy` runs at boot, `prisma` is a **runtime**
 dependency (it survives `npm ci --omit=dev`) and the runtime image installs
 `openssl` + `ca-certificates`.
 
+> **Before the first deploy after the `citext` migration.** `users.username` is a
+> `citext` column, and its migration runs `CREATE EXTENSION IF NOT EXISTS citext`.
+> Two things can make that fail at boot, taking the release with it (`set -e`):
+>
+> 1. The role in `DATABASE_URL` needs `CREATE` privilege on the database. A
+>    locked-down app role does not have it.
+> 2. Supabase installs extensions into an `extensions` schema, not `public`. If the
+>    connection's `search_path` excludes it, the bare type name does not resolve and
+>    `ALTER COLUMN ... TYPE CITEXT` fails with `type "citext" does not exist`.
+>
+> Also verify no two accounts collide case-insensitively before migrating, or the
+> unique index cannot be rebuilt:
+>
+> ```sql
+> SELECT lower(username), count(*) FROM users GROUP BY 1 HAVING count(*) > 1;
+> ```
+
 ### Database connection (Supabase)
 
 Point `DATABASE_URL` at the Supabase **session pooler** (port `5432`), **not**

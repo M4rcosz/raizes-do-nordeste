@@ -36,7 +36,9 @@ describe('Payments - critical flow A (e2e)', () => {
   let prisma: PrismaService;
 
   const password = 'customer-pass';
-  const username = `e2e-pay-customer-${randomUUID()}`;
+  // Stay within the 50-char username cap: a longer prefix plus a 36-char uuid
+  // builds a name the login DTO rejects.
+  const username = `e2e-pay-cust-${randomUUID()}`;
   let unitId: string;
   let categoryId: string;
   let productId: string;

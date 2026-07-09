@@ -1,5 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import {
+  RESERVED_USERNAMES,
+  RESERVED_USERNAME_MESSAGE,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  USERNAME_PATTERN,
+  USERNAME_PATTERN_MESSAGE,
+} from '@modules/identity/domain/value-objects/username';
 
 // Self-registration payload. No role field on purpose: the use case always
 // forces CUSTOMER, so a client cannot grant itself a privileged role.
@@ -9,15 +25,18 @@ export class RegisterCustomerDto {
   @MaxLength(120)
   name!: string;
 
-  @ApiProperty({ example: 'maria.souza', minLength: 3, maxLength: 50 })
+  @ApiProperty({
+    example: 'maria.souza',
+    minLength: USERNAME_MIN_LENGTH,
+    maxLength: USERNAME_MAX_LENGTH,
+  })
   @IsString()
-  @MinLength(3)
-  @MaxLength(50)
+  @MinLength(USERNAME_MIN_LENGTH)
+  @MaxLength(USERNAME_MAX_LENGTH)
   // username is @unique and the login key. Reject whitespace/uppercase/empty so
   // "maria" and "Maria " cannot become distinct accounts. Validate only, no transform.
-  @Matches(/^[a-z0-9._-]+$/, {
-    message: 'username must be lowercase alphanumeric with . _ or -',
-  })
+  @Matches(USERNAME_PATTERN, { message: USERNAME_PATTERN_MESSAGE })
+  @IsNotIn(RESERVED_USERNAMES, { message: RESERVED_USERNAME_MESSAGE })
   username!: string;
 
   @ApiProperty({ minLength: 8 })
