@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { Argon2PasswordHasher } from '../modules/identity/infrastructure/security/argon2-password-hasher';
+import { usernameRejectionReason } from '../modules/identity/domain/value-objects/username';
 
 // Idempotent bootstrap of the very first ADMIN. Runs at deploy time (after
 // migrate, before the app starts) so a fresh instance is never left without an
@@ -25,6 +26,15 @@ const prisma = new PrismaClient({ adapter });
 
 async function main(): Promise<void> {
   const username = requireEnv('INITIAL_ADMIN_USERNAME');
+
+  // This script writes straight to Prisma, so it skips the DTO decorators that
+  // guard every other write path. Apply the same rules here or the one account a
+  // fresh deploy is guaranteed to have could be a reserved name, or too long for
+  // the login border to accept - locking the operator out with no rename endpoint.
+  const rejection = usernameRejectionReason(username);
+  if (rejection) {
+    throw new Error(`Invalid INITIAL_ADMIN_USERNAME: ${rejection}`);
+  }
 
   // Existence check first. If the admin is already there we return before
   // touching the password: a re-deploy never re-hashes (argon2 is deliberately
