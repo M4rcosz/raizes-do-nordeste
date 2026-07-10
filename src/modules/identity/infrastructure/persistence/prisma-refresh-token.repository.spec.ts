@@ -211,6 +211,46 @@ describe('PrismaRefreshTokenRepository', () => {
       expect(tx.refreshToken.update).toHaveBeenCalledTimes(1);
       expect(prisma.refreshToken.findUnique).not.toHaveBeenCalled();
     });
+
+    // A cycle should be impossible (each rotation inserts a fresh row), but a walk with
+    // no visited-set turns corrupt data into a hung request holding a DB connection -
+    // and, when a tx is threaded, an open transaction. Terminate on the data we get,
+    // not on the data we assume. The mock throws rather than letting a regression hang
+    // the suite forever.
+    it('terminates on a cycle in the rotation chain instead of looping forever', async () => {
+      const chain: Record<string, string> = { 'rt-1': 'rt-2', 'rt-2': 'rt-1' };
+      let lookups = 0;
+      prisma.refreshToken.findUnique.mockImplementation((args) => {
+        if (++lookups > 10) {
+          throw new Error(`revokeChainFrom did not terminate: ${lookups} lookups on a 2-cycle`);
+        }
+        const id = (args as PrismaArgs).where?.id as string;
+        return Promise.resolve(rawToken({ id, replacedById: chain[id] }));
+      });
+      prisma.refreshToken.update.mockResolvedValue(rawToken());
+
+      await expect(repo.revokeChainFrom('rt-1')).resolves.toBeUndefined();
+
+      // Each node visited exactly once, then the walk stops at the already-seen head.
+      expect(lookups).toBe(2);
+      expect(prisma.refreshToken.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('terminates on a self-referencing token', async () => {
+      let lookups = 0;
+      prisma.refreshToken.findUnique.mockImplementation(() => {
+        if (++lookups > 10) {
+          throw new Error('revokeChainFrom did not terminate on a self-reference');
+        }
+        return Promise.resolve(rawToken({ id: 'rt-1', replacedById: 'rt-1' }));
+      });
+      prisma.refreshToken.update.mockResolvedValue(rawToken());
+
+      await repo.revokeChainFrom('rt-1');
+
+      expect(lookups).toBe(1);
+      expect(prisma.refreshToken.update).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('revokeAllActiveForUser', () => {
