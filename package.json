@@ -62,6 +62,7 @@
     "@nestjs/testing": "^11.0.1",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.33",
+    "@swc/jest": "^0.2.39",
     "@types/big.js": "^6.2.2",
     "@types/decimal.js": "^0.0.32",
     "@types/express": "^5.0.0",
@@ -79,7 +80,6 @@
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
-    "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
@@ -96,7 +96,7 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": "<rootDir>/../jest-swc-transform.cjs"
     },
     "moduleNameMapper": {
       "^@shared/(.*)$": "<rootDir>/shared/$1",
