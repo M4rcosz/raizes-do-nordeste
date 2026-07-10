@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.4.2](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.4.1...v2.4.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* **identity:** guard revokeChainFrom against a cyclic rotation chain ([760427f](https://github.com/M4rcosz/raizes-do-nordeste/commit/760427f33f322fe2e02dd2a7eb049b24a12d8dfb))
+
 ## [2.4.1](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.4.0...v2.4.1) (2026-07-10)
 
 
