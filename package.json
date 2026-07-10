@@ -103,9 +103,21 @@
       "^@modules/(.*)$": "<rootDir>/modules/$1"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.spec.ts",
+      "!**/*.module.ts",
+      "!main.ts",
+      "!scripts/bootstrap-admin.ts",
+      "!**/__fakes__/**",
+      "!**/testing/**"
     ],
     "coverageDirectory": "../coverage",
+    "coverageThreshold": {
+      "./src/**/*.ts": {
+        "statements": 50,
+        "lines": 50
+      }
+    },
     "testEnvironment": "node"
   },
   "lint-staged": {
