@@ -14,14 +14,20 @@ import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-
 type ProductCreateFn = (args: unknown) => Promise<PrismaProduct>;
 type ProductFindUniqueFn = (args: unknown) => Promise<PrismaProduct | null>;
 type ProductUpdateFn = (args: unknown) => Promise<PrismaProduct>;
+type ProductFindManyFn = (args: unknown) => Promise<PrismaProduct[]>;
+type MenuItemFindManyFn = (args: unknown) => Promise<unknown[]>;
 
 const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
   knownRequestError(code, { target: ['name'] });
+
+type Args = { where?: Record<string, unknown> } & Record<string, unknown>;
 
 describe('PrismaProductRepository', () => {
   let create: jest.MockedFunction<ProductCreateFn>;
   let findUnique: jest.MockedFunction<ProductFindUniqueFn>;
   let update: jest.MockedFunction<ProductUpdateFn>;
+  let findMany: jest.MockedFunction<ProductFindManyFn>;
+  let menuItemFindMany: jest.MockedFunction<MenuItemFindManyFn>;
   let repo: PrismaProductRepository;
 
   const input: CreateProductInput = {
@@ -48,7 +54,12 @@ describe('PrismaProductRepository', () => {
     create = jest.fn() as jest.MockedFunction<ProductCreateFn>;
     findUnique = jest.fn() as jest.MockedFunction<ProductFindUniqueFn>;
     update = jest.fn() as jest.MockedFunction<ProductUpdateFn>;
-    const prisma = { product: { create, findUnique, update } } as unknown as PrismaService;
+    findMany = jest.fn() as jest.MockedFunction<ProductFindManyFn>;
+    menuItemFindMany = jest.fn() as jest.MockedFunction<MenuItemFindManyFn>;
+    const prisma = {
+      product: { create, findUnique, update, findMany },
+      businessUnitMenuItem: { findMany: menuItemFindMany },
+    } as unknown as PrismaService;
     repo = new PrismaProductRepository(prisma);
   });
 
@@ -227,6 +238,239 @@ describe('PrismaProductRepository', () => {
 
       expect((error as Error).message).toBe('A persisted monetary value is corrupt.');
       expect((error as Error).message).not.toContain(corruptValue);
+    });
+
+    it('returns null when no row matches', async () => {
+      findUnique.mockResolvedValue(null);
+
+      await expect(repo.findById('missing')).resolves.toBeNull();
+      expect(findUnique).toHaveBeenCalledWith({ where: { id: 'missing' } });
+    });
+
+    // Only InvalidMoneyError means corrupt data. Anything else is a real fault and
+    // must not be relabelled as a money problem.
+    it('rethrows a non-money parse failure untouched', async () => {
+      const boom = new Error('toString exploded');
+      findUnique.mockResolvedValue({
+        ...persistedRow,
+        basePrice: {
+          toString: () => {
+            throw boom;
+          },
+        },
+      } as unknown as PrismaProduct);
+
+      await expect(repo.findById('uuid-1')).rejects.toBe(boom);
+    });
+  });
+
+  describe('findAllActive', () => {
+    const argsOf = (): Args => findMany.mock.calls[0][0] as Args;
+
+    beforeEach(() => {
+      findMany.mockResolvedValue([persistedRow]);
+    });
+
+    // The active gate is not a caller-supplied filter: it is always applied.
+    it('always constrains to active products', async () => {
+      await repo.findAllActive({ pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({ isActive: true });
+    });
+
+    it('AND-combines the search and category filters with the active gate', async () => {
+      await repo.findAllActive({
+        filters: { search: 'acara', categoryId: 'category-1' },
+        pagination: { take: 20 },
+      });
+
+      expect(argsOf().where).toStrictEqual({
+        isActive: true,
+        name: { contains: 'acara', mode: 'insensitive' },
+        categoryId: 'category-1',
+      });
+    });
+
+    it('applies the search filter alone, leaving categoryId unconstrained', async () => {
+      await repo.findAllActive({ filters: { search: 'acara' }, pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({
+        isActive: true,
+        name: { contains: 'acara', mode: 'insensitive' },
+      });
+    });
+
+    it('applies the category filter alone, leaving the name unconstrained', async () => {
+      await repo.findAllActive({ filters: { categoryId: 'category-1' }, pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({ isActive: true, categoryId: 'category-1' });
+    });
+
+    it('ignores an empty filter object', async () => {
+      await repo.findAllActive({ filters: {}, pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({ isActive: true });
+    });
+
+    it('maps rows to domain Products', async () => {
+      const products = await repo.findAllActive({ pagination: { take: 20 } });
+
+      expect(products).toHaveLength(1);
+      expect(products[0]).toBeInstanceOf(Product);
+      expect(products[0].price.equals(Money.fromDecimalString('12.50'))).toBe(true);
+    });
+
+    it('orders by a stable (createdAt, id) key so the cursor cannot skip rows', async () => {
+      await repo.findAllActive({ pagination: { take: 20 } });
+
+      expect(argsOf().orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    });
+
+    it('skips the cursor row itself when paging forward', async () => {
+      await repo.findAllActive({ pagination: { take: 20, cursor: 'uuid-0' } });
+
+      expect(argsOf()).toMatchObject({ take: 20, cursor: { id: 'uuid-0' }, skip: 1 });
+    });
+
+    it('omits cursor and skip on the first page', async () => {
+      await repo.findAllActive({ pagination: { take: 20 } });
+
+      expect(argsOf()).not.toHaveProperty('cursor');
+      expect(argsOf()).not.toHaveProperty('skip');
+    });
+  });
+
+  describe('findAllByBusinessUnit', () => {
+    const argsOf = (): Args => menuItemFindMany.mock.calls[0][0] as Args;
+    const menuItem = (customPrice: Prisma.Decimal | null) => ({
+      businessUnitId: 'bu-1',
+      productId: 'uuid-1',
+      customPrice,
+      product: persistedRow,
+    });
+
+    it('constrains to the unit and to available items only', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(null)]);
+
+      await repo.findAllByBusinessUnit({ businessUnitId: 'bu-1', pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({
+        businessUnitId: 'bu-1',
+        isAvailable: true,
+        product: {},
+      });
+    });
+
+    it('nests the product filters under the product relation', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(null)]);
+
+      await repo.findAllByBusinessUnit({
+        businessUnitId: 'bu-1',
+        filters: { search: 'acara', categoryId: 'category-1' },
+        pagination: { take: 20 },
+      });
+
+      expect(argsOf().where).toStrictEqual({
+        businessUnitId: 'bu-1',
+        isAvailable: true,
+        product: {
+          name: { contains: 'acara', mode: 'insensitive' },
+          categoryId: 'category-1',
+        },
+      });
+    });
+
+    // The per-unit price override is the whole point of the menu-item table.
+    it('prefers the unit customPrice over the product basePrice', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(new Prisma.Decimal('9.90'))]);
+
+      const [product] = await repo.findAllByBusinessUnit({
+        businessUnitId: 'bu-1',
+        pagination: { take: 20 },
+      });
+
+      expect(product.price.equals(Money.fromDecimalString('9.90'))).toBe(true);
+    });
+
+    it('falls back to the product basePrice when no override is set', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(null)]);
+
+      const [product] = await repo.findAllByBusinessUnit({
+        businessUnitId: 'bu-1',
+        pagination: { take: 20 },
+      });
+
+      expect(product.price.equals(Money.fromDecimalString('12.50'))).toBe(true);
+      expect(product.id).toBe('uuid-1');
+    });
+
+    // A free item priced at 0.00 must not be mistaken for "no override" - `??` is
+    // required here, `||` would silently fall back to the base price.
+    it('honours a zero customPrice instead of falling back', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(new Prisma.Decimal('0.00'))]);
+
+      const [product] = await repo.findAllByBusinessUnit({
+        businessUnitId: 'bu-1',
+        pagination: { take: 20 },
+      });
+
+      expect(product.price.equals(Money.zero())).toBe(true);
+    });
+
+    it('pages on the composite (businessUnitId, productId) cursor', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(null)]);
+
+      await repo.findAllByBusinessUnit({
+        businessUnitId: 'bu-1',
+        pagination: { take: 20, cursor: 'uuid-0' },
+      });
+
+      expect(argsOf()).toMatchObject({
+        take: 20,
+        cursor: { businessUnitId_productId: { businessUnitId: 'bu-1', productId: 'uuid-0' } },
+        skip: 1,
+      });
+    });
+
+    it('omits cursor and skip on the first page', async () => {
+      menuItemFindMany.mockResolvedValue([menuItem(null)]);
+
+      await repo.findAllByBusinessUnit({ businessUnitId: 'bu-1', pagination: { take: 20 } });
+
+      expect(argsOf()).not.toHaveProperty('cursor');
+      expect(argsOf()).not.toHaveProperty('skip');
+    });
+  });
+
+  describe('setActive', () => {
+    it('flips the flag and maps the row back', async () => {
+      update.mockResolvedValue({ ...persistedRow, isActive: false });
+
+      const product = await repo.setActive('uuid-1', false);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'uuid-1' }, data: { isActive: false } });
+      expect(product?.isActive).toBe(false);
+    });
+
+    // Honour the null contract so the use case raises a 404 instead of leaking a 500.
+    it('returns null on P2025 (no product with that id)', async () => {
+      update.mockRejectedValue(knownError('P2025'));
+
+      await expect(repo.setActive('missing', true)).resolves.toBeNull();
+    });
+
+    it('rethrows any other Prisma error unchanged', async () => {
+      const prismaError = knownError('P2002');
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.setActive('uuid-1', true)).rejects.toBe(prismaError);
+    });
+
+    it('rethrows non-Prisma errors unchanged', async () => {
+      const genericError = new Error('connection lost');
+      update.mockRejectedValue(genericError);
+
+      await expect(repo.setActive('uuid-1', true)).rejects.toBe(genericError);
     });
   });
 });
