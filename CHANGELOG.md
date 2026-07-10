@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.4.1](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.4.0...v2.4.1) (2026-07-10)
+
+
+### Refactoring
+
+* **config:** validate duration env vars at boot ([1580035](https://github.com/M4rcosz/raizes-do-nordeste/commit/158003507f938e23061dbaba132fc9bbc503066d))
+* **scheduling:** extract IntervalSweeper base for sweepers ([8875c49](https://github.com/M4rcosz/raizes-do-nordeste/commit/8875c49bca48113adaaaf5f4b150893051f84ba4))
+* **scripts:** split bootstrap-admin into testable core ([bfddd0d](https://github.com/M4rcosz/raizes-do-nordeste/commit/bfddd0d1cf242ee212c97c968cabc8208c9aed2b))
+
 ## [2.4.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.3.0...v2.4.0) (2026-07-09)
 
 
