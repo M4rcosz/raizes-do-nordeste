@@ -4,7 +4,7 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": "<rootDir>/../jest-swc-transform.cjs"
   },
   "moduleNameMapper": {
     "^@shared/(.*)$": "<rootDir>/../src/shared/$1",

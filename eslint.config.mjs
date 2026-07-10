@@ -6,7 +6,14 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-  globalIgnores(['eslint.config.mjs', 'dist/**', 'node_modules/**', 'coverage/**', '.venv/**']),
+  globalIgnores([
+    'eslint.config.mjs',
+    'jest-swc-transform.cjs',
+    'dist/**',
+    'node_modules/**',
+    'coverage/**',
+    '.venv/**',
+  ]),
   {
     extends: [
       eslint.configs.recommended,
