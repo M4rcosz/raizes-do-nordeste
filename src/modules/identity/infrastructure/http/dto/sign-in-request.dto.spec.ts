@@ -61,4 +61,14 @@ describe('SignInDto', () => {
   it('rejects a password shorter than 8 chars', () => {
     expect(validate({ ...valid, password: 'short' }).length).toBeGreaterThan(0);
   });
+
+  it('does not apply the registration strength rule to login', () => {
+    // A legacy account whose password predates the strong-password rule must still
+    // authenticate. Login only enforces the length floor and the argon2 cap.
+    expect(validate({ ...valid, password: 'supersecret' })).toEqual([]);
+  });
+
+  it('rejects a password past the argon2 safety cap so an oversized body cannot bloat the hasher', () => {
+    expect(validate({ ...valid, password: 'a'.repeat(129) }).length).toBeGreaterThan(0);
+  });
 });

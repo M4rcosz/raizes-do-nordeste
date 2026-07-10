@@ -16,6 +16,14 @@ import {
   USERNAME_PATTERN,
   USERNAME_PATTERN_MESSAGE,
 } from '@modules/identity/domain/value-objects/username';
+import { IsStrongPassword } from './is-strong-password';
+import { NormalizeEmail } from './normalize-email';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_STRENGTH_MESSAGE,
+} from '@modules/identity/domain/value-objects/password-policy';
+import { EMAIL_MAX_LENGTH } from '@modules/identity/domain/value-objects/email-normalization';
 
 // Self-registration payload. No role field on purpose: the use case always
 // forces CUSTOMER, so a client cannot grant itself a privileged role.
@@ -39,14 +47,23 @@ export class RegisterCustomerDto {
   @IsNotIn(RESERVED_USERNAMES, { message: RESERVED_USERNAME_MESSAGE })
   username!: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({
+    example: 'Sup3r!Secret',
+    minLength: PASSWORD_MIN_LENGTH,
+    maxLength: PASSWORD_MAX_LENGTH,
+    description: PASSWORD_STRENGTH_MESSAGE,
+  })
   @IsString()
-  @MinLength(8)
+  @MinLength(PASSWORD_MIN_LENGTH)
+  @MaxLength(PASSWORD_MAX_LENGTH)
+  @IsStrongPassword()
   password!: string;
 
-  @ApiPropertyOptional({ example: 'maria@example.com' })
+  @ApiPropertyOptional({ example: 'maria@example.com', maxLength: EMAIL_MAX_LENGTH })
   @IsOptional()
+  @NormalizeEmail()
   @IsEmail()
+  @MaxLength(EMAIL_MAX_LENGTH)
   email?: string;
 
   @ApiPropertyOptional({ example: '+5581999999999', maxLength: 20 })

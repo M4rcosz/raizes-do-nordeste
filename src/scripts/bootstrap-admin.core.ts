@@ -1,4 +1,10 @@
+import { isEmail } from 'class-validator';
 import { usernameRejectionReason } from '../modules/identity/domain/value-objects/username';
+import { passwordRejectionReason } from '../modules/identity/domain/value-objects/password-policy';
+import {
+  EMAIL_MAX_LENGTH,
+  normalizeEmail,
+} from '../modules/identity/domain/value-objects/email-normalization';
 
 /**
  * Idempotent bootstrap of the very first ADMIN, expressed against ports so it can be
@@ -56,8 +62,20 @@ export async function bootstrapAdmin(deps: BootstrapAdminDeps): Promise<void> {
   }
 
   const name = requireEnv(deps.env, 'INITIAL_ADMIN_NAME');
-  const email = requireEnv(deps.env, 'INITIAL_ADMIN_EMAIL');
+
+  // Same rules the DTOs apply, re-applied here because this path skips them. Without
+  // it the one account a fresh deploy is guaranteed to have (an ADMIN) could be born
+  // with a weaker password or a malformed email than any account the API accepts.
+  const email = normalizeEmail(requireEnv(deps.env, 'INITIAL_ADMIN_EMAIL'));
+  if (email.length > EMAIL_MAX_LENGTH || !isEmail(email)) {
+    throw new Error('Invalid INITIAL_ADMIN_EMAIL: must be a valid email address');
+  }
+
   const password = requireEnv(deps.env, 'INITIAL_ADMIN_PASSWORD');
+  const passwordRejection = passwordRejectionReason(password);
+  if (passwordRejection) {
+    throw new Error(`Invalid INITIAL_ADMIN_PASSWORD: ${passwordRejection}`);
+  }
 
   // Reuse the real hasher so the stored hash is byte-for-byte what login's
   // argon2.verify expects. Single source of truth for the argon2 params.

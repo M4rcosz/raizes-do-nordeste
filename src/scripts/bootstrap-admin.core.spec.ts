@@ -12,7 +12,7 @@ const VALID_ENV = {
   INITIAL_ADMIN_USERNAME: 'operator',
   INITIAL_ADMIN_NAME: 'Operator',
   INITIAL_ADMIN_EMAIL: 'ops@example.com',
-  INITIAL_ADMIN_PASSWORD: 'supersecret',
+  INITIAL_ADMIN_PASSWORD: 'Sup3r!Secret',
 };
 
 type Deps = {
@@ -50,7 +50,7 @@ describe('bootstrapAdmin', () => {
   it('creates the admin when none exists', async () => {
     await bootstrapAdmin(deps);
 
-    expect(deps.hashPassword).toHaveBeenCalledWith('supersecret');
+    expect(deps.hashPassword).toHaveBeenCalledWith('Sup3r!Secret');
     expect(deps.createAdmin).toHaveBeenCalledWith({
       username: 'operator',
       name: 'Operator',
@@ -119,8 +119,39 @@ describe('bootstrapAdmin', () => {
     await bootstrapAdmin(deps);
 
     const logged = deps.log.mock.calls.flat().join(' ');
-    expect(logged).not.toContain('supersecret');
+    expect(logged).not.toContain('Sup3r!Secret');
     expect(logged).not.toContain('argon2-hash');
     expect(logged).toBe('Admin created: operator (u-1)');
+  });
+
+  // The admin password skips the DTO strength rule too, so it is re-applied here.
+  // A weak seed password would make the one guaranteed account the weakest one.
+  it.each([
+    ['short1!A', 'too short'],
+    ['alllowercaseletters', 'lacks character variety'],
+  ])('rejects a weak INITIAL_ADMIN_PASSWORD (%s) without hashing or writing', async (password) => {
+    deps = buildDeps({ ...VALID_ENV, INITIAL_ADMIN_PASSWORD: password });
+
+    await expect(bootstrapAdmin(deps)).rejects.toThrow(/Invalid INITIAL_ADMIN_PASSWORD/);
+    expect(deps.hashPassword).not.toHaveBeenCalled();
+    expect(deps.createAdmin).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed INITIAL_ADMIN_EMAIL without hashing or writing', async () => {
+    deps = buildDeps({ ...VALID_ENV, INITIAL_ADMIN_EMAIL: 'not-an-email' });
+
+    await expect(bootstrapAdmin(deps)).rejects.toThrow(/Invalid INITIAL_ADMIN_EMAIL/);
+    expect(deps.hashPassword).not.toHaveBeenCalled();
+    expect(deps.createAdmin).not.toHaveBeenCalled();
+  });
+
+  it('normalizes INITIAL_ADMIN_EMAIL so the seeded admin is stored canonical', async () => {
+    deps = buildDeps({ ...VALID_ENV, INITIAL_ADMIN_EMAIL: '  OPS@Example.COM ' });
+
+    await bootstrapAdmin(deps);
+
+    expect(deps.createAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ops@example.com' }),
+    );
   });
 });
