@@ -32,7 +32,7 @@ import { CryptoRefreshTokenGenerator } from './infrastructure/security/crypto-re
 import { PrismaRefreshTokenRepository } from './infrastructure/persistence/prisma-refresh-token.repository';
 import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
 import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
-import { parseDurationMsEnv } from '@shared/config/env';
+import { parseDurationMsEnv, parseDurationStringEnv } from '@shared/config/env';
 import { AuditModule } from '@modules/audit/audit.module';
 
 // jsonwebtoken brands expiresIn as a template-literal string type; a plain env
@@ -52,7 +52,13 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
       useFactory: (cfg: ConfigService) => ({
         secret: cfg.getOrThrow('JWT_SECRET_KEY'),
         signOptions: {
-          expiresIn: (cfg.get<string>('JWT_ACCESS_TTL') ?? DEFAULT_ACCESS_TTL) as JwtExpiresIn,
+          // Validation lives in parseDurationStringEnv (tested in env.spec.ts) so this
+          // module stays pure wiring and holds no untested fallback branch.
+          expiresIn: parseDurationStringEnv(
+            'JWT_ACCESS_TTL',
+            cfg.get<string>('JWT_ACCESS_TTL'),
+            DEFAULT_ACCESS_TTL,
+          ) as JwtExpiresIn,
         },
       }),
     }),
