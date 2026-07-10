@@ -9,13 +9,19 @@ import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-
 
 type BusinessUnitCreateFn = (args: unknown) => Promise<PrismaBusinessUnit>;
 type BusinessUnitUpdateFn = (args: unknown) => Promise<PrismaBusinessUnit>;
+type FindUniqueFn = (args: unknown) => Promise<PrismaBusinessUnit | null>;
+type FindManyFn = (args: unknown) => Promise<PrismaBusinessUnit[]>;
 
 const knownError = (code: string, target: string[]): Prisma.PrismaClientKnownRequestError =>
   knownRequestError(code, { target });
 
+type Args = { where?: Record<string, unknown> } & Record<string, unknown>;
+
 describe('PrismaBusinessUnitRepository', () => {
   let create: jest.MockedFunction<BusinessUnitCreateFn>;
   let update: jest.MockedFunction<BusinessUnitUpdateFn>;
+  let findUnique: jest.MockedFunction<FindUniqueFn>;
+  let findMany: jest.MockedFunction<FindManyFn>;
   let repo: PrismaBusinessUnitRepository;
 
   const input: CreateBusinessUnitInput = {
@@ -41,7 +47,11 @@ describe('PrismaBusinessUnitRepository', () => {
   beforeEach(() => {
     create = jest.fn() as jest.MockedFunction<BusinessUnitCreateFn>;
     update = jest.fn() as jest.MockedFunction<BusinessUnitUpdateFn>;
-    const prisma = { businessUnit: { create, update } } as unknown as PrismaService;
+    findUnique = jest.fn() as jest.MockedFunction<FindUniqueFn>;
+    findMany = jest.fn() as jest.MockedFunction<FindManyFn>;
+    const prisma = {
+      businessUnit: { create, update, findUnique, findMany },
+    } as unknown as PrismaService;
     repo = new PrismaBusinessUnitRepository(prisma);
   });
 
@@ -172,6 +182,153 @@ describe('PrismaBusinessUnitRepository', () => {
       update.mockRejectedValue(genericError);
 
       await expect(repo.update(domainUnit)).rejects.toBe(genericError);
+    });
+
+    // Prisma types meta.target loosely. On a non-array it must still resolve a field
+    // rather than throw while building the error message.
+    it('resolves the conflicting field when meta.target is not an array', async () => {
+      update.mockRejectedValue(knownRequestError('P2002', { target: 'phone' }));
+
+      await expect(repo.update(domainUnit)).rejects.toMatchObject({
+        message: expect.stringContaining('phone') as unknown as string,
+      });
+    });
+
+    it('falls back to cnpj when meta is absent entirely', async () => {
+      update.mockRejectedValue(knownRequestError('P2002'));
+
+      await expect(repo.update(domainUnit)).rejects.toMatchObject({
+        message: expect.stringContaining('cnpj') as unknown as string,
+      });
+    });
+  });
+
+  describe('findById', () => {
+    it('returns null when no row matches', async () => {
+      findUnique.mockResolvedValue(null);
+
+      await expect(repo.findById('missing')).resolves.toBeNull();
+      expect(findUnique).toHaveBeenCalledWith({ where: { id: 'missing' } });
+    });
+
+    it('maps the row to a domain BusinessUnit', async () => {
+      findUnique.mockResolvedValue(persistedRow);
+
+      const unit = await repo.findById('uuid-1');
+
+      expect(unit).toBeInstanceOf(BusinessUnit);
+      expect(unit?.id).toBe('uuid-1');
+      expect(unit?.isActive).toBe(true);
+    });
+  });
+
+  describe('findMany', () => {
+    const argsOf = (): Args => findMany.mock.calls[0][0] as Args;
+
+    beforeEach(() => {
+      findMany.mockResolvedValue([persistedRow]);
+    });
+
+    it('maps every row to a domain BusinessUnit', async () => {
+      const units = await repo.findMany({ pagination: { take: 20 } });
+
+      expect(units).toHaveLength(1);
+      expect(units[0]).toBeInstanceOf(BusinessUnit);
+    });
+
+    it('builds an empty where clause when no filters are given', async () => {
+      await repo.findMany({ pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({});
+    });
+
+    it('matches the search term against the name, case-insensitively', async () => {
+      await repo.findMany({ filters: { search: 'pelo' }, pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({
+        name: { contains: 'pelo', mode: 'insensitive' },
+      });
+    });
+
+    it('filters by exact city', async () => {
+      await repo.findMany({ filters: { city: 'Salvador' }, pagination: { take: 20 } });
+
+      expect(argsOf().where).toStrictEqual({ city: 'Salvador' });
+    });
+
+    // isActive:false is a real filter, not an absent one. A truthiness check here
+    // would silently list inactive units on the public endpoint.
+    it.each([true, false])(
+      'filters by isActive=%s rather than treating it as absent',
+      async (isActive) => {
+        await repo.findMany({ filters: { isActive }, pagination: { take: 20 } });
+
+        expect(argsOf().where).toStrictEqual({ isActive });
+      },
+    );
+
+    it('AND-combines every filter', async () => {
+      await repo.findMany({
+        filters: { search: 'pelo', city: 'Salvador', isActive: true },
+        pagination: { take: 20 },
+      });
+
+      expect(argsOf().where).toStrictEqual({
+        name: { contains: 'pelo', mode: 'insensitive' },
+        city: 'Salvador',
+        isActive: true,
+      });
+    });
+
+    it('orders by a stable (createdAt, id) key so the cursor cannot skip rows', async () => {
+      await repo.findMany({ pagination: { take: 20 } });
+
+      expect(argsOf().orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    });
+
+    it('skips the cursor row itself when paging forward', async () => {
+      await repo.findMany({ pagination: { take: 20, cursor: 'uuid-0' } });
+
+      expect(argsOf()).toMatchObject({ take: 20, cursor: { id: 'uuid-0' }, skip: 1 });
+    });
+
+    it('omits cursor and skip on the first page', async () => {
+      await repo.findMany({ pagination: { take: 20 } });
+
+      expect(argsOf()).not.toHaveProperty('cursor');
+      expect(argsOf()).not.toHaveProperty('skip');
+    });
+  });
+
+  describe('setActive', () => {
+    it('flips the flag and maps the row back', async () => {
+      update.mockResolvedValue({ ...persistedRow, isActive: false });
+
+      const unit = await repo.setActive('uuid-1', false);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'uuid-1' }, data: { isActive: false } });
+      expect(unit?.isActive).toBe(false);
+    });
+
+    // Honour the null contract so the use case raises a 404 instead of leaking a 500.
+    it('returns null on P2025 (no unit with that id)', async () => {
+      update.mockRejectedValue(knownError('P2025', []));
+
+      await expect(repo.setActive('missing', true)).resolves.toBeNull();
+    });
+
+    it('rethrows any other Prisma error unchanged', async () => {
+      const prismaError = knownError('P2002', ['phone']);
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.setActive('uuid-1', true)).rejects.toBe(prismaError);
+    });
+
+    it('rethrows non-Prisma errors unchanged', async () => {
+      const genericError = new Error('connection lost');
+      update.mockRejectedValue(genericError);
+
+      await expect(repo.setActive('uuid-1', true)).rejects.toBe(genericError);
     });
   });
 });
