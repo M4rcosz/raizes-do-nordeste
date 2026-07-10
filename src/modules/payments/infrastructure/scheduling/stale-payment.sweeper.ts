@@ -1,46 +1,26 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { IntervalSweeper } from '@shared/scheduling/interval-sweeper';
 import { ExpireStalePaymentsUseCase } from '../../application/use-cases/expire-stale-payments.use-case';
 
 /** How often the sweep runs. */
-const SWEEP_INTERVAL_MS = 5 * 60_000;
+export const STALE_PAYMENT_SWEEP_INTERVAL_MS = 5 * 60_000;
 /** Reservations older than this (still PENDING, never charged) are cancelled. */
-const RESERVATION_TTL_MS = 15 * 60_000;
+export const RESERVATION_TTL_MS = 15 * 60_000;
 
-/**
- * Dependency-free scheduler for the stale-reservation sweep (no @nestjs/schedule yet). The
- * timer is unref'd so it never keeps the process - or a Jest worker - alive, and it is
- * cleared on shutdown. Real cron/queue scheduling can replace this later without touching
- * the use case.
- */
+/** Cancels stale payment reservations. Timer lifecycle lives in IntervalSweeper. */
 @Injectable()
-export class StalePaymentSweeper implements OnApplicationBootstrap, OnModuleDestroy {
-  private readonly logger = new Logger(StalePaymentSweeper.name);
-  private timer?: NodeJS.Timeout;
+export class StalePaymentSweeper extends IntervalSweeper {
+  protected readonly failureMessage = 'Stale payment sweep failed';
 
-  constructor(private readonly expireStale: ExpireStalePaymentsUseCase) {}
-
-  onApplicationBootstrap(): void {
-    this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
-    this.timer.unref();
+  constructor(private readonly expireStale: ExpireStalePaymentsUseCase) {
+    super(STALE_PAYMENT_SWEEP_INTERVAL_MS);
   }
 
-  onModuleDestroy(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-    }
+  protected sweepOnce(): Promise<number> {
+    return this.expireStale.execute(RESERVATION_TTL_MS);
   }
 
-  private async sweep(): Promise<void> {
-    try {
-      const cancelled = await this.expireStale.execute(RESERVATION_TTL_MS);
-      if (cancelled > 0) {
-        this.logger.log(`Cancelled ${cancelled} stale payment reservation(s).`);
-      }
-    } catch (err) {
-      this.logger.error(
-        'Stale payment sweep failed',
-        err instanceof Error ? err.stack : String(err),
-      );
-    }
+  protected describeSweep(count: number): string {
+    return `Cancelled ${count} stale payment reservation(s).`;
   }
 }
