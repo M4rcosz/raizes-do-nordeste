@@ -5,6 +5,7 @@ import type { PrismaService } from '@shared/infrastructure/prisma/prisma.service
 import type { CreateCategoryInput } from '../../domain/repositories/category.repository';
 import { Category } from '../../domain/entities/category.entity';
 import { CategoryAlreadyExistsError } from '../../domain/errors/category-already-exists.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type CategoryCreateFn = (args: unknown) => Promise<PrismaCategory>;
 type CategoryFindUniqueFn = (args: unknown) => Promise<PrismaCategory | null>;
@@ -12,11 +13,7 @@ type CategoryFindManyFn = (args: unknown) => Promise<PrismaCategory[]>;
 type CategoryUpdateFn = (args: unknown) => Promise<PrismaCategory>;
 
 const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
-    code,
-    clientVersion: '7.7.0',
-    meta: { target: ['name'] },
-  });
+  knownRequestError(code, { target: ['name'] });
 
 describe('PrismaCategoryRepository', () => {
   let create: jest.MockedFunction<CategoryCreateFn>;

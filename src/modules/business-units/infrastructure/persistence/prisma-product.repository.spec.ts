@@ -9,17 +9,14 @@ import { ProductAlreadyExistsError } from '../../domain/errors/product-already-e
 import { CategoryNotFoundError } from '../../domain/errors/category-not-found.error';
 import { CorruptPersistedMoneyError } from '@shared/errors/infrastructure/corrupt-persisted-money.error';
 import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type ProductCreateFn = (args: unknown) => Promise<PrismaProduct>;
 type ProductFindUniqueFn = (args: unknown) => Promise<PrismaProduct | null>;
 type ProductUpdateFn = (args: unknown) => Promise<PrismaProduct>;
 
 const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
-    code,
-    clientVersion: '7.7.0',
-    meta: { target: ['name'] },
-  });
+  knownRequestError(code, { target: ['name'] });
 
 describe('PrismaProductRepository', () => {
   let create: jest.MockedFunction<ProductCreateFn>;

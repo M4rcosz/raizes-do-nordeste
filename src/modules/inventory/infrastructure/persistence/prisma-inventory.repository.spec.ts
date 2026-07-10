@@ -9,6 +9,7 @@ import { InventoryProductNotFoundError } from '@modules/inventory/domain/errors/
 import { InventoryQuantityOverflowError } from '@modules/inventory/domain/errors/inventory-quantity-overflow.error';
 import { MAX_INVENTORY_QUANTITY } from '@modules/inventory/domain/value-objects/inventory-quantity';
 import { Prisma } from '@prisma/client';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 // Each delegate method is an async fn; `unknown` args/return keep the cast light while
 // letting mockResolvedValue accept the raw Prisma rows.
@@ -272,7 +273,7 @@ describe('PrismaInventoryRepository', () => {
 
   describe('initialize', () => {
     const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
-      new Prisma.PrismaClientKnownRequestError('boom', { code, clientVersion: 'test' });
+      knownRequestError(code);
 
     it('creates the row and writes an opening IN ledger entry', async () => {
       prisma.inventory.create.mockResolvedValue({ ...rawInventory, quantity: 10 });

@@ -7,6 +7,7 @@ import type { CreateOrderInput } from '@modules/orders/domain/repositories/order
 import { Order } from '@modules/orders/domain/entities/order.entity';
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type OrderCreateFn = (args: unknown) => Promise<PersistedOrderRow>;
 type OrderFindUniqueFn = (args: unknown) => Promise<PersistedOrderRow | null>;
@@ -39,11 +40,7 @@ interface PersistedOrderRow {
 }
 
 const knownError = (code: string, fieldName?: string): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
-    code,
-    clientVersion: '7.7.0',
-    meta: fieldName ? { field_name: fieldName } : undefined,
-  });
+  knownRequestError(code, fieldName ? { field_name: fieldName } : undefined);
 
 describe('PrismaOrderRepository', () => {
   let create: jest.MockedFunction<OrderCreateFn>;

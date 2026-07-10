@@ -17,18 +17,14 @@ import { BusinessUnitNotFoundError } from '../../application/errors/business-uni
 import { ProductNotFoundError } from '../../application/errors/product-not-found.error';
 import { CorruptPersistedMoneyError } from '@shared/errors/infrastructure/corrupt-persisted-money.error';
 import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type AnyFn = (args: unknown) => Promise<unknown>;
 
 const knownError = (
   code: string,
   meta?: Record<string, unknown>,
-): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
-    code,
-    clientVersion: '7.7.0',
-    meta,
-  });
+): Prisma.PrismaClientKnownRequestError => knownRequestError(code, meta);
 
 describe('PrismaMenuItemRepository', () => {
   let create: jest.MockedFunction<AnyFn>;
