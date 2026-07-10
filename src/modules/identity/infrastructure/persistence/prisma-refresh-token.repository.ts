@@ -47,8 +47,16 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
     // Walk the rotation chain forward via replacedById. The chain is short
     // (one row per refresh), and following it from the presented token reaches
     // every still-active descendant, so we revoke the whole live family.
+    //
+    // `seen` guards the walk against a cycle in replacedById. Rotation only ever
+    // inserts a fresh row, so a cycle means corrupt data - but without this the
+    // walk would spin forever, holding a DB connection and, when a tx is threaded,
+    // an open transaction. Terminate on the data we get, not the data we assume.
+    const seen = new Set<string>();
     let currentId: string | null = tokenId;
-    while (currentId !== null) {
+    while (currentId !== null && !seen.has(currentId)) {
+      seen.add(currentId);
+
       const row: RefreshTokenModel | null = await db.refreshToken.findUnique({
         where: { id: currentId },
       });
