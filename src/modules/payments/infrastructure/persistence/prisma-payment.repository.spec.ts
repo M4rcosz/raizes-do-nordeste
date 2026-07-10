@@ -7,6 +7,7 @@ import { InvalidMoneyError } from '@shared/errors/domain/invalid-money.error';
 import { PaymentMethod } from '@modules/payments/domain/value-objects/payment-method';
 import { PaymentStatus } from '@modules/payments/domain/value-objects/payment-status';
 import { OrderNotPayableError } from '@modules/payments/application/errors/order-not-payable.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 // Each delegate method is an async fn; `unknown` args/return keep the cast light while
 // letting mockResolvedValue accept the raw Prisma rows.
@@ -90,9 +91,7 @@ describe('PrismaPaymentRepository', () => {
   });
 
   it('maps a unique-violation (P2002) to OrderNotPayableError', async () => {
-    prisma.payment.create.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: '7' }),
-    );
+    prisma.payment.create.mockRejectedValue(knownRequestError('P2002'));
 
     await expect(
       repo.create({

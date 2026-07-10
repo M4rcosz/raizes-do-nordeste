@@ -8,15 +8,12 @@ import { Promotion } from '@modules/promotions/domain/entities/promotion.entity'
 import { DiscountType } from '@modules/promotions/domain/value-objects/discount-type';
 import { BusinessUnitNotFoundError } from '@modules/promotions/domain/errors/business-unit-not-found.error';
 import type { CreatePromotionInput } from '@modules/promotions/domain/repositories/promotion.repository';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type Fn = (args: unknown) => Promise<unknown>;
 
 const knownError = (code: string): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
-    code,
-    clientVersion: '7.7.0',
-    meta: { target: ['business_unit_id'] },
-  });
+  knownRequestError(code, { target: ['business_unit_id'] });
 
 const persistedRow = (overrides: Partial<PrismaPromotion> = {}): PrismaPromotion => ({
   id: 'promo-1',

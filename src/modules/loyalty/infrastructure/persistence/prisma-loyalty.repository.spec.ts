@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Prisma } from '@prisma/client';
 import { PrismaLoyaltyRepository } from './prisma-loyalty.repository';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import { LoyaltyTransactionType } from '@modules/loyalty/domain/value-objects/loyalty-transaction-type';
 import { PointsRedemptionConflictError } from '@modules/loyalty/application/errors/points-redemption-conflict.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 // Each delegate method is an async fn; `unknown` args/return keep the cast light while
 // letting mockResolvedValue accept the raw Prisma rows.
@@ -90,9 +90,7 @@ describe('PrismaLoyaltyRepository', () => {
     });
 
     it('swallows a unique-violation race (P2002) as a no-op', async () => {
-      prisma.loyaltyAccount.create.mockRejectedValue(
-        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: '7' }),
-      );
+      prisma.loyaltyAccount.create.mockRejectedValue(knownRequestError('P2002'));
 
       await expect(repo.createIfAbsent('c-1')).resolves.toBeUndefined();
     });
@@ -196,9 +194,7 @@ describe('PrismaLoyaltyRepository', () => {
     });
 
     it('maps a duplicate REDEEM per order (P2002) to CONFLICT and never decrements', async () => {
-      prisma.loyaltyTransaction.create.mockRejectedValue(
-        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: '7' }),
-      );
+      prisma.loyaltyTransaction.create.mockRejectedValue(knownRequestError('P2002'));
 
       await expect(repo.redeem(input, prisma)).rejects.toBeInstanceOf(
         PointsRedemptionConflictError,

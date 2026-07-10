@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Prisma } from '@prisma/client';
 import { PrismaIdempotencyStore } from './prisma-idempotency-store';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import { IdempotencyRaceError } from '@modules/orders/application/errors/idempotency-race.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type DelegateFn = jest.MockedFunction<(args?: unknown) => Promise<unknown>>;
 
@@ -102,10 +102,7 @@ describe('PrismaIdempotencyStore', () => {
     });
 
     it('translates a unique-constraint violation (P2002) into IdempotencyRaceError', async () => {
-      const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002',
-        clientVersion: 'test',
-      });
+      const p2002 = knownRequestError('P2002');
       prisma.idempotencyKey.create.mockRejectedValue(p2002);
 
       await expect(store.record(recordInput, prisma)).rejects.toBeInstanceOf(IdempotencyRaceError);

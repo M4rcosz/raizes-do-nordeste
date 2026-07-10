@@ -5,16 +5,13 @@ import type { PrismaService } from '@shared/infrastructure/prisma/prisma.service
 import type { CreateBusinessUnitInput } from '../../domain/repositories/business-unit.repository';
 import { BusinessUnit } from '../../domain/entities/business-unit.entity';
 import { BusinessUnitAlreadyExistsError } from '../../domain/errors/business-unit-already-exists.error';
+import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
 type BusinessUnitCreateFn = (args: unknown) => Promise<PrismaBusinessUnit>;
 type BusinessUnitUpdateFn = (args: unknown) => Promise<PrismaBusinessUnit>;
 
 const knownError = (code: string, target: string[]): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError(`Prisma error ${code}`, {
-    code,
-    clientVersion: '7.7.0',
-    meta: { target },
-  });
+  knownRequestError(code, { target });
 
 describe('PrismaBusinessUnitRepository', () => {
   let create: jest.MockedFunction<BusinessUnitCreateFn>;
