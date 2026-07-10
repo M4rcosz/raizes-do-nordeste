@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 import { USERNAME_LOGIN_MAX_LENGTH } from '@modules/identity/domain/value-objects/username';
+import { PASSWORD_MAX_LENGTH } from '@modules/identity/domain/value-objects/password-policy';
 
 export class SignInDto {
   // Normalize, do not reject: registration is a deliberate act and earns a 400 on
@@ -22,6 +23,10 @@ export class SignInDto {
   username!: string;
 
   @IsString()
+  // Do NOT apply the registration strength/length rules here: an account created
+  // under an older policy must still authenticate. Keep only a low floor and the
+  // argon2 safety cap so an oversized body cannot bloat the hasher.
   @MinLength(8)
+  @MaxLength(PASSWORD_MAX_LENGTH)
   password!: string;
 }

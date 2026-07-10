@@ -15,7 +15,7 @@ const validate = (payload: Record<string, unknown>): string[] => {
 const valid = {
   name: 'Joao Atendente',
   username: 'joao.atendente',
-  password: 'supersecret',
+  password: 'Sup3r!Secret',
   role: UserRole.ATTENDANT,
 };
 
@@ -110,8 +110,21 @@ describe('CreateUserDto other fields', () => {
     expect(validate({ ...valid, businessUnitIds: ['nope'] }).length).toBeGreaterThan(0);
   });
 
-  it('rejects a password shorter than 8 chars', () => {
-    expect(validate({ ...valid, password: 'short' }).length).toBeGreaterThan(0);
+  it('rejects a password shorter than the minimum', () => {
+    expect(validate({ ...valid, password: 'Ab1!x' }).length).toBeGreaterThan(0);
+  });
+
+  it('rejects a long-but-simple password lacking character variety', () => {
+    expect(validate({ ...valid, password: 'alllowercaseletters' }).length).toBeGreaterThan(0);
+  });
+
+  it('rejects a password past the argon2 safety cap', () => {
+    expect(validate({ ...valid, password: `Aa1!${'x'.repeat(130)}` }).length).toBeGreaterThan(0);
+  });
+
+  it('trims and lowercases the email so a case variant cannot become a second account', () => {
+    const dto = plainToInstance(CreateUserDto, { ...valid, email: '  Joao@Example.COM ' });
+    expect(dto.email).toBe('joao@example.com');
   });
 
   it('rejects an unknown field', () => {

@@ -21,6 +21,14 @@ import {
   USERNAME_PATTERN,
   USERNAME_PATTERN_MESSAGE,
 } from '@modules/identity/domain/value-objects/username';
+import { IsStrongPassword } from './is-strong-password';
+import { NormalizeEmail } from './normalize-email';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_STRENGTH_MESSAGE,
+} from '@modules/identity/domain/value-objects/password-policy';
+import { EMAIL_MAX_LENGTH } from '@modules/identity/domain/value-objects/email-normalization';
 
 // Administrative creation. @Roles gates ADMIN/MANAGER at the controller; the
 // domain policy in the use case decides which target roles each may create.
@@ -44,18 +52,27 @@ export class CreateUserDto {
   @IsNotIn(RESERVED_USERNAMES, { message: RESERVED_USERNAME_MESSAGE })
   username!: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({
+    example: 'Sup3r!Secret',
+    minLength: PASSWORD_MIN_LENGTH,
+    maxLength: PASSWORD_MAX_LENGTH,
+    description: PASSWORD_STRENGTH_MESSAGE,
+  })
   @IsString()
-  @MinLength(8)
+  @MinLength(PASSWORD_MIN_LENGTH)
+  @MaxLength(PASSWORD_MAX_LENGTH)
+  @IsStrongPassword()
   password!: string;
 
   @ApiProperty({ enum: UserRole, example: UserRole.ATTENDANT })
   @IsEnum(UserRole)
   role!: UserRole;
 
-  @ApiPropertyOptional({ example: 'joao@example.com' })
+  @ApiPropertyOptional({ example: 'joao@example.com', maxLength: EMAIL_MAX_LENGTH })
   @IsOptional()
+  @NormalizeEmail()
   @IsEmail()
+  @MaxLength(EMAIL_MAX_LENGTH)
   email?: string;
 
   @ApiPropertyOptional({ example: '+5581988888888', maxLength: 20 })
