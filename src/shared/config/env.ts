@@ -41,6 +41,8 @@ const DURATION_UNIT_MS: Record<string, number> = {
   d: 86_400_000,
 };
 
+const DURATION_PATTERN = /^(\d+)(ms|s|m|h|d)$/;
+
 export function parseDurationMsEnv(
   name: string,
   raw: string | undefined,
@@ -50,7 +52,7 @@ export function parseDurationMsEnv(
     return defaultMs;
   }
 
-  const match = /^(\d+)(ms|s|m|h|d)$/.exec(raw.trim());
+  const match = DURATION_PATTERN.exec(raw.trim());
   if (!match) {
     throw new Error(
       `Invalid env ${name}: expected a duration like "15m" or "7d", received "${raw}"`,
@@ -59,6 +61,30 @@ export function parseDurationMsEnv(
 
   const [, count, unit] = match;
   return Number(count) * DURATION_UNIT_MS[unit];
+}
+
+// Same duration grammar, but returns the string itself for consumers that want a
+// duration literal rather than milliseconds (jwt's `expiresIn`). Validating here
+// means a malformed JWT_ACCESS_TTL stops the boot instead of throwing on the first
+// token sign, and an empty string falls back to the default rather than reaching
+// jwt as ''.
+export function parseDurationStringEnv(
+  name: string,
+  raw: string | undefined,
+  defaultValue: string,
+): string {
+  if (raw === undefined || raw === '') {
+    return defaultValue;
+  }
+
+  const trimmed = raw.trim();
+  if (!DURATION_PATTERN.test(trimmed)) {
+    throw new Error(
+      `Invalid env ${name}: expected a duration like "15m" or "7d", received "${raw}"`,
+    );
+  }
+
+  return trimmed;
 }
 
 // Parse CORS_ORIGINS into what the express cors option understands. Absent or

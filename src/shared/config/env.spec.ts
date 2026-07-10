@@ -3,6 +3,7 @@ import {
   parseCookieSecure,
   parseCorsOrigins,
   parseDurationMsEnv,
+  parseDurationStringEnv,
   parseIntEnv,
   parseSameSite,
   parseTrustProxy,
@@ -26,6 +27,33 @@ describe('parseDurationMsEnv', () => {
     expect(() => parseDurationMsEnv('TTL', 'abc', 0)).toThrow(/TTL.*abc/);
     expect(() => parseDurationMsEnv('TTL', '10', 0)).toThrow(/TTL/);
     expect(() => parseDurationMsEnv('TTL', '10w', 0)).toThrow(/TTL/);
+  });
+});
+
+// Backs JWT_ACCESS_TTL. jwt takes the literal string, so this validates rather
+// than converts: the fallback branch used to live inline in identity.module.ts,
+// where no unit test could reach it.
+describe('parseDurationStringEnv', () => {
+  it('returns the default when the var is absent or empty', () => {
+    expect(parseDurationStringEnv('TTL', undefined, '15m')).toBe('15m');
+    expect(parseDurationStringEnv('TTL', '', '15m')).toBe('15m');
+  });
+
+  it('returns a valid duration verbatim', () => {
+    expect(parseDurationStringEnv('TTL', '30s', '15m')).toBe('30s');
+    expect(parseDurationStringEnv('TTL', '7d', '15m')).toBe('7d');
+    expect(parseDurationStringEnv('TTL', '500ms', '15m')).toBe('500ms');
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseDurationStringEnv('TTL', '  15m  ', '1h')).toBe('15m');
+  });
+
+  // Without this the boot succeeds and jwt.sign throws on the first login instead.
+  it('throws on a malformed duration, naming the var and value', () => {
+    expect(() => parseDurationStringEnv('TTL', 'abc', '15m')).toThrow(/TTL.*abc/);
+    expect(() => parseDurationStringEnv('TTL', '10', '15m')).toThrow(/TTL/);
+    expect(() => parseDurationStringEnv('TTL', '10w', '15m')).toThrow(/TTL/);
   });
 });
 
