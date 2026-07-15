@@ -51,11 +51,13 @@ model User {
   attendantOrders       Order[]                @relation("AttendantOrders")
   inventoryTransactions InventoryTransaction[]
   loyaltyAccounts       LoyaltyAccount[]
+  aiMemberships         AiMembership[]
   refreshTokens         RefreshToken[]
 
   userUpdatedBy            User[]           @relation("UserUpdatedBy")
   ordersUpdatedBy          Order[]          @relation("OrdersUpdatedBy")
   loyaltyAccountsUpdatedBy LoyaltyAccount[] @relation("LoyaltyAccountsUpdatedBy")
+  aiMembershipsUpdatedBy   AiMembership[]   @relation("AiMembershipsUpdatedBy")
 
   @@index([role])
   @@index([businessUnitId])
@@ -426,6 +428,23 @@ model LoyaltyAccount {
   loyaltyTransactions LoyaltyTransaction[]
 
   @@map("loyalty_accounts")
+}
+
+// Per-user AI token quota. tokenBalance depletes as tokens are spent (Part 2) and
+// is topped up by an admin (enroll + adjust). Tokens are a plain Int count, not
+// money, so no Decimal here. Balance changes are conditional so it never goes negative.
+model AiMembership {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  tokenBalance Int      @default(0) @map("token_balance")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  updatedById  String?  @map("updated_by")
+
+  user      User  @relation(fields: [userId], references: [id])
+  updatedBy User? @relation("AiMembershipsUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("ai_memberships")
 }
 
 model LoyaltyTransaction {
