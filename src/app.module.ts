@@ -11,6 +11,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
 import { InventoryModule } from '@modules/inventory/inventory.module';
 import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
+import { AiModule } from '@modules/ai/ai.module';
 import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { RequestLoggingMiddleware } from '@shared/observability/request-logging.middleware';
@@ -43,6 +44,7 @@ const THROTTLE_LIMIT = parseIntEnv('THROTTLE_LIMIT', process.env.THROTTLE_LIMIT,
     BusinessUnitsModule,
     InventoryModule,
     LoyaltyModule,
+    AiModule,
     PromotionsModule,
     OrdersModule,
     PaymentsModule,

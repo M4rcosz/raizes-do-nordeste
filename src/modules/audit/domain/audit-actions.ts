@@ -43,6 +43,10 @@ export const AUDIT_ACTIONS = {
   LOYALTY_CONSENT_GIVEN: 'LOYALTY_CONSENT_GIVEN',
   /** Customer withdrew LGPD consent for the loyalty program. */
   LOYALTY_CONSENT_REVOKED: 'LOYALTY_CONSENT_REVOKED',
+  /** An admin created a user's AI token membership with an initial balance. */
+  AI_MEMBERSHIP_ENROLLED: 'AI_MEMBERSHIP_ENROLLED',
+  /** An admin credited or debited a user's AI token balance. */
+  AI_MEMBERSHIP_ADJUSTED: 'AI_MEMBERSHIP_ADJUSTED',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

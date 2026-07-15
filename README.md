@@ -29,8 +29,9 @@ customer loyalty program - across multiple business units (franchises).
 > adjustments, low-stock alerts), **loyalty** (auto-enrolment on the first
 > order, consent-gated points credited on approved payments) and
 > **promotions** (percentage / fixed-amount discounts, CRUD plus one promotion
-> applied per order, priced before loyalty). All seven bounded contexts now
-> have application code shipped (see [Roadmap](#roadmap)).
+> applied per order, priced before loyalty), plus a per-user **AI token
+> membership** (admin-managed, Part 1 of an in-app AI assistant). All eight
+> bounded contexts now have application code shipped (see [Roadmap](#roadmap)).
 
 ---
 
@@ -269,6 +270,11 @@ src/
     │   ├── domain/               ← AuditLog entity, AuditAction const, AuditLogRepository (+findMany)
     │   ├── application/          ← AuditService (impl), AuditLogger port, ListAuditLogsUseCase, errors
     │   └── infrastructure/       ← PrismaAuditLogRepository, AuditLogsController, DTOs
+    ├── ai/                       ← Per-user AI token membership (admin-managed balance)
+    │   ├── ai.module.ts
+    │   ├── domain/               ← AiMembership entity (credit/debit guards), repository, TokenBudgetExceededError
+    │   ├── application/          ← GetMyAiMembership/EnrollAiMembership/AdjustAiMembershipBalance use cases + errors
+    │   └── infrastructure/       ← PrismaAiMembershipRepository, AiMembershipController, DTOs
     ├── business-units/           ← Business Units, Products, Categories, Menu Items
     │   ├── business-units.module.ts
     │   ├── domain/               ← Pure rules (no framework imports)
@@ -328,7 +334,7 @@ test/
 └── payments.e2e-spec.ts          ← Critical flow A (order → pay → webhook → confirm) e2e
 ```
 
-> All seven bounded contexts now live under `src/modules/`, each following the
+> All eight bounded contexts now live under `src/modules/`, each following the
 > same four-layer internal shape.
 
 ---
@@ -498,6 +504,7 @@ npm run devs
 | Payments          | `payments`                                                             |
 | Promotions        | `promotions`, `order_promotions`                                       |
 | Loyalty           | `loyalty_accounts`, `loyalty_transactions`                             |
+| AI                | `ai_memberships`                                                       |
 
 > All domains above now have application code shipped, including **Promotions**
 > (`promotions`, `order_promotions`): CRUD use cases, a controller and a Prisma
@@ -1233,6 +1240,53 @@ transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 }
 ```
 
+### AI Memberships
+
+| Method  | Path                                  | Auth  | Description                                                  |
+| ------- | ------------------------------------- | ----- | ----------------------------------------------------------- |
+| `GET`   | `/api/ai/memberships/me`              | Any   | Get the authenticated user's AI token balance.              |
+| `POST`  | `/api/ai/memberships/:userId`         | ADMIN | Enroll a user with an initial token balance.                |
+| `PATCH` | `/api/ai/memberships/:userId/balance` | ADMIN | Credit or debit a user's token balance by a signed `delta`. |
+
+An AI membership is a per-user token quota that an admin grants and tops up; the
+balance depletes as tokens are spent (Part 2 - the in-app AI assistant - is not
+yet wired). It is **not** scoped to a business unit. `GET /api/ai/memberships/me`
+returns `404` until an admin enrolls the caller. Enrolment is a one-time create
+per user: `POST` returns `201`, `409` if the user already has a membership, and
+`404` if the target `userId` has no user row. `PATCH` applies a signed `delta`
+(positive credits, negative debits, zero rejected) atomically and returns `422`
+if it would drop the balance below zero or overflow the `int4` ceiling
+(`2147483647`). Both admin actions are audit-logged (`AI_MEMBERSHIP_ENROLLED` /
+`AI_MEMBERSHIP_ADJUSTED`).
+
+#### Request body - `EnrollAiMembershipDto` (`POST /api/ai/memberships/:userId`)
+
+`initialBalance` is an integer in `[0, 2147483647]`. `userId` comes from the
+route param, not the body.
+
+```json
+{ "initialBalance": 10000 }
+```
+
+#### Request body - `AdjustAiMembershipBalanceDto` (`PATCH /api/ai/memberships/:userId/balance`)
+
+`delta` is a non-zero integer in `[-2147483647, 2147483647]`.
+
+```json
+{ "delta": 5000 }
+```
+
+#### Response - `AiMembershipResponseDto`
+
+```json
+{
+  "id": "a1c4...",
+  "userId": "f3b7...",
+  "tokenBalance": 10000,
+  "createdAt": "2026-07-14T12:00:00.000Z"
+}
+```
+
 ### Promotions
 
 | Method  | Path                                               | Auth          | Description                                   |
@@ -1494,8 +1548,9 @@ Point Render's health check at the shallow liveness route **`GET /api/health`**
 
 ## Roadmap
 
-The catalog, identity, audit, orders, payments, inventory, loyalty and
-promotions modules are shipped. Remaining work (per-module follow-ups below):
+The catalog, identity, audit, orders, payments, inventory, loyalty,
+promotions and AI-membership modules are shipped. Remaining work (per-module
+follow-ups below):
 
 - [x] **Auth** - JWT login, global role guard, argon2 hashing (`CUSTOMER`,
       `ATTENDANT`, `KITCHEN`, `MANAGER`, `ADMIN`), public customer
@@ -1540,6 +1595,11 @@ promotions modules are shipped. Remaining work (per-module follow-ups below):
       redemption at order creation (1 point = `R$0.10` discount), balance-validated
       and debited in the same transaction. Points expire after a rolling 12-month
       window (daily sweep), and are reversed when an order is cancelled.
+- [x] **AI Memberships (Part 1)** - per-user, admin-managed AI token quota:
+      self-service balance read (`GET /api/ai/memberships/me`), ADMIN enrol with
+      an initial balance and ADMIN signed-delta adjustments, kept non-negative and
+      int4-bounded, with enrol/adjust audit entries. Token spending and the Gemini
+      chatbot are Part 2 (not built yet).
 
 ---
 
