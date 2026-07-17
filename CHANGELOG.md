@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.5.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.4.2...v2.5.0) (2026-07-17)
+
+
+### Features
+
+* **ai:** add admin-managed per-user AI token membership ([4c89ae6](https://github.com/M4rcosz/raizes-do-nordeste/commit/4c89ae62e819159954915ed658d0af9ef23e44f9))
+* **ai:** add Gemini-backed chat co-worker with actor-scoped tool use ([1caf2fd](https://github.com/M4rcosz/raizes-do-nordeste/commit/1caf2fd8156ccfd0e0dd99a3a56f0795078b95f4))
+* **identity:** harden password and email input validation ([36c7ddc](https://github.com/M4rcosz/raizes-do-nordeste/commit/36c7ddc5b73b046626fb96dcf69f6cf160d16cc8))
+* **orders:** add filters and sorting to staff order listing ([79f36e8](https://github.com/M4rcosz/raizes-do-nordeste/commit/79f36e8b06fb8d6388ddb2aed52d6f9746f84cf6))
+
+
+### Bug Fixes
+
+* **identity:** enforce case-insensitive email uniqueness at the DB ([6dc6fb3](https://github.com/M4rcosz/raizes-do-nordeste/commit/6dc6fb3b3c6829ee4feb37dd43b6189710fba5a4))
+
+
+### Build System
+
+* **test:** replace ts-jest with @swc/jest transform ([4a0122f](https://github.com/M4rcosz/raizes-do-nordeste/commit/4a0122ffba8f0bb6140193efc5213562dd8c5bfe))
+
 ## [2.4.2](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.4.1...v2.4.2) (2026-07-10)
 
 
