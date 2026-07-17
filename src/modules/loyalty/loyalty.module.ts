@@ -16,6 +16,8 @@ import { ExpireLoyaltyPointsUseCase } from './application/use-cases/expire-loyal
 import { LoyaltyExpirySweeper } from './infrastructure/scheduling/loyalty-expiry.sweeper';
 import { LOYALTY_REVERSAL } from './application/ports/loyalty-reversal.port';
 import { ReverseLoyaltyForOrderUseCase } from './application/use-cases/reverse-loyalty-for-order.use-case';
+import { LOYALTY_FOR_AI } from './application/ports/loyalty-for-ai.port';
+import { LoyaltyForAiService } from './application/services/loyalty-for-ai.service';
 import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
 import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
 
@@ -44,6 +46,10 @@ import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-tr
       useClass: ReverseLoyaltyForOrderUseCase,
     },
     {
+      provide: LOYALTY_FOR_AI,
+      useClass: LoyaltyForAiService,
+    },
+    {
       provide: TRANSACTION_RUNNER,
       useClass: PrismaTransactionRunner,
     },
@@ -53,6 +59,12 @@ import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-tr
     ExpireLoyaltyPointsUseCase,
     LoyaltyExpirySweeper,
   ],
-  exports: [LOYALTY_ENROLLMENT, LOYALTY_EARNING, LOYALTY_REDEMPTION, LOYALTY_REVERSAL],
+  exports: [
+    LOYALTY_ENROLLMENT,
+    LOYALTY_EARNING,
+    LOYALTY_REDEMPTION,
+    LOYALTY_REVERSAL,
+    LOYALTY_FOR_AI,
+  ],
 })
 export class LoyaltyModule {}

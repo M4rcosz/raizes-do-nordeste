@@ -19,6 +19,8 @@ import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
 import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { ORDER_FOR_PAYMENT } from './application/ports/order-for-payment.port';
 import { OrderForPaymentService } from './application/services/order-for-payment.service';
+import { ORDER_FOR_AI } from './application/ports/order-for-ai.port';
+import { OrderForAiService } from './application/services/order-for-ai.service';
 import { IDEMPOTENCY_STORE } from './application/ports/idempotency-store.port';
 import { PrismaIdempotencyStore } from './infrastructure/persistence/prisma-idempotency-store';
 import { ExpireIdempotencyKeysUseCase } from './application/use-cases/expire-idempotency-keys.use-case';
@@ -53,6 +55,10 @@ import { IdempotencyKeySweeper } from './infrastructure/scheduling/idempotency-k
       useClass: OrderForPaymentService,
     },
     {
+      provide: ORDER_FOR_AI,
+      useClass: OrderForAiService,
+    },
+    {
       provide: IDEMPOTENCY_STORE,
       useClass: PrismaIdempotencyStore,
     },
@@ -65,6 +71,6 @@ import { IdempotencyKeySweeper } from './infrastructure/scheduling/idempotency-k
     ExpireIdempotencyKeysUseCase,
     IdempotencyKeySweeper,
   ],
-  exports: [ORDER_FOR_PAYMENT],
+  exports: [ORDER_FOR_PAYMENT, ORDER_FOR_AI],
 })
 export class OrdersModule {}

@@ -479,6 +479,8 @@ npm run devs
 | `JWT_ACCESS_TTL`    | Lifetime of the short-lived access JWT. Accepts `ms`/`s`/`m`/`h`/`d` suffixes. Default `15m`. | `15m` |
 | `JWT_REFRESH_TTL`   | Lifetime of the stateful refresh token. Accepts the same suffixes. Default `7d`. | `7d` |
 | `PAYMENT_WEBHOOK_SECRET` | HMAC secret the payment webhook is signed with. If unset, the webhook guard **fails closed** (every callback returns `401`). | `dev-webhook-secret` |
+| `GEMINI_API_KEY`    | API key for the Gemini support assistant (`POST /api/ai/chat`). **Required** - the Gemini adapter calls `getOrThrow('GEMINI_API_KEY')` on boot. Obtain it manually from [Google AI Studio](https://aistudio.google.com/apikey). | `AIza...` |
+| `GEMINI_TIMEOUT_MS` | Hard deadline (ms) for a single Gemini call, so a hung provider request can't pin an HTTP connection. Optional, positive integer. Default `30000`. | `30000` |
 | `CORS_ORIGINS`      | Comma-separated browser origin allowlist. Unset reflects any origin (dev). **Required in production** - the app sends credentialed CORS (refresh cookie), so the boot **fails** if unset when `NODE_ENV=production`. | `https://app.vercel.app` |
 | `COOKIE_SECURE`     | `Secure` attribute of the refresh cookie. Default `true`. Set `false` only for local http dev. | `true` |
 | `COOKIE_SAMESITE`   | `SameSite` attribute of the refresh cookie: `strict`/`lax`/`none`. Default `strict`. `none` requires `COOKIE_SECURE=true` (boot fails otherwise) and is for cross-site deploys only. | `strict` |
