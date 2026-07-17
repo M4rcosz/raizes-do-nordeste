@@ -56,16 +56,24 @@ export function buildCursorMeta(
  * extra row (`take: limit + 1`); its presence means another page exists, so we
  * trim the probe row, derive hasMore and build the cursor meta from the last
  * kept id. T only needs an `id` for the cursor.
+ *
+ * `encodeCursor` lets a caller emit an opaque token instead of the bare id (e.g.
+ * one carrying the active sort); omitted, the cursor stays the raw id.
  */
 export function buildCursorPage<T extends { id: string }>(
   items: T[],
   limit: number,
+  encodeCursor: (item: T) => string = (item) => item.id,
 ): CursorPaginatedResult<T> {
   const hasMore = items.length > limit;
   const trimmed = hasMore ? items.slice(0, limit) : items;
-  const lastItemId = trimmed[trimmed.length - 1]?.id;
+  const lastItem = trimmed[trimmed.length - 1];
   return {
     data: trimmed,
-    meta: buildCursorMeta(limit, hasMore, lastItemId),
+    meta: buildCursorMeta(
+      limit,
+      hasMore,
+      lastItem === undefined ? undefined : encodeCursor(lastItem),
+    ),
   };
 }

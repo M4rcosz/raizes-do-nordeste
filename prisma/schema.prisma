@@ -288,6 +288,13 @@ model Order {
   @@index([orderStatus])
   @@index([orderChannel])
   @@index([createdAt, id])
+  // Serves "orders served by X, newest first" as an ordered scan instead of a
+  // bitmap scan plus sort. attendantId leads, so it still backs the FK check.
+  @@index([attendantId, createdAt, id])
+  // Mirrors the (sort column, id) shape of createdAt so sorting by total keeps a
+  // stable tie-break and the row cursor stays index-backed. Deliberately not led by
+  // businessUnitId: an unfiltered ADMIN has no unit predicate to lead with.
+  @@index([totalAmount, id])
   @@map("orders")
 }
 

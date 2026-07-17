@@ -15,6 +15,11 @@ import { Prisma } from '@prisma/client';
 import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
 import { TransactionContext } from '@shared/transaction/transaction-runner.port';
+import {
+  DEFAULT_ORDER_SORT,
+  type OrderSort,
+  type OrderSortField,
+} from '@modules/orders/domain/value-objects/order-sort';
 
 @Injectable()
 export class PrismaOrderRepository implements OrderRepository {
@@ -62,11 +67,11 @@ export class PrismaOrderRepository implements OrderRepository {
   }
 
   async findMany(input: FindOrdersInput): Promise<Order[]> {
-    const { filters, pagination } = input;
+    const { filters, pagination, sort } = input;
 
     const raws = await this.prisma.order.findMany({
       where: this.buildWhere(filters),
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: this.buildOrderBy(sort),
       take: pagination.take,
       ...(pagination.cursor && {
         cursor: { id: pagination.cursor },
@@ -108,6 +113,20 @@ export class PrismaOrderRepository implements OrderRepository {
     }
   }
 
+  /**
+   * Row-cursor pagination stays correct under any sort only while the last term is
+   * unique, so id is always appended. It also tie-breaks rows sharing a sort value
+   * (two orders with the same totalAmount) into a stable, repeatable order.
+   */
+  private buildOrderBy(sort?: OrderSort): Prisma.OrderOrderByWithRelationInput[] {
+    const { field, direction } = sort ?? DEFAULT_ORDER_SORT;
+    const term: Record<OrderSortField, Prisma.OrderOrderByWithRelationInput> = {
+      createdAt: { createdAt: direction },
+      totalAmount: { totalAmount: direction },
+    };
+    return [term[field], { id: direction }];
+  }
+
   private buildWhere(filters?: OrderFilters): Prisma.OrderWhereInput {
     if (!filters) {
       return {};
@@ -129,6 +148,24 @@ export class PrismaOrderRepository implements OrderRepository {
     }
     if (filters.orderStatus) {
       where.orderStatus = filters.orderStatus;
+    }
+    if (filters.attendantId !== undefined) {
+      where.attendantId = filters.attendantId;
+    }
+    // Each bound is set on its own so a one-sided range stays open at the other end.
+    if (filters.createdAtFrom !== undefined || filters.createdAtTo !== undefined) {
+      where.createdAt = {
+        ...(filters.createdAtFrom !== undefined && { gte: filters.createdAtFrom }),
+        ...(filters.createdAtTo !== undefined && { lte: filters.createdAtTo }),
+      };
+    }
+    // Decimal strings handed to Prisma untouched: parsing them here would round-trip
+    // money through a JS number.
+    if (filters.minTotal !== undefined || filters.maxTotal !== undefined) {
+      where.totalAmount = {
+        ...(filters.minTotal !== undefined && { gte: filters.minTotal }),
+        ...(filters.maxTotal !== undefined && { lte: filters.maxTotal }),
+      };
     }
     return where;
   }

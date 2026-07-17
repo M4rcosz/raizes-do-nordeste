@@ -43,6 +43,7 @@ import { CurrentUser } from '@shared/auth/current-user.decorator';
 import { Roles } from '@shared/auth/roles.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import { DEFAULT_ORDER_SORT } from '@modules/orders/domain/value-objects/order-sort';
 
 /** Endpoint identity for idempotency scoping; a key is unique per (user, endpoint). */
 const CREATE_ORDER_ENDPOINT = 'POST /orders';
@@ -125,17 +126,46 @@ export class OrdersController {
   @Roles(STAFF_ROLES)
   @ApiOperation({ summary: 'List orders with optional filters (cursor-paginated). Staff only.' })
   @ApiOkResponse({ type: PaginatedOrderResponseDto })
+  @ApiUnprocessableEntityResponse({ description: 'Cursor is invalid or does not match the sort.' })
   async list(
     @Query() query: OrdersQueryDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResponseDto<OrderResponseDto>> {
-    const { limit: rawLimit, cursor, businessUnitId, orderChannel, orderStatus } = query;
+    const {
+      limit: rawLimit,
+      cursor,
+      businessUnitId,
+      orderChannel,
+      orderStatus,
+      attendantId,
+      customerId,
+      createdAtFrom,
+      createdAtTo,
+      minTotal,
+      maxTotal,
+      sortBy,
+      sortDir,
+    } = query;
     const limit = sanitizeLimit(rawLimit);
 
     const result = await this.listOrders.execute({
       cursor,
       limit,
-      filters: { businessUnitId, orderChannel, orderStatus },
+      filters: {
+        businessUnitId,
+        orderChannel,
+        orderStatus,
+        attendantId,
+        customerId,
+        createdAtFrom,
+        createdAtTo,
+        minTotal,
+        maxTotal,
+      },
+      sort: {
+        field: sortBy ?? DEFAULT_ORDER_SORT.field,
+        direction: sortDir ?? DEFAULT_ORDER_SORT.direction,
+      },
       actor: { id: user.sub, role: user.role, businessUnitIds: user.businessUnitIds },
     });
 

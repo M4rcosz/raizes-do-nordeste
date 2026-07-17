@@ -3,6 +3,7 @@ import type { CursorPaginationParams } from '@shared/pagination/pagination';
 import { Order } from '../entities/order.entity';
 import type { OrderChannel } from '../value-objects/order-channel';
 import type { OrderStatus } from '../value-objects/order-status';
+import type { OrderSort } from '../value-objects/order-sort';
 
 export interface CreateOrderItem {
   productId: string;
@@ -30,15 +31,24 @@ export interface OrderFilters {
    * matches nothing (a scoped actor whose filter fell outside their claim).
    */
   businessUnitIds?: string[];
-  /** Restrict to a single customer's own orders (the customer self-listing path). */
+  /** Restrict to one customer: the customer self-listing path, or a staff-side filter. */
   customerId?: string;
   orderChannel?: OrderChannel;
   orderStatus?: OrderStatus;
+  attendantId?: string;
+  /** Inclusive on both ends; either side may stand alone (open-ended range). */
+  createdAtFrom?: Date;
+  createdAtTo?: Date;
+  /** Decimal strings, never numbers: money stays exact from the wire to the query. */
+  minTotal?: string;
+  maxTotal?: string;
 }
 
 export interface FindOrdersInput {
   filters?: OrderFilters;
   pagination: CursorPaginationParams;
+  /** Absent keeps the repository default (createdAt desc). */
+  sort?: OrderSort;
 }
 
 export interface UpdateOrderStatusInput {

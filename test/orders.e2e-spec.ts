@@ -716,4 +716,110 @@ describe('Orders (e2e)', () => {
         .expect(403);
     });
   });
+
+  describe('GET /orders sorting and cursor', () => {
+    interface Page {
+      data: OrderResponseBody[];
+      meta: { nextCursor: string | null; hasMore: boolean };
+    }
+
+    // A price no other test uses, so the total filter isolates exactly these orders
+    // from the ones the rest of the suite leaves behind on the shared unit.
+    const tiedPrice = '7.77';
+    const tiedFilter = `minTotal=${tiedPrice}&maxTotal=${tiedPrice}`;
+    const tiedOrderIds: string[] = [];
+
+    beforeAll(async () => {
+      const tag = randomUUID().slice(0, 8);
+      const product = await prisma.product.create({
+        data: {
+          name: `E2E Tied ${tag}`,
+          description: 'tied totals',
+          basePrice: tiedPrice,
+          imageUrl: 'https://example.com/tied.jpg',
+          categoryId,
+          menuItems: {
+            create: { businessUnitId: unitId, customPrice: tiedPrice, isAvailable: true },
+          },
+        },
+      });
+      await prisma.inventory.create({
+        data: { businessUnitId: unitId, productId: product.id, quantity: 100, minQuantity: 0 },
+      });
+
+      // Five orders sharing one totalAmount. Combo meals produce ties constantly, and a
+      // tie straddling a page boundary is what breaks a cursor lacking a unique
+      // tie-break - the fake-repo unit tests cannot reach the real SQL that does it.
+      for (let i = 0; i < 5; i += 1) {
+        const res = await request(server)
+          .post('/api/orders')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            businessUnitId: unitId,
+            orderChannel: 'APP',
+            orderItems: [{ productId: product.id, quantity: 1, unitPrice: tiedPrice }],
+          })
+          .expect(201);
+        tiedOrderIds.push((res.body as OrderResponseBody).id);
+      }
+    });
+
+    const fetchPage = async (query: string): Promise<Page> => {
+      const res = await request(server)
+        .get(`/api/orders?${query}`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(200);
+      return res.body as Page;
+    };
+
+    it('pages through tied totalAmount rows without skipping or repeating one', async () => {
+      const seen: string[] = [];
+      let cursor = '';
+      let pages = 0;
+
+      do {
+        const paging = cursor === '' ? '' : `&cursor=${encodeURIComponent(cursor)}`;
+        const page = await fetchPage(
+          `${tiedFilter}&sortBy=totalAmount&sortDir=desc&limit=2${paging}`,
+        );
+        seen.push(...page.data.map((order) => order.id));
+        cursor = page.meta.hasMore ? (page.meta.nextCursor ?? '') : '';
+        pages += 1;
+      } while (cursor !== '' && pages < 10);
+
+      expect(seen.slice().sort()).toEqual(tiedOrderIds.slice().sort());
+      expect(new Set(seen).size).toBe(seen.length);
+    });
+
+    it('rejects a cursor replayed under a different sort with 422', async () => {
+      const first = await fetchPage(`${tiedFilter}&sortBy=createdAt&sortDir=desc&limit=2`);
+      const cursor = first.meta.nextCursor ?? '';
+      expect(cursor).not.toBe('');
+
+      await request(server)
+        .get(
+          `/api/orders?${tiedFilter}&sortBy=totalAmount&sortDir=desc&limit=2` +
+            `&cursor=${encodeURIComponent(cursor)}`,
+        )
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(422);
+    });
+
+    it('rejects a malformed cursor with 422', async () => {
+      await request(server)
+        .get(`/api/orders?${tiedFilter}&limit=2&cursor=not-a-real-token`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(422);
+    });
+
+    it('filters by the createdAt range', async () => {
+      const past = new Date('2020-01-01T00:00:00.000Z').toISOString();
+
+      const before = await fetchPage(`${tiedFilter}&createdAtTo=${past}&limit=50`);
+      expect(before.data).toHaveLength(0);
+
+      const since = await fetchPage(`${tiedFilter}&createdAtFrom=${past}&limit=50`);
+      expect(since.data.map((order) => order.id).sort()).toEqual(tiedOrderIds.slice().sort());
+    });
+  });
 });
