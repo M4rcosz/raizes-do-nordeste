@@ -11,6 +11,7 @@ import { UpdateOrderStatusUseCase } from '@modules/orders/application/use-cases/
 import { Order } from '@modules/orders/domain/entities/order.entity';
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 import { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
+import { OrderSortField, SortDirection } from '@modules/orders/domain/value-objects/order-sort';
 import { OrderResponseDto } from '../dto/order-response.dto';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
@@ -98,11 +99,78 @@ describe('OrdersController', () => {
           businessUnitId: undefined,
           orderChannel: OrderChannel.APP,
           orderStatus: undefined,
+          attendantId: undefined,
+          customerId: undefined,
+          createdAtFrom: undefined,
+          createdAtTo: undefined,
+          minTotal: undefined,
+          maxTotal: undefined,
         },
+        sort: { field: OrderSortField.CREATED_AT, direction: SortDirection.DESC },
         actor: { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] },
       });
       expect(response).toBeInstanceOf(PaginatedResponseDto);
       expect(response.data[0]).toBeInstanceOf(OrderResponseDto);
+    });
+
+    it('forwards the range, attendant, customer, total bounds and sort from the query', async () => {
+      listOrders.execute.mockResolvedValue({
+        data: [],
+        meta: { limit: 20, hasMore: false, nextCursor: null },
+      });
+      const createdAtFrom = new Date('2026-07-01T00:00:00.000Z');
+      const createdAtTo = new Date('2026-07-31T23:59:59.999Z');
+
+      await controller.list(
+        {
+          cursor: 'token-1',
+          attendantId: 'att-1',
+          customerId: 'cus-1',
+          createdAtFrom,
+          createdAtTo,
+          minTotal: '10.00',
+          maxTotal: '250.00',
+          sortBy: OrderSortField.TOTAL_AMOUNT,
+          sortDir: SortDirection.ASC,
+        },
+        jwt('staff-1', UserRole.MANAGER),
+      );
+
+      expect(listOrders.execute).toHaveBeenCalledWith({
+        cursor: 'token-1',
+        limit: 20,
+        filters: {
+          businessUnitId: undefined,
+          orderChannel: undefined,
+          orderStatus: undefined,
+          attendantId: 'att-1',
+          customerId: 'cus-1',
+          createdAtFrom,
+          createdAtTo,
+          minTotal: '10.00',
+          maxTotal: '250.00',
+        },
+        sort: { field: OrderSortField.TOTAL_AMOUNT, direction: SortDirection.ASC },
+        actor: { id: 'staff-1', role: UserRole.MANAGER, businessUnitIds: ['bu-1'] },
+      });
+    });
+
+    it('defaults sortDir to desc when only sortBy is supplied', async () => {
+      listOrders.execute.mockResolvedValue({
+        data: [],
+        meta: { limit: 20, hasMore: false, nextCursor: null },
+      });
+
+      await controller.list(
+        { sortBy: OrderSortField.TOTAL_AMOUNT },
+        jwt('staff-1', UserRole.MANAGER),
+      );
+
+      expect(listOrders.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sort: { field: OrderSortField.TOTAL_AMOUNT, direction: SortDirection.DESC },
+        }),
+      );
     });
   });
 

@@ -6,6 +6,7 @@ import type { PrismaService } from '@shared/infrastructure/prisma/prisma.service
 import type { CreateOrderInput } from '@modules/orders/domain/repositories/order.repository';
 import { Order } from '@modules/orders/domain/entities/order.entity';
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
+import { OrderSortField, SortDirection } from '@modules/orders/domain/value-objects/order-sort';
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
 import { knownRequestError } from '@shared/infrastructure/prisma/testing/prisma-mock';
 
@@ -272,6 +273,103 @@ describe('PrismaOrderRepository', () => {
         take: 20,
         include: { orderItems: true },
       });
+    });
+
+    it('maps a sort to its column plus id as the unique final tie-break', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({
+        pagination: { take: 20 },
+        sort: { field: OrderSortField.TOTAL_AMOUNT, direction: SortDirection.ASC },
+      });
+
+      // id must stay the last term: the row cursor is only stable while it is unique.
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: [{ totalAmount: 'asc' }, { id: 'asc' }] }),
+      );
+    });
+
+    it('sorts by createdAt ascending when asked', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({
+        pagination: { take: 20 },
+        sort: { field: OrderSortField.CREATED_AT, direction: SortDirection.ASC },
+      });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+      );
+    });
+
+    it('filters by attendantId', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({ filters: { attendantId: 'att-1' }, pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { attendantId: 'att-1' } }),
+      );
+    });
+
+    it('builds a closed createdAt range with an inclusive upper bound', async () => {
+      findMany.mockResolvedValue([]);
+      const from = new Date('2026-07-01T00:00:00.000Z');
+      const to = new Date('2026-07-31T23:59:59.999Z');
+
+      await repo.findMany({
+        filters: { createdAtFrom: from, createdAtTo: to },
+        pagination: { take: 20 },
+      });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { createdAt: { gte: from, lte: to } } }),
+      );
+    });
+
+    it('leaves the upper end open when only createdAtFrom is given', async () => {
+      findMany.mockResolvedValue([]);
+      const from = new Date('2026-07-01T00:00:00.000Z');
+
+      await repo.findMany({ filters: { createdAtFrom: from }, pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { createdAt: { gte: from } } }),
+      );
+    });
+
+    it('leaves the lower end open when only createdAtTo is given', async () => {
+      findMany.mockResolvedValue([]);
+      const to = new Date('2026-07-31T23:59:59.999Z');
+
+      await repo.findMany({ filters: { createdAtTo: to }, pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { createdAt: { lte: to } } }),
+      );
+    });
+
+    it('passes the total bounds through as decimal strings', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({
+        filters: { minTotal: '10.00', maxTotal: '250.00' },
+        pagination: { take: 20 },
+      });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { totalAmount: { gte: '10.00', lte: '250.00' } } }),
+      );
+    });
+
+    it('leaves the upper end open when only minTotal is given', async () => {
+      findMany.mockResolvedValue([]);
+
+      await repo.findMany({ filters: { minTotal: '10.00' }, pagination: { take: 20 } });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { totalAmount: { gte: '10.00' } } }),
+      );
     });
   });
 

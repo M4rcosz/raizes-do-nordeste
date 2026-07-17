@@ -1,8 +1,12 @@
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 import { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
+import { OrderSortField, SortDirection } from '@modules/orders/domain/value-objects/order-sort';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsDate, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+
+/** Money on the wire. Decimal(10,2) is 10 digits total, so 8 of them may precede the point. */
+const DECIMAL_AMOUNT_PATTERN = /^\d{1,8}(\.\d{1,2})?$/;
 
 export class OrdersQueryDto {
   @ApiPropertyOptional({
@@ -17,8 +21,9 @@ export class OrdersQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    example: '550e8400-e29b-41d4-a716-446655440000',
-    description: 'ID of the last item from the previous page (cursor)',
+    description:
+      'Opaque token from the previous page (meta.nextCursor). Bound to the sort it was ' +
+      'issued under: reusing it with a different sortBy/sortDir is rejected.',
   })
   @IsOptional()
   @IsString()
@@ -38,6 +43,65 @@ export class OrdersQueryDto {
   @IsOptional()
   @IsEnum(OrderStatus)
   orderStatus?: OrderStatus;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Filter by the attendant who served' })
+  @IsOptional()
+  @IsUUID()
+  attendantId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Filter by customer' })
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-07-01T00:00:00.000Z',
+    description: 'Only orders created at or after this instant (inclusive)',
+  })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  createdAtFrom?: Date;
+
+  @ApiPropertyOptional({
+    example: '2026-07-31T23:59:59.999Z',
+    description: 'Only orders created at or before this instant (inclusive)',
+  })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  createdAtTo?: Date;
+
+  @ApiPropertyOptional({
+    example: '10.00',
+    description: 'Minimum order total, inclusive (decimal string, up to 2 decimals)',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_AMOUNT_PATTERN, { message: 'minTotal must be a decimal amount, e.g. 10.00' })
+  minTotal?: string;
+
+  @ApiPropertyOptional({
+    example: '250.00',
+    description: 'Maximum order total, inclusive (decimal string, up to 2 decimals)',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_AMOUNT_PATTERN, { message: 'maxTotal must be a decimal amount, e.g. 250.00' })
+  maxTotal?: string;
+
+  @ApiPropertyOptional({
+    enum: OrderSortField,
+    description: 'Column to sort by (default createdAt)',
+  })
+  @IsOptional()
+  @IsEnum(OrderSortField)
+  sortBy?: OrderSortField;
+
+  @ApiPropertyOptional({ enum: SortDirection, description: 'Sort direction (default desc)' })
+  @IsOptional()
+  @IsEnum(SortDirection)
+  sortDir?: SortDirection;
 }
 
 export class OrderIdParamDto {
