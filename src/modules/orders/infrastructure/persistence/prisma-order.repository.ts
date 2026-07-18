@@ -33,6 +33,7 @@ export class PrismaOrderRepository implements OrderRepository {
         data: {
           businessUnitId: input.businessUnitId,
           customerId: input.customerId,
+          customerName: input.customerName,
           attendantId: input.attendantId,
           totalAmount: input.totalAmount,
           pointsRedeemed: input.pointsRedeemed,
@@ -47,6 +48,7 @@ export class PrismaOrderRepository implements OrderRepository {
         },
         include: {
           orderItems: true,
+          customer: { select: { name: true } },
         },
       });
 
@@ -61,7 +63,7 @@ export class PrismaOrderRepository implements OrderRepository {
 
     const raw = await db.order.findUnique({
       where: { id },
-      include: { orderItems: true },
+      include: { orderItems: true, customer: { select: { name: true } } },
     });
     return raw ? this.toEntity(raw) : null;
   }
@@ -77,7 +79,7 @@ export class PrismaOrderRepository implements OrderRepository {
         cursor: { id: pagination.cursor },
         skip: 1,
       }),
-      include: { orderItems: true },
+      include: { orderItems: true, customer: { select: { name: true } } },
     });
 
     return raws.map((raw) => this.toEntity(raw));
@@ -104,7 +106,7 @@ export class PrismaOrderRepository implements OrderRepository {
 
       const updated = await db.order.findUnique({
         where: { id: input.id },
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
       // Vanished between the update and the re-read (delete race): treat as a conflict.
       return updated ? this.toEntity(updated) : null;
@@ -203,11 +205,19 @@ export class PrismaOrderRepository implements OrderRepository {
     return 'related entity';
   }
 
-  private toEntity(raw: Prisma.OrderGetPayload<{ include: { orderItems: true } }>): Order {
+  private toEntity(
+    raw: Prisma.OrderGetPayload<{
+      include: { orderItems: true; customer: { select: { name: true } } };
+    }>,
+  ): Order {
     return new Order(
       raw.id,
       raw.businessUnitId,
       raw.customerId,
+      // Exactly one side is ever populated, so the collapse is unambiguous: the stored
+      // guest name for account-less orders, otherwise the account holder's current name
+      // (read live, never denormalized).
+      raw.customerName ?? raw.customer?.name ?? null,
       raw.attendantId,
       raw.pointsRedeemed,
       raw.pointsEarned,

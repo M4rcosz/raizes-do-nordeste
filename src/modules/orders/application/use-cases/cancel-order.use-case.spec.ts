@@ -30,6 +30,7 @@ const makeOrder = (
     'bu-1',
     opts.customerId === undefined ? 'c-1' : opts.customerId,
     null,
+    null,
     opts.pointsRedeemed ?? 0,
     opts.pointsEarned ?? 0,
     Money.fromDecimalString('20.00'),

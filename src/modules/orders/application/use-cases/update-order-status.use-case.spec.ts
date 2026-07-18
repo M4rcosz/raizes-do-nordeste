@@ -20,6 +20,7 @@ const makeOrder = (status: OrderStatus): Order =>
     'bu-1',
     'c-1',
     null,
+    null,
     0,
     0,
     Money.zero(),

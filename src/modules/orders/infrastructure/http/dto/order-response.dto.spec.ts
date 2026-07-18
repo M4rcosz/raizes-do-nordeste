@@ -11,6 +11,7 @@ describe('OrderResponseDto.fromEntity', () => {
     'o-1',
     'bu-1',
     'c-1',
+    'Ana Souza',
     null,
     0,
     5,
@@ -39,5 +40,39 @@ describe('OrderResponseDto.fromEntity', () => {
     expect(dto.attendantId).toBeNull();
     expect(dto.pointsEarned).toBe(5);
     expect(dto.orderItems).toHaveLength(1);
+  });
+
+  describe('customerName', () => {
+    it("exposes the account holder's name alongside the customerId", () => {
+      const dto = OrderResponseDto.fromEntity(order);
+
+      expect(dto.customerId).toBe('c-1');
+      expect(dto.customerName).toBe('Ana Souza');
+    });
+
+    it('exposes the guest name on an order with no customer account', () => {
+      const guestOrder = new Order(
+        'o-2',
+        'bu-1',
+        null,
+        'Maria',
+        'att-1',
+        0,
+        0,
+        Money.fromDecimalString('20'),
+        null,
+        OrderChannel.TOTEM,
+        'PENDING',
+        new Date('2026-01-01'),
+        new Date('2026-01-02'),
+        null,
+        [item],
+      );
+
+      const dto = OrderResponseDto.fromEntity(guestOrder);
+
+      expect(dto.customerId).toBeNull();
+      expect(dto.customerName).toBe('Maria');
+    });
   });
 });

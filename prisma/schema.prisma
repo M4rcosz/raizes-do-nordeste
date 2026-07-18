@@ -260,6 +260,10 @@ model Order {
   id             String  @id @default(uuid())
   businessUnitId String  @map("business_unit_id")
   customerId     String? @map("customer_id")
+  // Guest name for orders with no account behind them (TOTEM/COUNTER/PICKUP walk-ups).
+  // Mutually exclusive with customerId: when an account is attached the display name
+  // resolves from the User relation, so this column stays NULL (no stale copy).
+  customerName   String? @map("customer_name") @db.VarChar(60)
   attendantId    String? @map("attendant_id")
 
   pointsRedeemed Int          @default(0) @map("points_redeemed")

@@ -14,6 +14,7 @@ const makeOrder = (customerId: string | null): Order =>
     'bu-1',
     customerId,
     null,
+    null,
     0,
     0,
     Money.zero(),

@@ -23,6 +23,7 @@ const buildOrder = (id = 'o-1', status: OrderStatus = OrderStatus.PENDING): Orde
     'bu-1',
     'c-1',
     null,
+    null,
     0,
     0,
     Money.zero(),
@@ -269,6 +270,21 @@ describe('OrdersController', () => {
       );
       expect(response).toBeInstanceOf(OrderResponseDto);
       expect(response.id).toBe('o-9');
+    });
+
+    it('forwards customerName to the use case, which owns the channel rule', async () => {
+      createOrder.execute.mockResolvedValue(buildOrder('o-9'));
+
+      await controller.create(
+        { ...body, orderChannel: OrderChannel.TOTEM, customerName: 'Maria' },
+        jwt('c-1', UserRole.CUSTOMER),
+      );
+
+      expect(createOrder.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ customerName: 'Maria' }),
+        { id: 'c-1', canAttend: false },
+        undefined,
+      );
     });
 
     it.each<[UserRole, boolean]>([

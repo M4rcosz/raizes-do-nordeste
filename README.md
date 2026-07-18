@@ -934,18 +934,30 @@ Errors follow the standard envelope: `MenuItemAlreadyExistsError` -> `409`,
 
 #### Channel policies
 
-| Channel   | Requires staff actor | `customerId` source          |
-| --------- | -------------------- | ---------------------------- |
-| `APP`     | No                   | Authenticated user (`sub`)   |
-| `WEB`     | No                   | Authenticated user (`sub`)   |
-| `TOTEM`   | No                   | Anonymous (`null`)           |
-| `COUNTER` | Yes                  | From request body (optional) |
-| `PICKUP`  | Yes                  | From request body (optional) |
+| Channel   | Requires staff actor | `customerId` source          | `customerName`                          |
+| --------- | -------------------- | ---------------------------- | --------------------------------------- |
+| `APP`     | No                   | Authenticated user (`sub`)   | Rejected                                |
+| `WEB`     | No                   | Authenticated user (`sub`)   | Rejected                                |
+| `TOTEM`   | No                   | Anonymous (`null`)           | **Required**                            |
+| `COUNTER` | Yes                  | From request body (optional) | Required only if `customerId` is absent |
+| `PICKUP`  | Yes                  | From request body (optional) | Required only if `customerId` is absent |
 
 When the channel requires a staff actor (`COUNTER` / `PICKUP`), a JWT
 belonging to a `CUSTOMER` is rejected with `403 AttendantRequiredError`.
 For these channels `attendantId` is taken from the JWT (`sub`) - never from
 the request body.
+
+`customerName` is a display name for walk-in orders with no account behind
+them, gated per channel by the table above. Exactly one of
+`customerId`/`customerName` is ever populated: sending both is rejected with
+`422 ConflictingCustomerIdentityError`, and a channel that requires a name
+with neither present is rejected with `422 GuestNameRequiredError`. When
+`customerId` is set the name is not stored at all - the response resolves it
+live from the `User` relation on every read, so it can never go stale.
+
+> **Breaking change.** `TOTEM` orders previously accepted no name at all.
+> They now **require** `customerName`; an existing TOTEM client that omits it
+> starts getting `422 GuestNameRequiredError`.
 
 #### Idempotent creation (`Idempotency-Key` header)
 
@@ -1006,6 +1018,7 @@ Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
   "id": "0b1c...",
   "businessUnitId": "7c9e...",
   "customerId": "f3b7...",
+  "customerName": "Maria Souza",
   "attendantId": "9a2e...",
   "pointsRedeemed": 0,
   "pointsEarned": 0,

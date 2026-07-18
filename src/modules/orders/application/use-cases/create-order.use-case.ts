@@ -6,12 +6,15 @@ import {
 } from '@modules/orders/domain/repositories/order.repository';
 import {
   channelCustomerSource,
+  channelGuestNamePolicy,
   channelRequiresAttendant,
   OrderChannel,
 } from '@modules/orders/domain/value-objects/order-channel';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Money } from '@shared/domain/value-objects/money';
 import { AttendantRequiredError } from '../errors/attendant-required.error';
+import { ConflictingCustomerIdentityError } from '../errors/conflicting-customer-identity.error';
+import { GuestNameRequiredError } from '../errors/guest-name-required.error';
 import { PriceMismatchError } from '../errors/price-mismatch.error';
 import { ProductInactiveError } from '../errors/product-inactive.error';
 import { ProductUnavailableError } from '../errors/product-unavailable.error';
@@ -78,6 +81,8 @@ export interface OrderIdempotency {
 export interface CreateOrderCommand {
   businessUnitId: string;
   customerId?: string;
+  /** Guest display name; allowed and/or required per the channel's guest-name policy. */
+  customerName?: string;
   pointsRedeemed?: number;
   notes?: string;
   orderChannel: OrderChannel;
@@ -127,7 +132,7 @@ export class CreateOrderUseCase {
       orderItems: rawOrderItems,
     } = command;
 
-    const { attendantId, customerId } = this.resolveParties(command, actor);
+    const { attendantId, customerId, customerName } = this.resolveParties(command, actor);
 
     const redeems = (pointsRedeemed ?? 0) > 0;
     // Points belong to a loyalty account: redeeming with no resolved customer has
@@ -200,6 +205,7 @@ export class CreateOrderUseCase {
             notes,
             pointsRedeemed,
             customerId,
+            customerName,
             attendantId,
             orderItems,
             totalAmount,
@@ -418,22 +424,30 @@ export class CreateOrderUseCase {
   private resolveParties(
     command: CreateOrderCommand,
     actor: Actor,
-  ): { attendantId: string | null; customerId: string | null } {
-    if (channelRequiresAttendant(command.orderChannel)) {
-      if (!actor.canAttend) {
-        throw new AttendantRequiredError(
-          `Channel ${command.orderChannel} can only be used by an attending staff member.`,
-        );
-      }
-      return { attendantId: actor.id, customerId: command.customerId ?? null };
+  ): { attendantId: string | null; customerId: string | null; customerName: string | null } {
+    const requiresAttendant = channelRequiresAttendant(command.orderChannel);
+    // Authorization before payload rules: an actor who may not use the channel at all
+    // should not learn whether their body was well formed.
+    if (requiresAttendant && !actor.canAttend) {
+      throw new AttendantRequiredError(
+        `Channel ${command.orderChannel} can only be used by an attending staff member.`,
+      );
+    }
+
+    // Resolved once for every channel: the guest-name rule is the policy table's job,
+    // not something each branch below re-decides.
+    const customerName = this.resolveCustomerName(command);
+
+    if (requiresAttendant) {
+      return { attendantId: actor.id, customerId: command.customerId ?? null, customerName };
     }
 
     const source = channelCustomerSource(command.orderChannel);
     switch (source) {
       case 'authenticated':
-        return { attendantId: null, customerId: actor.id };
+        return { attendantId: null, customerId: actor.id, customerName };
       case 'anonymous':
-        return { attendantId: null, customerId: null };
+        return { attendantId: null, customerId: null, customerName };
       case 'from-request':
         // Invariant: 'from-request' only pairs with requiresAttendant=true (handled above).
         // Reaching here means a channel policy is misconfigured: a 500-class bug, not user error.
@@ -444,6 +458,60 @@ export class CreateOrderUseCase {
         // Compile-time exhaustiveness: a new CustomerSource must be handled above.
         const _exhaustive: never = source;
         throw new Error(`Unhandled customer source ${String(_exhaustive)}.`);
+      }
+    }
+  }
+
+  /**
+   * Applies the channel's guest-name policy and the customerId/customerName exclusivity.
+   * Returns the name to persist: null whenever an account is attached, because the display
+   * name is then read live off the User relation instead of copied onto the order.
+   */
+  private resolveCustomerName(command: CreateOrderCommand): string | null {
+    // Re-stripped and re-trimmed defensively: the DTO already does this at the border,
+    // but the use case is the authoritative check, not the DTO. Unicode format
+    // characters (zero-width space, BOM, category Cf) survive JS trim() and would
+    // otherwise pass as a name with nothing readable in it.
+    const trimmed = command.customerName?.replace(/\p{Cf}/gu, '').trim();
+    // Punctuation/symbols-only (or nothing at all) is not a callable name either:
+    // require at least one letter or digit for the value to count as present.
+    const name = trimmed && /[\p{L}\p{N}]/u.test(trimmed) ? trimmed : null;
+    const hasCustomer = Boolean(command.customerId);
+
+    if (name && hasCustomer) {
+      throw new ConflictingCustomerIdentityError(
+        'An order carries either a customerId or a customerName, never both.',
+      );
+    }
+
+    const policy = channelGuestNamePolicy(command.orderChannel);
+    switch (policy) {
+      case 'forbidden':
+        // The logged-in account is the identity here; a separate name would compete with it.
+        if (name) {
+          throw new ConflictingCustomerIdentityError(
+            `Channel ${command.orderChannel} identifies its customer by account; customerName is not accepted.`,
+          );
+        }
+        return null;
+      case 'required':
+        if (!name) {
+          throw new GuestNameRequiredError(
+            `Channel ${command.orderChannel} requires a customerName to call the order.`,
+          );
+        }
+        return name;
+      case 'required-without-customer':
+        if (!hasCustomer && !name) {
+          throw new GuestNameRequiredError(
+            `Channel ${command.orderChannel} requires either a customerId or a customerName.`,
+          );
+        }
+        return name;
+      default: {
+        // Compile-time exhaustiveness: a new GuestNamePolicy must be handled above.
+        const _exhaustive: never = policy;
+        throw new Error(`Unhandled guest name policy ${String(_exhaustive)}.`);
       }
     }
   }

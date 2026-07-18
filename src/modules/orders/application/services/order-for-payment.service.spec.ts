@@ -17,6 +17,7 @@ const makeOrder = (status: OrderStatus, customerId: string | null = 'c-1'): Orde
     'bu-1',
     customerId,
     null,
+    null,
     0,
     0,
     Money.fromDecimalString('25'),
