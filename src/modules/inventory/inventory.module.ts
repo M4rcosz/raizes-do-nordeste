@@ -12,6 +12,8 @@ import { AdjustInventoryUseCase } from './application/use-cases/adjust-inventory
 import { InitializeInventoryItemUseCase } from './application/use-cases/initialize-inventory-item.use-case';
 import { DeductStockForOrderUseCase } from './application/use-cases/deduct-stock-for-order.use-case';
 import { RestoreStockForOrderUseCase } from './application/use-cases/restore-stock-for-order.use-case';
+import { INVENTORY_FOR_AI } from './application/ports/inventory-for-ai.port';
+import { InventoryForAiService } from './application/services/inventory-for-ai.service';
 
 @Module({
   imports: [AuditModule],
@@ -36,7 +38,11 @@ import { RestoreStockForOrderUseCase } from './application/use-cases/restore-sto
     GetInventoryUseCase,
     AdjustInventoryUseCase,
     InitializeInventoryItemUseCase,
+    {
+      provide: INVENTORY_FOR_AI,
+      useClass: InventoryForAiService,
+    },
   ],
-  exports: [STOCK_DEDUCTION, STOCK_RESTORATION],
+  exports: [STOCK_DEDUCTION, STOCK_RESTORATION, INVENTORY_FOR_AI],
 })
 export class InventoryModule {}

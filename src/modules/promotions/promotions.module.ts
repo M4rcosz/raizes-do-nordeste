@@ -11,6 +11,8 @@ import { FindPromotionByIdUseCase } from './application/use-cases/find-promotion
 import { ListPromotionsUseCase } from './application/use-cases/list-promotions.use-case';
 import { ActivatePromotionUseCase } from './application/use-cases/activate-promotion.use-case';
 import { DeactivatePromotionUseCase } from './application/use-cases/deactivate-promotion.use-case';
+import { PROMOTION_FOR_AI } from './application/ports/promotion-for-ai.port';
+import { PromotionForAiService } from './application/services/promotion-for-ai.service';
 
 @Module({
   imports: [AuditModule],
@@ -30,7 +32,11 @@ import { DeactivatePromotionUseCase } from './application/use-cases/deactivate-p
     ListPromotionsUseCase,
     ActivatePromotionUseCase,
     DeactivatePromotionUseCase,
+    {
+      provide: PROMOTION_FOR_AI,
+      useClass: PromotionForAiService,
+    },
   ],
-  exports: [PROMOTION_APPLICATION],
+  exports: [PROMOTION_APPLICATION, PROMOTION_FOR_AI],
 })
 export class PromotionsModule {}
