@@ -21,6 +21,7 @@ interface OrderResponseBody {
   id: string;
   businessUnitId: string;
   customerId: string | null;
+  customerName: string | null;
   attendantId: string | null;
   pointsEarned: number;
   pointsRedeemed: number;
@@ -367,6 +368,107 @@ describe('Orders (e2e)', () => {
     expect(dbOrder).not.toBeNull();
     expect(dbOrder?.totalAmount.toString()).toBe('62.5');
     expect(dbOrder?.orderItems).toHaveLength(2);
+  });
+
+  describe('guest customer name', () => {
+    it('creates a TOTEM order with a guest name and reads it back', async () => {
+      const created = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'TOTEM',
+          customerName: 'Maria',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(201);
+
+      const body = created.body as OrderResponseBody;
+      expect(body.customerId).toBeNull();
+      expect(body.customerName).toBe('Maria');
+
+      // The name survives the round trip and comes back off the stored column,
+      // not off a User relation (there is no account behind this order).
+      const fetched = await request(server)
+        .get(`/api/orders/${body.id}`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(200);
+
+      expect((fetched.body as OrderResponseBody).customerName).toBe('Maria');
+
+      const dbOrder = await prisma.order.findUnique({ where: { id: body.id } });
+      expect(dbOrder?.customerName).toBe('Maria');
+      expect(dbOrder?.customerId).toBeNull();
+    });
+
+    it('rejects a TOTEM order without a customerName with 422', async () => {
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'TOTEM',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(422);
+    });
+
+    it('rejects an APP order carrying a customerName with 422', async () => {
+      await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          customerName: 'Maria',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(422);
+    });
+
+    it('resolves customerName live off the User relation, with no stale copy (RN-31)', async () => {
+      // An order with a customerId stores no customerName column value: the design's
+      // central claim is that the display name always reads live off the account.
+      const created = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          businessUnitId: unitId,
+          orderChannel: 'APP',
+          orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+        })
+        .expect(201);
+
+      const orderId = (created.body as OrderResponseBody).id;
+
+      const beforeRename = await request(server)
+        .get(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect((beforeRename.body as OrderResponseBody).customerName).toBe('E2E Customer');
+
+      const renamedTo = `E2E Customer Renamed ${randomUUID().slice(0, 8)}`;
+      await request(server)
+        .patch('/api/users/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: renamedTo })
+        .expect(200);
+
+      // Same order, no re-order: the response must reflect the NEW name, proving
+      // customerName is resolved on read rather than copied at order creation.
+      const afterRename = await request(server)
+        .get(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect((afterRename.body as OrderResponseBody).customerName).toBe(renamedTo);
+
+      const dbOrder = await prisma.order.findUnique({ where: { id: orderId } });
+      expect(dbOrder?.customerName).toBeNull();
+
+      // Restore so the rest of the suite (and its own assertions on the seeded name)
+      // are unaffected by this test's rename.
+      await prisma.user.update({ where: { id: customerId }, data: { name: 'E2E Customer' } });
+    });
   });
 
   describe('GET / PATCH', () => {

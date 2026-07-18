@@ -16,6 +16,8 @@ export interface CreateOrderItem {
 export interface CreateOrderInput {
   businessUnitId: string;
   customerId?: string | null;
+  /** Guest display name; only ever set when no customerId accompanies it. */
+  customerName?: string | null;
   attendantId?: string | null;
   totalAmount: string;
   pointsRedeemed?: number;

@@ -33,6 +33,14 @@ export class OrderResponseDto {
   @ApiProperty({ format: 'uuid', nullable: true })
   readonly customerId!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    example: 'Maria',
+    description:
+      "Name the order is called by: the guest name when there is no account, otherwise the customer's.",
+  })
+  readonly customerName!: string | null;
+
   @ApiProperty({ format: 'uuid', nullable: true })
   readonly attendantId!: string | null;
 
@@ -71,6 +79,7 @@ export class OrderResponseDto {
       id: order.id,
       businessUnitId: order.businessUnitId,
       customerId: order.customerId,
+      customerName: order.customerName,
       attendantId: order.attendantId,
       pointsRedeemed: order.pointsRedeemed,
       pointsEarned: order.pointsEarned,

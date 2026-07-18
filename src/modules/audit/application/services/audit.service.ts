@@ -23,6 +23,14 @@ const SENSITIVE_KEYS = new Set([
   // PII: defense-in-depth so metadata logged from profile updates never leaks contact data.
   'phone',
   'email',
+  // Guardrail for guest customer names (TOTEM/COUNTER/PICKUP walk-ups) now in the
+  // system: not a leak today (order audit metadata only carries orderChannel and
+  // totalAmount) but this table is long-retention LGPD, so a future caller that adds
+  // a name to metadata gets redacted by default.
+  'name',
+  'customername',
+  'customer_name',
+  'fullname',
 ]);
 
 @Injectable()

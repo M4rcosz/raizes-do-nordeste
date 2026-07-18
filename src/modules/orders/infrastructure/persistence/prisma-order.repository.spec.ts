@@ -19,6 +19,9 @@ interface PersistedOrderRow {
   id: string;
   businessUnitId: string;
   customerId: string | null;
+  customerName: string | null;
+  /** Selected relation: present only when customerId is set. */
+  customer: { name: string } | null;
   attendantId: string | null;
   pointsRedeemed: number;
   pointsEarned: number;
@@ -53,6 +56,7 @@ describe('PrismaOrderRepository', () => {
   const input: CreateOrderInput = {
     businessUnitId: 'bu-1',
     customerId: 'c-1',
+    customerName: null,
     attendantId: null,
     totalAmount: '25.00',
     pointsRedeemed: 0,
@@ -68,6 +72,8 @@ describe('PrismaOrderRepository', () => {
     id: 'order-1',
     businessUnitId: 'bu-1',
     customerId: 'c-1',
+    customerName: null,
+    customer: { name: 'Ana Souza' },
     attendantId: null,
     pointsRedeemed: 0,
     pointsEarned: 0,
@@ -125,6 +131,7 @@ describe('PrismaOrderRepository', () => {
         data: {
           businessUnitId: 'bu-1',
           customerId: 'c-1',
+          customerName: null,
           attendantId: null,
           totalAmount: '25.00',
           pointsRedeemed: 0,
@@ -136,7 +143,7 @@ describe('PrismaOrderRepository', () => {
             },
           },
         },
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
 
       expect(order).toBeInstanceOf(Order);
@@ -144,6 +151,23 @@ describe('PrismaOrderRepository', () => {
       expect(order.totalAmount.equals(Money.fromDecimalString('25.00'))).toBe(true);
       expect(order.orderItems).toHaveLength(2);
       expect(order.orderItems[0].subtotal.equals(Money.fromDecimalString('20'))).toBe(true);
+    });
+
+    it('persists the guest name when the order carries no customer account', async () => {
+      create.mockResolvedValue({
+        ...persistedRow,
+        customerId: null,
+        customerName: 'Maria',
+        customer: null,
+      });
+
+      await repo.create({ ...input, customerId: null, customerName: 'Maria' });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ customerId: null, customerName: 'Maria' }),
+        }),
+      );
     });
 
     it('translates a P2003 foreign-key violation into OrderReferenceNotFoundError, chaining the cause', async () => {
@@ -198,7 +222,7 @@ describe('PrismaOrderRepository', () => {
 
       expect(findUnique).toHaveBeenCalledWith({
         where: { id: 'order-1' },
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
       expect(order).toBeInstanceOf(Order);
       expect(order?.id).toBe('order-1');
@@ -208,6 +232,44 @@ describe('PrismaOrderRepository', () => {
       findUnique.mockResolvedValue(null);
 
       await expect(repo.findById('missing')).resolves.toBeNull();
+    });
+
+    describe('display name resolution', () => {
+      it("takes the account holder's current name from the relation when a customer is attached", async () => {
+        findUnique.mockResolvedValue(persistedRow);
+
+        const order = await repo.findById('order-1');
+
+        expect(order?.customerId).toBe('c-1');
+        expect(order?.customerName).toBe('Ana Souza');
+      });
+
+      it('takes the stored guest name when no customer is attached', async () => {
+        findUnique.mockResolvedValue({
+          ...persistedRow,
+          customerId: null,
+          customerName: 'Maria',
+          customer: null,
+        });
+
+        const order = await repo.findById('order-1');
+
+        expect(order?.customerId).toBeNull();
+        expect(order?.customerName).toBe('Maria');
+      });
+
+      it('resolves to null when the order carries neither (legacy rows)', async () => {
+        findUnique.mockResolvedValue({
+          ...persistedRow,
+          customerId: null,
+          customerName: null,
+          customer: null,
+        });
+
+        const order = await repo.findById('order-1');
+
+        expect(order?.customerName).toBeNull();
+      });
     });
   });
 
@@ -230,7 +292,7 @@ describe('PrismaOrderRepository', () => {
         take: 11,
         cursor: { id: 'order-0' },
         skip: 1,
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
       expect(orders).toHaveLength(1);
       expect(orders[0]).toBeInstanceOf(Order);
@@ -245,7 +307,7 @@ describe('PrismaOrderRepository', () => {
         where: {},
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 20,
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
     });
 
@@ -258,7 +320,7 @@ describe('PrismaOrderRepository', () => {
         where: { customerId: 'c-1' },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 20,
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
     });
 
@@ -271,7 +333,7 @@ describe('PrismaOrderRepository', () => {
         where: { businessUnitId: { in: [] } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 20,
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
     });
 
@@ -397,7 +459,7 @@ describe('PrismaOrderRepository', () => {
       });
       expect(findUnique).toHaveBeenCalledWith({
         where: { id: 'order-1' },
-        include: { orderItems: true },
+        include: { orderItems: true, customer: { select: { name: true } } },
       });
       expect(order?.orderStatus).toBe('CONFIRMED');
       expect(order?.updatedById).toBe('staff-1');

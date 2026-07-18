@@ -1,6 +1,6 @@
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsDecimal,
@@ -54,6 +54,27 @@ export class OrderCreateDto {
   @IsOptional()
   @IsUUID()
   customerId?: string;
+
+  @ApiPropertyOptional({
+    maxLength: 60,
+    example: 'Maria',
+    description:
+      'Name to call the order by, for orders with no customer account. Whether it is ' +
+      'required, optional or rejected depends on the channel: TOTEM always requires it, ' +
+      'COUNTER/PICKUP require it only when no customerId is sent, APP/WEB reject it. ' +
+      'Never sent together with customerId.',
+  })
+  @IsOptional()
+  // Strip Unicode format characters (zero-width space, BOM, etc - category Cf) before
+  // trimming: they survive JS trim() and would otherwise sneak an unreadable "name"
+  // past @IsString/@MaxLength. Border convenience only - resolveCustomerName in the
+  // use case is still the authoritative check.
+  @Transform(({ value }): unknown =>
+    typeof value === 'string' ? value.replace(/\p{Cf}/gu, '').trim() : value,
+  )
+  @IsString()
+  @MaxLength(60)
+  customerName?: string;
 
   @ApiPropertyOptional({ example: 0, minimum: 0 })
   @Type(() => Number)

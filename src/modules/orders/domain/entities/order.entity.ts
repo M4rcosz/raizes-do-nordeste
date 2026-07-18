@@ -15,6 +15,12 @@ export class Order {
     public readonly id: string,
     public readonly businessUnitId: string,
     public readonly customerId: string | null,
+    /**
+     * Display name to call the order by. Holds the stored guest name when no account
+     * is attached, or the account holder's name resolved from the User relation on the
+     * read path. Provenance is recoverable: customerId null + name set = guest.
+     */
+    public readonly customerName: string | null,
     public readonly attendantId: string | null,
     public readonly pointsRedeemed: number,
     public readonly pointsEarned: number,

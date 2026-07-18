@@ -88,19 +88,45 @@ describe('AuditService', () => {
         entity: 'User',
         entityId: 'user-1',
         metadata: {
-          updatedFields: ['phone', 'name'],
+          // 'name' is deliberately not used as the control field here: it is itself
+          // a sensitive key (see the redaction test below), so it would not prove
+          // selective (non-blanket) redaction.
+          updatedFields: ['phone'],
           phone: '+5581999999999',
           email: 'maria@example.com',
-          name: 'Maria Souza',
+          notes: 'requested via support ticket',
         },
       });
 
       const persisted = create.mock.calls[0]?.[0];
       expect(persisted.metadata).toEqual({
-        updatedFields: ['phone', 'name'],
+        updatedFields: ['phone'],
         phone: '[REDACTED]',
         email: '[REDACTED]',
-        name: 'Maria Souza',
+        notes: 'requested via support ticket',
+      });
+    });
+
+    it('should redact name-ish keys (LGPD guardrail for guest customer names)', async () => {
+      await service.log({
+        userId: 'user-1',
+        action: AUDIT_ACTIONS.ORDER_CREATED,
+        entity: 'Order',
+        entityId: 'order-1',
+        metadata: {
+          orderChannel: 'TOTEM',
+          customerName: 'Maria',
+          fullName: 'Maria Souza',
+          name: 'Maria',
+        },
+      });
+
+      const persisted = create.mock.calls[0]?.[0];
+      expect(persisted.metadata).toEqual({
+        orderChannel: 'TOTEM',
+        customerName: '[REDACTED]',
+        fullName: '[REDACTED]',
+        name: '[REDACTED]',
       });
     });
 

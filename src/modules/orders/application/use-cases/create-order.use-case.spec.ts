@@ -6,6 +6,8 @@ import { ORDER_REPOSITORY, type OrderRepository } from '../../domain/repositorie
 import { OrderChannel } from '../../domain/value-objects/order-channel';
 import { Order } from '../../domain/entities/order.entity';
 import { AttendantRequiredError } from '../errors/attendant-required.error';
+import { ConflictingCustomerIdentityError } from '../errors/conflicting-customer-identity.error';
+import { GuestNameRequiredError } from '../errors/guest-name-required.error';
 import { PriceMismatchError } from '../errors/price-mismatch.error';
 import { ProductInactiveError } from '../errors/product-inactive.error';
 import { ProductUnavailableError } from '../errors/product-unavailable.error';
@@ -223,6 +225,7 @@ describe('CreateOrderUseCase', () => {
     'bu-1',
     null,
     null,
+    null,
     0,
     0,
     Money.zero(),
@@ -336,7 +339,7 @@ describe('CreateOrderUseCase', () => {
   });
 
   it('TOTEM channel: anonymous, no customer and no attendant', async () => {
-    await useCase.execute(command({ orderChannel: OrderChannel.TOTEM }), {
+    await useCase.execute(command({ orderChannel: OrderChannel.TOTEM, customerName: 'Maria' }), {
       id: 'u-1',
       canAttend: false,
     });
@@ -368,6 +371,159 @@ describe('CreateOrderUseCase', () => {
     ).rejects.toBeInstanceOf(AttendantRequiredError);
 
     expect(create).not.toHaveBeenCalled();
+  });
+
+  describe('guest customer name', () => {
+    const guest = { id: 'att-1', canAttend: true };
+
+    it('TOTEM without a name rejects and never persists', async () => {
+      await expect(
+        useCase.execute(command({ orderChannel: OrderChannel.TOTEM }), {
+          id: 'u-1',
+          canAttend: false,
+        }),
+      ).rejects.toBeInstanceOf(GuestNameRequiredError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('TOTEM with a name persists it', async () => {
+      await useCase.execute(command({ orderChannel: OrderChannel.TOTEM, customerName: 'Maria' }), {
+        id: 'u-1',
+        canAttend: false,
+      });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ customerName: 'Maria', customerId: null }),
+        txContext,
+      );
+    });
+
+    it('TOTEM with a whitespace-only name is treated as absent and rejects', async () => {
+      await expect(
+        useCase.execute(command({ orderChannel: OrderChannel.TOTEM, customerName: '   ' }), {
+          id: 'u-1',
+          canAttend: false,
+        }),
+      ).rejects.toBeInstanceOf(GuestNameRequiredError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('TOTEM with a zero-width-space-only name is treated as absent and rejects', async () => {
+      // U+200B (zero-width space) survives JS trim() but not the \p{Cf} strip.
+      const zeroWidthOnly = '\u200B\u200B';
+
+      await expect(
+        useCase.execute(
+          command({ orderChannel: OrderChannel.TOTEM, customerName: zeroWidthOnly }),
+          { id: 'u-1', canAttend: false },
+        ),
+      ).rejects.toBeInstanceOf(GuestNameRequiredError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('TOTEM with a punctuation-only name is treated as absent and rejects', async () => {
+      await expect(
+        useCase.execute(command({ orderChannel: OrderChannel.TOTEM, customerName: '...---!!!' }), {
+          id: 'u-1',
+          canAttend: false,
+        }),
+      ).rejects.toBeInstanceOf(GuestNameRequiredError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it.each(['José', 'Ana Sofía'])(
+      'TOTEM accepts a legitimate accented name %s (regression guard)',
+      async (accentedName) => {
+        await useCase.execute(
+          command({ orderChannel: OrderChannel.TOTEM, customerName: accentedName }),
+          { id: 'u-1', canAttend: false },
+        );
+
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({ customerName: accentedName, customerId: null }),
+          txContext,
+        );
+      },
+    );
+
+    it.each([OrderChannel.APP, OrderChannel.WEB])(
+      '%s rejects a customerName: the account is the identity',
+      async (orderChannel) => {
+        await expect(
+          useCase.execute(command({ orderChannel, customerName: 'Maria' }), {
+            id: 'u-1',
+            canAttend: false,
+          }),
+        ).rejects.toBeInstanceOf(ConflictingCustomerIdentityError);
+
+        expect(create).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([OrderChannel.COUNTER, OrderChannel.PICKUP])(
+      '%s with a customerId only leaves customerName null',
+      async (orderChannel) => {
+        await useCase.execute(command({ orderChannel, customerId: 'c-9' }), guest);
+
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({ customerId: 'c-9', customerName: null }),
+          txContext,
+        );
+      },
+    );
+
+    it.each([OrderChannel.COUNTER, OrderChannel.PICKUP])(
+      '%s with a name only persists the guest name',
+      async (orderChannel) => {
+        await useCase.execute(command({ orderChannel, customerName: 'Maria' }), guest);
+
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({ customerId: null, customerName: 'Maria' }),
+          txContext,
+        );
+      },
+    );
+
+    it.each([OrderChannel.COUNTER, OrderChannel.PICKUP])(
+      '%s with both a customerId and a name rejects',
+      async (orderChannel) => {
+        await expect(
+          useCase.execute(
+            command({ orderChannel, customerId: 'c-9', customerName: 'Maria' }),
+            guest,
+          ),
+        ).rejects.toBeInstanceOf(ConflictingCustomerIdentityError);
+
+        expect(create).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([OrderChannel.COUNTER, OrderChannel.PICKUP])(
+      '%s with neither a customerId nor a name rejects',
+      async (orderChannel) => {
+        await expect(useCase.execute(command({ orderChannel }), guest)).rejects.toBeInstanceOf(
+          GuestNameRequiredError,
+        );
+
+        expect(create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('trims a padded name before persisting it', async () => {
+      await useCase.execute(
+        command({ orderChannel: OrderChannel.COUNTER, customerName: '  Maria  ' }),
+        guest,
+      );
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ customerName: 'Maria' }),
+        txContext,
+      );
+    });
   });
 
   describe('orderable products validation', () => {
@@ -516,6 +672,7 @@ describe('CreateOrderUseCase', () => {
       'bu-1',
       'c-1',
       null,
+      null,
       0,
       0,
       Money.zero(),
@@ -537,7 +694,7 @@ describe('CreateOrderUseCase', () => {
     });
 
     it('skips enrollment when the order has no customer (anonymous channel)', async () => {
-      await useCase.execute(command({ orderChannel: OrderChannel.TOTEM }), {
+      await useCase.execute(command({ orderChannel: OrderChannel.TOTEM, customerName: 'Maria' }), {
         id: 'u-1',
         canAttend: false,
       });
@@ -585,10 +742,10 @@ describe('CreateOrderUseCase', () => {
 
     it('rejects with 422 and never opens the tx when points are redeemed without a customer', async () => {
       await expect(
-        useCase.execute(command({ orderChannel: OrderChannel.TOTEM, pointsRedeemed: 50 }), {
-          id: 'u-1',
-          canAttend: false,
-        }),
+        useCase.execute(
+          command({ orderChannel: OrderChannel.TOTEM, customerName: 'Maria', pointsRedeemed: 50 }),
+          { id: 'u-1', canAttend: false },
+        ),
       ).rejects.toBeInstanceOf(PointsRedemptionRequiresCustomerError);
 
       expect(create).not.toHaveBeenCalled();
