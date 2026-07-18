@@ -2,6 +2,10 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '@modules/audit/audit.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { LoyaltyModule } from '@modules/loyalty/loyalty.module';
+import { IdentityModule } from '@modules/identity/identity.module';
+import { BusinessUnitsModule } from '@modules/business-units/business-units.module';
+import { InventoryModule } from '@modules/inventory/inventory.module';
+import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { AiMembershipController } from './infrastructure/http/controllers/ai-membership.controller';
 import { AiChatController } from './infrastructure/http/controllers/ai-chat.controller';
 import { AI_MEMBERSHIP_REPOSITORY } from './domain/repositories/ai-membership.repository';
@@ -15,7 +19,15 @@ import { CHAT_MODEL } from './application/ports/chat-model.port';
 import { GeminiChatModelAdapter } from './infrastructure/ai/gemini-chat-model.adapter';
 
 @Module({
-  imports: [AuditModule, OrdersModule, LoyaltyModule],
+  imports: [
+    AuditModule,
+    OrdersModule,
+    LoyaltyModule,
+    IdentityModule,
+    BusinessUnitsModule,
+    InventoryModule,
+    PromotionsModule,
+  ],
   controllers: [AiMembershipController, AiChatController],
   providers: [
     {

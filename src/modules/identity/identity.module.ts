@@ -13,6 +13,8 @@ import { GetMyProfileUseCase } from './application/use-cases/get-my-profile.use-
 import { ChangePasswordUseCase } from './application/use-cases/change-password.use-case';
 import { ListUsersUseCase } from './application/use-cases/list-users.use-case';
 import { UpdateUserBusinessUnitsUseCase } from './application/use-cases/update-user-business-units.use-case';
+import { USER_FOR_AI } from './application/ports/user-for-ai.port';
+import { UserForAiService } from './application/services/user-for-ai.service';
 import { AuthController } from './infrastructure/http/controllers/auth.controller';
 import { UsersController } from './infrastructure/http/controllers/users.controller';
 import {
@@ -120,6 +122,11 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     ChangePasswordUseCase,
     ListUsersUseCase,
     UpdateUserBusinessUnitsUseCase,
+    {
+      provide: USER_FOR_AI,
+      useClass: UserForAiService,
+    },
   ],
+  exports: [USER_FOR_AI],
 })
 export class IdentityModule {}

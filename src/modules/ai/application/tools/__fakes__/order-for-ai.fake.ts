@@ -2,6 +2,8 @@ import type {
   OrderAiActor,
   OrderForAi,
   OrderForAiView,
+  OrderListForAiFilters,
+  OrderListForAiResult,
 } from '@modules/orders/application/ports/order-for-ai.port';
 
 /**
@@ -13,6 +15,8 @@ export class FakeOrderForAi implements OrderForAi {
   private readonly orders = new Map<string, OrderForAiView>();
   private readonly visibleTo = new Map<string, Set<string>>();
   readonly calls: { orderId: string; actor: OrderAiActor }[] = [];
+  readonly listCalls: { filters: OrderListForAiFilters; actor: OrderAiActor }[] = [];
+  listHasMore = false;
 
   seed(view: OrderForAiView, visibleToUserIds?: string[]): this {
     this.orders.set(view.id, view);
@@ -33,5 +37,19 @@ export class FakeOrderForAi implements OrderForAi {
       return Promise.resolve(null);
     }
     return Promise.resolve(view);
+  }
+
+  /**
+   * Returns every seeded order the actor may see, applying the same visibility map
+   * findByIdForActor uses. Filters are recorded, not applied: the registry's job is
+   * to forward them, and asserting on what arrived is the point.
+   */
+  listForActor(filters: OrderListForAiFilters, actor: OrderAiActor): Promise<OrderListForAiResult> {
+    this.listCalls.push({ filters, actor });
+    const visible = [...this.orders.values()].filter((view) => {
+      const allowed = this.visibleTo.get(view.id);
+      return !allowed || allowed.has(actor.userId);
+    });
+    return Promise.resolve({ orders: visible, hasMore: this.listHasMore });
   }
 }

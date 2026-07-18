@@ -6,6 +6,10 @@ import type { ChatMessage } from '../ports/chat-model.port';
 import { ToolRegistry } from '../tools/tool-registry';
 import { FakeOrderForAi } from '../tools/__fakes__/order-for-ai.fake';
 import { FakeLoyaltyForAi } from '../tools/__fakes__/loyalty-for-ai.fake';
+import { FakeUserForAi } from '../tools/__fakes__/user-for-ai.fake';
+import { FakeCatalogForAi } from '../tools/__fakes__/catalog-for-ai.fake';
+import { FakeInventoryForAi } from '../tools/__fakes__/inventory-for-ai.fake';
+import { FakePromotionForAi } from '../tools/__fakes__/promotion-for-ai.fake';
 import { AiNotEnrolledError } from '../errors/ai-not-enrolled.error';
 import { AiTokensExhaustedError } from '../errors/ai-tokens-exhausted.error';
 import { AiProviderUnavailableError } from '../errors/ai-provider-unavailable.error';
@@ -45,7 +49,18 @@ describe('SendChatMessageUseCase', () => {
     chatModel = new FakeChatModel();
     orders = new FakeOrderForAi();
     loyalty = new FakeLoyaltyForAi();
-    useCase = new SendChatMessageUseCase(memberships, chatModel, new ToolRegistry(orders, loyalty));
+    useCase = new SendChatMessageUseCase(
+      memberships,
+      chatModel,
+      new ToolRegistry(
+        orders,
+        loyalty,
+        new FakeUserForAi(),
+        new FakeCatalogForAi(),
+        new FakeInventoryForAi(),
+        new FakePromotionForAi(),
+      ),
+    );
   });
 
   it('runs a scripted tool call then returns the follow-up text answer', async () => {
@@ -70,6 +85,37 @@ describe('SendChatMessageUseCase', () => {
       name: 'findOrderById',
       response: { found: true, order: orderView() },
     });
+  });
+
+  it('caps how many tools run in one step and answers the dropped calls anyway', async () => {
+    seedMembership(1000);
+    orders.seed(orderView());
+    // The model asks for six lookups at once. Each dispatch is at least one query on
+    // the shared pool, so the width of a single turn has to be bounded independently
+    // of MAX_TOOL_ITERATIONS - nothing else limits it (tokens meter model calls, not
+    // tool calls).
+    chatModel
+      .enqueue({
+        functionCalls: Array.from({ length: 6 }, () => ({
+          name: 'findOrderById',
+          args: { orderId: 'order-1' },
+        })),
+        tokensUsed: 10,
+      })
+      .enqueue({ text: 'Here is what I found.', tokensUsed: 5 });
+
+    const result = await useCase.execute({ actor, message: 'look up six things' });
+
+    expect(result.reply).toBe('Here is what I found.');
+    // Only four reached the repository.
+    expect(orders.calls).toHaveLength(4);
+
+    // But all six got a response: the provider rejects a follow-up whose
+    // functionCalls and functionResponses do not line up.
+    const toolTurn = chatModel.requests[1].messages.find((m) => m.role === 'tool');
+    expect(toolTurn?.toolResults).toHaveLength(6);
+    expect(toolTurn?.toolResults?.[4].response.error).toMatch(/too many tools/);
+    expect(toolTurn?.toolResults?.[5].response.error).toMatch(/too many tools/);
   });
 
   it('scopes findOrderById to the actor: a foreign order comes back as found:false', async () => {

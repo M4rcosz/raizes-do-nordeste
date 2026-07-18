@@ -33,6 +33,8 @@ import { ListCategoriesUseCase } from './application/use-cases/list-categories.u
 import { GetCategoryByIdUseCase } from './application/use-cases/get-category-by-id.use-case';
 import { CreateCategoryUseCase } from './application/use-cases/create-category.use-case';
 import { UpdateCategoryUseCase } from './application/use-cases/update-category.use-case';
+import { CATALOG_FOR_AI } from './application/ports/catalog-for-ai.port';
+import { CatalogForAiService } from './application/services/catalog-for-ai.service';
 
 @Module({
   imports: [AuditModule],
@@ -80,6 +82,11 @@ import { UpdateCategoryUseCase } from './application/use-cases/update-category.u
     GetCategoryByIdUseCase,
     CreateCategoryUseCase,
     UpdateCategoryUseCase,
+    {
+      provide: CATALOG_FOR_AI,
+      useClass: CatalogForAiService,
+    },
   ],
+  exports: [CATALOG_FOR_AI],
 })
 export class BusinessUnitsModule {}

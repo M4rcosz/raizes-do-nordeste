@@ -33,6 +33,14 @@ export interface SendChatMessageResult {
 // with whatever we have, so a model that never stops asking for tools cannot spin.
 const MAX_TOOL_ITERATIONS = 5;
 
+// Bounds the WIDTH of one iteration. The model chooses how many tools to request in
+// a single turn, and each one is at least one query on the shared connection pool -
+// "compare the menus of every unit" legitimately fans out per unit. Without a cap,
+// one chat request could issue an unbounded number of concurrent queries and starve
+// unrelated endpoints. Tokens are metered per model call, not per tool call, so
+// nothing else bounds this. Dropped calls come back as an error the model can act on.
+const MAX_TOOL_CALLS_PER_ITERATION = 4;
+
 const OUT_OF_TOKENS_REPLY =
   'I have run out of AI tokens for this conversation. Please ask an admin to top up your balance.';
 const CAP_REACHED_REPLY =
@@ -94,7 +102,7 @@ export class SendChatMessageUseCase {
         res = await this.chatModel.generate({
           systemInstruction: SYSTEM_INSTRUCTION,
           messages,
-          tools: this.registry.getDeclarations(),
+          tools: this.registry.getDeclarations(input.actor),
         });
       } catch (err) {
         // A provider failure here discards this turn. Tokens debited on earlier
@@ -117,10 +125,20 @@ export class SendChatMessageUseCase {
         // Tools are independent read-only lookups; dispatch them in parallel.
         // Promise.all preserves order, which the model needs to match each
         // functionResponse back to its functionCall.
-        const toolResults = await Promise.all(
-          res.functionCalls.map((call) => this.registry.dispatch(call, input.actor)),
+        const toRun = res.functionCalls.slice(0, MAX_TOOL_CALLS_PER_ITERATION);
+        const ran = await Promise.all(
+          toRun.map((call) => this.registry.dispatch(call, input.actor)),
         );
-        messages.push({ role: 'tool', toolResults });
+        // Every functionCall must get a functionResponse back or the provider
+        // rejects the follow-up, so the dropped ones are answered too - with a
+        // signal the model can act on by asking for less.
+        const dropped = res.functionCalls.slice(MAX_TOOL_CALLS_PER_ITERATION).map((call) => ({
+          name: call.name,
+          response: {
+            error: `too many tools requested at once; at most ${MAX_TOOL_CALLS_PER_ITERATION} run per step. Ask for fewer.`,
+          },
+        }));
+        messages.push({ role: 'tool', toolResults: [...ran, ...dropped] });
 
         if (remaining === 0) {
           return { reply: OUT_OF_TOKENS_REPLY, tokensSpent: spent, balanceRemaining: remaining };
