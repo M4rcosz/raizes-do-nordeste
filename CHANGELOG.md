@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.5.0...v3.0.0) (2026-07-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **orders:** TOTEM orders now require customerName in the request body.
+Clients omitting it receive 422 GuestNameRequiredError.
+
+### Features
+
+* **ai:** expand tool surface with 7 new context-scoped tools ([5dafd7f](https://github.com/M4rcosz/raizes-do-nordeste/commit/5dafd7fa64c07841bb393508db6e7c828b77540d))
+* **orders:** add channel-gated guest customer name for walk-in ordering ([3373f4c](https://github.com/M4rcosz/raizes-do-nordeste/commit/3373f4caf17fc109e10b21ba231c4a2f0c41057f))
+
 ## [2.5.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.4.2...v2.5.0) (2026-07-17)
 
 
