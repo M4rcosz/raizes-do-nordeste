@@ -45,12 +45,7 @@ async function main(): Promise<void> {
   // USERS
   // =======================================================
 
-  const [kitchenHash, adminHash, managerHash, customerHash] = await Promise.all([
-    hashPassword('P@ssword1'),
-    hashPassword('P@ssword2'),
-    hashPassword('P@ssword3'),
-    hashPassword('P@ssword4'),
-  ]);
+  const devPassword = await hashPassword('P@ssword10');
 
   await prisma.user.upsert({
     where: { username: 'pedro.panic' },
@@ -59,7 +54,7 @@ async function main(): Promise<void> {
       username: 'pedro.panic',
       name: 'Pedro Panic',
       email: 'pedro.panic@nexio.com',
-      passwordHash: kitchenHash,
+      passwordHash: devPassword,
       role: 'KITCHEN',
       businessUnits: { create: [{ businessUnitId: unit1.id }] },
     },
@@ -72,7 +67,7 @@ async function main(): Promise<void> {
       username: 'nexio.admin',
       name: 'Nexio Administrator',
       email: 'admin@nomail.com',
-      passwordHash: adminHash,
+      passwordHash: devPassword,
       role: 'ADMIN',
       businessUnits: { create: [{ businessUnitId: unit2.id }] },
     },
@@ -85,21 +80,33 @@ async function main(): Promise<void> {
       username: 'gustavo.linhares',
       name: 'Gustavo Linhares',
       email: 'gustavo.linhares@nexio.com',
-      passwordHash: managerHash,
+      passwordHash: devPassword,
       role: 'MANAGER',
       businessUnits: { create: [{ businessUnitId: unit2.id }] },
     },
   });
 
   await prisma.user.upsert({
-    where: { username: 'gregor.customer' },
+    where: { username: 'nexio.customer' },
     update: {},
     create: {
-      username: 'gregor.customer',
-      name: 'Gregor Customer',
-      email: 'gregor.customer@nexio.com',
-      passwordHash: customerHash,
+      username: 'nexio.customer',
+      name: 'Nexio Customer',
+      email: 'customer@nexio.com',
+      passwordHash: devPassword,
       role: 'CUSTOMER',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { username: 'nexio.attendant' },
+    update: {},
+    create: {
+      username: 'nexio.attendant',
+      name: 'Nexio Attendant',
+      email: 'attendant@nomail.com',
+      passwordHash: devPassword,
+      role: 'ATTENDANT',
     },
   });
 
