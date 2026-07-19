@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 
 export class ListUsersQueryDto {
   @ApiPropertyOptional({
@@ -41,4 +42,13 @@ export class ListUsersQueryDto {
   @IsString()
   @MaxLength(120)
   email?: string;
+
+  @ApiPropertyOptional({
+    enum: UserRole,
+    description:
+      'Filter by exact role. Combines with the unit scope, so a MANAGER asking for CUSTOMER gets an empty page.',
+  })
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
 }

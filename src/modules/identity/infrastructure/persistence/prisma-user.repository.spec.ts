@@ -311,6 +311,24 @@ describe('PrismaUserRepository', () => {
       prisma.user.findMany.mockResolvedValue([rawUser]);
     });
 
+    it('matches the role exactly, with no unit clause attached', async () => {
+      await repo.findMany({ filters: { role: UserRole.CUSTOMER }, pagination: { take: 20 } });
+
+      expect(argsOf(prisma.user.findMany).where).toStrictEqual({ role: UserRole.CUSTOMER });
+    });
+
+    it('ANDs the role with the unit scope', async () => {
+      await repo.findMany({
+        filters: { role: UserRole.CUSTOMER, businessUnitIds: ['bu-1'] },
+        pagination: { take: 20 },
+      });
+
+      expect(argsOf(prisma.user.findMany).where).toStrictEqual({
+        businessUnits: { some: { businessUnitId: { in: ['bu-1'] } } },
+        role: UserRole.CUSTOMER,
+      });
+    });
+
     it('builds an empty where clause when no filters are given', async () => {
       await repo.findMany({ pagination: { take: 20 } });
 

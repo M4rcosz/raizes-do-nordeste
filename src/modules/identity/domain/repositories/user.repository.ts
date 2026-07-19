@@ -37,6 +37,8 @@ export interface ListUsersFilters {
   username?: string;
   /** Case-insensitive substring match on email. */
   email?: string;
+  /** Exact role match. Lets the listing reach CUSTOMERs, who carry no unit links. */
+  role?: UserRole;
 }
 
 export interface FindUsersInput {
