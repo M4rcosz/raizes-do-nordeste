@@ -12,6 +12,7 @@ import { UpdateUserProfileUseCase } from './application/use-cases/update-user-pr
 import { GetMyProfileUseCase } from './application/use-cases/get-my-profile.use-case';
 import { ChangePasswordUseCase } from './application/use-cases/change-password.use-case';
 import { ListUsersUseCase } from './application/use-cases/list-users.use-case';
+import { LookupCustomerUseCase } from './application/use-cases/lookup-customer.use-case';
 import { UpdateUserBusinessUnitsUseCase } from './application/use-cases/update-user-business-units.use-case';
 import { USER_FOR_AI } from './application/ports/user-for-ai.port';
 import { UserForAiService } from './application/services/user-for-ai.service';
@@ -121,6 +122,7 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     GetMyProfileUseCase,
     ChangePasswordUseCase,
     ListUsersUseCase,
+    LookupCustomerUseCase,
     UpdateUserBusinessUnitsUseCase,
     {
       provide: USER_FOR_AI,

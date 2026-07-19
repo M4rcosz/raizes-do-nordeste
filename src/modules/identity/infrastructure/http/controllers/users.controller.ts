@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -28,6 +29,7 @@ import { CreateUserUseCase } from '@modules/identity/application/use-cases/creat
 import { DeactivateUserUseCase } from '@modules/identity/application/use-cases/deactivate-user.use-case';
 import { GetMyProfileUseCase } from '@modules/identity/application/use-cases/get-my-profile.use-case';
 import { ListUsersUseCase } from '@modules/identity/application/use-cases/list-users.use-case';
+import { LookupCustomerUseCase } from '@modules/identity/application/use-cases/lookup-customer.use-case';
 import { ReactivateUserUseCase } from '@modules/identity/application/use-cases/reactivate-user.use-case';
 import { RegisterCustomerUseCase } from '@modules/identity/application/use-cases/register-customer.use-case';
 import { UpdateUserBusinessUnitsUseCase } from '@modules/identity/application/use-cases/update-user-business-units.use-case';
@@ -40,7 +42,9 @@ import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto'
 import { sanitizeLimit } from '@shared/pagination/pagination';
 import { ChangeMyPasswordDto } from '../dto/change-my-password-request.dto';
 import { CreateUserDto } from '../dto/create-user-request.dto';
+import { CustomerLookupResponseDto } from '../dto/customer-lookup-response.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
+import { LookupCustomerQueryDto } from '../dto/lookup-customer-query.dto';
 import { PaginatedUserResponseDto } from '../dto/paginated-user-response.dto';
 import { RegisterCustomerDto } from '../dto/register-customer-request.dto';
 import { UpdateMyProfileDto } from '../dto/update-my-profile-request.dto';
@@ -61,6 +65,7 @@ export class UsersController {
     private readonly changePassword: ChangePasswordUseCase,
     private readonly listUsers: ListUsersUseCase,
     private readonly updateUserBusinessUnits: UpdateUserBusinessUnitsUseCase,
+    private readonly lookupCustomer: LookupCustomerUseCase,
   ) {}
 
   // Stricter limit than the global one to slow self-registration abuse.
@@ -118,6 +123,30 @@ export class UsersController {
       result.data.map((user) => UserResponseDto.fromEntity(user)),
       result.meta,
     );
+  }
+
+  // Declared before any :id route so NestJS matches /lookup literally, not as a UUID
+  // param. KITCHEN is excluded on purpose, mirroring ATTENDING_ROLES in the orders
+  // controller: only roles that actually serve customers need to resolve one.
+  // Rate-limited despite being an exact match, because a hit/miss still answers
+  // "is this phone registered?" one guess at a time.
+  @Roles(['ADMIN', 'MANAGER', 'ATTENDANT'])
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Get('lookup')
+  @ApiOperation({
+    summary: 'Find a customer by exact phone or email, to bind to a counter order',
+    description:
+      'Send exactly one of phone or email - neither or both is a 400. Matching is exact, ' +
+      'never partial, so this cannot be used to browse customers. A value that belongs to ' +
+      'a staff or deactivated account is reported as not found, same as an unknown one.',
+  })
+  @ApiOkResponse({ type: CustomerLookupResponseDto })
+  @ApiBadRequestResponse({ description: 'Neither or both of phone/email were provided' })
+  @ApiForbiddenResponse({ description: 'Your role may not look up customers' })
+  @ApiNotFoundResponse({ description: 'No active customer matches that contact value' })
+  async lookup(@Query() query: LookupCustomerQueryDto): Promise<CustomerLookupResponseDto> {
+    const user = await this.lookupCustomer.execute({ phone: query.phone, email: query.email });
+    return CustomerLookupResponseDto.fromEntity(user);
   }
 
   // Declared before any :id route so NestJS matches /me literally, not as a UUID

@@ -13,6 +13,7 @@ import { CreateUserUseCase } from '@modules/identity/application/use-cases/creat
 import { DeactivateUserUseCase } from '@modules/identity/application/use-cases/deactivate-user.use-case';
 import { GetMyProfileUseCase } from '@modules/identity/application/use-cases/get-my-profile.use-case';
 import { ListUsersUseCase } from '@modules/identity/application/use-cases/list-users.use-case';
+import { LookupCustomerUseCase } from '@modules/identity/application/use-cases/lookup-customer.use-case';
 import { ReactivateUserUseCase } from '@modules/identity/application/use-cases/reactivate-user.use-case';
 import { RegisterCustomerUseCase } from '@modules/identity/application/use-cases/register-customer.use-case';
 import { UpdateUserBusinessUnitsUseCase } from '@modules/identity/application/use-cases/update-user-business-units.use-case';
@@ -61,6 +62,7 @@ describe('UsersController', () => {
   let changePassword: { execute: Fn };
   let listUsers: { execute: Fn };
   let updateUserBusinessUnits: { execute: Fn };
+  let lookupCustomer: { execute: Fn };
   let controller: UsersController;
 
   beforeEach(() => {
@@ -73,6 +75,7 @@ describe('UsersController', () => {
     changePassword = useCase();
     listUsers = useCase();
     updateUserBusinessUnits = useCase();
+    lookupCustomer = useCase();
 
     controller = new UsersController(
       registerCustomer as unknown as RegisterCustomerUseCase,
@@ -84,6 +87,7 @@ describe('UsersController', () => {
       changePassword as unknown as ChangePasswordUseCase,
       listUsers as unknown as ListUsersUseCase,
       updateUserBusinessUnits as unknown as UpdateUserBusinessUnitsUseCase,
+      lookupCustomer as unknown as LookupCustomerUseCase,
     );
   });
 
@@ -103,6 +107,8 @@ describe('UsersController', () => {
       ['deactivate', UsersController.prototype.deactivate, ['ADMIN', 'MANAGER']],
       ['reactivate', UsersController.prototype.reactivate, ['ADMIN', 'MANAGER']],
       ['setBusinessUnits', UsersController.prototype.setBusinessUnits, ['ADMIN']],
+      // KITCHEN is staff but never serves a customer, so it stays off this list.
+      ['lookup', UsersController.prototype.lookup, ['ADMIN', 'MANAGER', 'ATTENDANT']],
       ['updateMe', UsersController.prototype.updateMe, ['CUSTOMER']],
     ])('gates %s behind %s', (_name, handler, expected) => {
       expect(reflector.get(Roles, handler)).toEqual(expected);
@@ -115,6 +121,51 @@ describe('UsersController', () => {
     ])('leaves %s open to any authenticated role', (_name, handler) => {
       expect(reflector.get(Roles, handler)).toBeUndefined();
       expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBeUndefined();
+    });
+  });
+
+  describe('lookup', () => {
+    // Nest resolves routes in declaration order. If a :id route were declared first,
+    // GET /users/lookup would bind to it and 400 on the UUID param instead.
+    it('is declared before every :id route', () => {
+      const methods = Object.getOwnPropertyNames(UsersController.prototype);
+      const idRoutes = ['deactivate', 'reactivate', 'setBusinessUnits'];
+
+      for (const route of idRoutes) {
+        expect(methods.indexOf('lookup')).toBeLessThan(methods.indexOf(route));
+      }
+    });
+
+    it('forwards the phone term to the use case', async () => {
+      lookupCustomer.execute.mockResolvedValue(buildUser({ role: UserRole.CUSTOMER }));
+
+      await controller.lookup({ phone: '+5581988888888' } as never);
+
+      expect(lookupCustomer.execute).toHaveBeenCalledWith({
+        phone: '+5581988888888',
+        email: undefined,
+      });
+    });
+
+    it('forwards the email term to the use case', async () => {
+      lookupCustomer.execute.mockResolvedValue(buildUser({ role: UserRole.CUSTOMER }));
+
+      await controller.lookup({ email: 'joao@example.com' } as never);
+
+      expect(lookupCustomer.execute).toHaveBeenCalledWith({
+        phone: undefined,
+        email: 'joao@example.com',
+      });
+    });
+
+    // The response is the whole point of the narrow DTO: an attendant learns the
+    // name to confirm, and nothing else about the account.
+    it('returns only id and name, never the contact details or role', async () => {
+      lookupCustomer.execute.mockResolvedValue(buildUser({ role: UserRole.CUSTOMER }));
+
+      const result = await controller.lookup({ phone: '+5581988888888' } as never);
+
+      expect({ ...result }).toEqual({ id: 'u-target', name: 'Joao Atendente' });
     });
   });
 

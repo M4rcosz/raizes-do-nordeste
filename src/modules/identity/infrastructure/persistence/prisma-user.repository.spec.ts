@@ -15,6 +15,7 @@ import {
 type PrismaMock = {
   user: {
     findUnique: DelegateFn;
+    findFirst: DelegateFn;
     findMany: DelegateFn;
     create: DelegateFn;
     update: DelegateFn;
@@ -29,6 +30,7 @@ type PrismaMock = {
 const buildPrismaMock = (): PrismaMock => ({
   user: {
     findUnique: delegateFn(),
+    findFirst: delegateFn(),
     findMany: delegateFn(),
     create: delegateFn(),
     update: delegateFn(),
@@ -104,6 +106,74 @@ describe('PrismaUserRepository', () => {
       expect(argsOf(prisma.user.findUnique)).toMatchObject({
         include: { businessUnits: { select: { businessUnitId: true } } },
       });
+    });
+  });
+
+  describe('findActiveCustomerByContact', () => {
+    const customerRow = { ...rawUser, role: UserRole.CUSTOMER };
+
+    it('matches an exact phone, never a substring', async () => {
+      prisma.user.findFirst.mockResolvedValue(customerRow);
+
+      const user = await repo.findActiveCustomerByContact({ phone: '+5581988888888' });
+
+      expect(argsOf(prisma.user.findFirst).where).toEqual({
+        phone: '+5581988888888',
+        role: UserRole.CUSTOMER,
+        isActive: true,
+      });
+      expect(user?.id).toBe('u-1');
+    });
+
+    it('matches an exact email, never a substring', async () => {
+      prisma.user.findFirst.mockResolvedValue(customerRow);
+
+      await repo.findActiveCustomerByContact({ email: 'joao@example.com' });
+
+      expect(argsOf(prisma.user.findFirst).where).toEqual({
+        email: 'joao@example.com',
+        role: UserRole.CUSTOMER,
+        isActive: true,
+      });
+    });
+
+    // role/isActive belong in the WHERE, not a post-filter: that is what makes a
+    // staff or deactivated account indistinguishable from a genuine miss.
+    it('constrains role and isActive in the query itself', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      await repo.findActiveCustomerByContact({ phone: '+5581900000000' });
+
+      expect(argsOf(prisma.user.findFirst).where).toMatchObject({
+        role: UserRole.CUSTOMER,
+        isActive: true,
+      });
+    });
+
+    it('returns null when no row matches', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        repo.findActiveCustomerByContact({ phone: '+5581900000000' }),
+      ).resolves.toBeNull();
+    });
+
+    it('loads the unit links so the entity can be built', async () => {
+      prisma.user.findFirst.mockResolvedValue(customerRow);
+
+      await repo.findActiveCustomerByContact({ phone: '+5581988888888' });
+
+      expect(argsOf(prisma.user.findFirst)).toMatchObject({
+        include: { businessUnits: { select: { businessUnitId: true } } },
+      });
+    });
+
+    // An empty contact would otherwise build an empty WHERE and hand back whichever
+    // active customer happens to sort first, i.e. a stranger's record.
+    it('never queries when neither contact field is set', async () => {
+      await expect(repo.findActiveCustomerByContact({})).resolves.toBeNull();
+
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
     });
   });
 

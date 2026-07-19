@@ -46,9 +46,26 @@ export interface FindUsersInput {
   pagination: CursorPaginationParams;
 }
 
+/**
+ * Exact contact value to resolve a customer by. Exactly one field is set; the
+ * HTTP DTO rejects neither-or-both before it reaches here.
+ */
+export interface CustomerContact {
+  phone?: string;
+  email?: string;
+}
+
 export interface UserRepository {
   findByUsername(username: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
+  /**
+   * Resolves a single active CUSTOMER by an exact phone or email. Both columns are
+   * unique (email is citext, so its match is case-insensitive), which is what keeps
+   * this a point lookup: no substring matching, so an attendant token cannot page
+   * through the customer base. Role and isActive are part of the query rather than a
+   * post-filter, so a staff or deactivated account is indistinguishable from a miss.
+   */
+  findActiveCustomerByContact(contact: CustomerContact): Promise<User | null>;
   create(input: CreateUserInput): Promise<User>;
   /**
    * Conditional deactivation: flips is_active to false only if the row still has

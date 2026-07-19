@@ -1,6 +1,7 @@
 import { User } from '@modules/identity/domain/entities/user.entity';
 import {
   CreateUserInput,
+  CustomerContact,
   FindUsersInput,
   UpdateProfileInput,
   UserRepository,
@@ -32,6 +33,25 @@ export class PrismaUserRepository implements UserRepository {
 
   async findById(id: string): Promise<User | null> {
     const raw = await this.prisma.user.findUnique({ where: { id }, include: WITH_UNITS });
+    return raw ? this.toEntity(raw) : null;
+  }
+
+  async findActiveCustomerByContact(contact: CustomerContact): Promise<User | null> {
+    // Guard before building the term: an empty where would match the first active
+    // customer in the table and hand back a stranger's record. The DTO already
+    // rejects neither-or-both, so this is defence in depth for non-HTTP callers.
+    if (contact.phone === undefined && contact.email === undefined) {
+      return null;
+    }
+
+    // Exactly one is set by here, so this is a single equality term, never an OR.
+    const match: Prisma.UserWhereInput =
+      contact.phone !== undefined ? { phone: contact.phone } : { email: contact.email };
+
+    const raw = await this.prisma.user.findFirst({
+      where: { ...match, role: UserRole.CUSTOMER, isActive: true },
+      include: WITH_UNITS,
+    });
     return raw ? this.toEntity(raw) : null;
   }
 
