@@ -2,16 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [Unreleased]
+## [3.1.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.0.0...v3.1.0) (2026-07-19)
+
 
 ### Features
 
-* **identity:** add a `role` query filter to `GET /api/users`, making `CUSTOMER`s reachable from the listing (they carry no business-unit links). The filter is AND-combined with the unit scope and never widens it.
-* **identity:** add `GET /api/users/lookup`, an exact-match point lookup of one customer by phone or email (ADMIN/MANAGER/ATTENDANT), so an attendant can bind a walk-in order to an existing account. Matching is never partial, and a staff or deactivated account is reported as not found, so a staff token cannot enumerate the customer base. Rate-limited to 10 requests/min.
+* **identity:** add a role filter to the user listing ([9c1508d](https://github.com/M4rcosz/raizes-do-nordeste/commit/9c1508db70d8224e057fd5b90bdbbfcc93424848))
+* **identity:** add exact-match customer lookup for counter orders ([d55dbf4](https://github.com/M4rcosz/raizes-do-nordeste/commit/d55dbf44357844c74b4528dfb75d4c336b23594b))
+
 
 ### Bug Fixes
 
-* **orders:** validate the body-supplied `customerId` on `POST /api/orders`. It must name an existing, active `CUSTOMER`; an unknown, staff or deactivated id is now rejected with `404` instead of silently binding the order to that account, which then accrued its loyalty points and saw it in `GET /orders/me`. Resolve the id via `GET /api/users/lookup`.
+* **orders:** validate the body-supplied customerId on order creation ([268e4c0](https://github.com/M4rcosz/raizes-do-nordeste/commit/268e4c05bc917059002cc51d159d6dec29286535))
 
 ## [3.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.5.0...v3.0.0) (2026-07-18)
 
