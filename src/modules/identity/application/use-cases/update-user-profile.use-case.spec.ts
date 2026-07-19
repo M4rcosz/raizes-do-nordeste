@@ -49,6 +49,10 @@ class FakeUserRepository implements UserRepository {
     return Promise.resolve(null);
   }
 
+  findActiveCustomerByContact(): Promise<User | null> {
+    return Promise.reject(new Error('not used'));
+  }
+
   findById(id: string): Promise<User | null> {
     return Promise.resolve(this.store.get(id) ?? null);
   }
