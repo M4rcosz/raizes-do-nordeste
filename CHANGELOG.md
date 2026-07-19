@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file. See [commit
 * **identity:** add a `role` query filter to `GET /api/users`, making `CUSTOMER`s reachable from the listing (they carry no business-unit links). The filter is AND-combined with the unit scope and never widens it.
 * **identity:** add `GET /api/users/lookup`, an exact-match point lookup of one customer by phone or email (ADMIN/MANAGER/ATTENDANT), so an attendant can bind a walk-in order to an existing account. Matching is never partial, and a staff or deactivated account is reported as not found, so a staff token cannot enumerate the customer base. Rate-limited to 10 requests/min.
 
+### Bug Fixes
+
+* **orders:** validate the body-supplied `customerId` on `POST /api/orders`. It must name an existing, active `CUSTOMER`; an unknown, staff or deactivated id is now rejected with `404` instead of silently binding the order to that account, which then accrued its loyalty points and saw it in `GET /orders/me`. Resolve the id via `GET /api/users/lookup`.
+
 ## [3.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.5.0...v3.0.0) (2026-07-18)
 
 

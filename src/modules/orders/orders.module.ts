@@ -11,6 +11,8 @@ import { ORDER_REPOSITORY } from './domain/repositories/order.repository';
 import { PrismaOrderRepository } from './infrastructure/persistence/prisma-order.repository';
 import { ORDER_PRODUCT_LOOKUP } from './application/ports/order-product-lookup.port';
 import { PrismaOrderProductLookup } from './infrastructure/persistence/prisma-order-product-lookup';
+import { ORDER_CUSTOMER_LOOKUP } from './application/ports/order-customer-lookup.port';
+import { PrismaOrderCustomerLookup } from './infrastructure/persistence/prisma-order-customer-lookup';
 import { TRANSACTION_RUNNER } from '@shared/transaction/transaction-runner.port';
 import { PrismaTransactionRunner } from '@shared/infrastructure/prisma/prisma-transaction-runner';
 import { AuditModule } from '@modules/audit/audit.module';
@@ -45,6 +47,10 @@ import { IdempotencyKeySweeper } from './infrastructure/scheduling/idempotency-k
     {
       provide: ORDER_PRODUCT_LOOKUP,
       useClass: PrismaOrderProductLookup,
+    },
+    {
+      provide: ORDER_CUSTOMER_LOOKUP,
+      useClass: PrismaOrderCustomerLookup,
     },
     {
       provide: TRANSACTION_RUNNER,
