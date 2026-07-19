@@ -247,6 +247,7 @@ describe('UsersController', () => {
         businessUnitId: 'bu-1',
         username: 'joao',
         email: 'joao@',
+        role: UserRole.CUSTOMER,
         cursor: 'u-0',
         limit: 10,
       } as never);
@@ -256,6 +257,7 @@ describe('UsersController', () => {
         businessUnitId: 'bu-1',
         username: 'joao',
         email: 'joao@',
+        role: UserRole.CUSTOMER,
         cursor: 'u-0',
         limit: 10,
       });

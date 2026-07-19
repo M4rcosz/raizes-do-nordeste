@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [Unreleased]
+
+### Features
+
+* **identity:** add a `role` query filter to `GET /api/users`, making `CUSTOMER`s reachable from the listing (they carry no business-unit links). The filter is AND-combined with the unit scope and never widens it.
+
 ## [3.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v2.5.0...v3.0.0) (2026-07-18)
 
 

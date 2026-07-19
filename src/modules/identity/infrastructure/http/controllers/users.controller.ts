@@ -94,7 +94,10 @@ export class UsersController {
 
   @Roles(['ADMIN', 'MANAGER'])
   @Get()
-  @ApiOperation({ summary: 'List staff users (cursor-paginated). MANAGER is scoped to own units.' })
+  @ApiOperation({
+    summary:
+      'List users (cursor-paginated). MANAGER is scoped to own units; role=CUSTOMER is effectively ADMIN-only.',
+  })
   @ApiOkResponse({ type: PaginatedUserResponseDto })
   @ApiNotFoundResponse({ description: 'MANAGER requested a unit outside their scope' })
   async list(
@@ -107,6 +110,7 @@ export class UsersController {
       businessUnitId: query.businessUnitId,
       username: query.username,
       email: query.email,
+      role: query.role,
       cursor: query.cursor,
       limit,
     });

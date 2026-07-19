@@ -62,6 +62,47 @@ describe('ListUsersUseCase', () => {
     });
   });
 
+  describe('role filter', () => {
+    it('omits the role filter entirely when none is requested', async () => {
+      const useCase = buildUseCase([buildUser('u-1')]);
+
+      await useCase.execute({ actor: admin, limit: 20 });
+
+      expect(calls[0].filters?.role).toBeUndefined();
+    });
+
+    it('lets an ADMIN reach CUSTOMERs with no unit filter attached', async () => {
+      const useCase = buildUseCase([buildUser('u-1')]);
+
+      await useCase.execute({ actor: admin, role: UserRole.CUSTOMER, limit: 20 });
+
+      expect(calls[0].filters?.role).toBe(UserRole.CUSTOMER);
+      expect(calls[0].filters?.businessUnitIds).toBeUndefined();
+    });
+
+    it('does not widen the MANAGER scope: role rides alongside the forced unit filter', async () => {
+      const useCase = buildUseCase([]);
+
+      await useCase.execute({ actor: manager(['bu-1']), role: UserRole.CUSTOMER, limit: 20 });
+
+      expect(calls[0].filters?.role).toBe(UserRole.CUSTOMER);
+      expect(calls[0].filters?.businessUnitIds).toEqual(['bu-1']);
+    });
+
+    it('still short-circuits an empty MANAGER scope without querying', async () => {
+      const useCase = buildUseCase([buildUser('u-1')]);
+
+      const result = await useCase.execute({
+        actor: manager([]),
+        role: UserRole.CUSTOMER,
+        limit: 20,
+      });
+
+      expect(calls).toHaveLength(0);
+      expect(result.data).toEqual([]);
+    });
+  });
+
   describe('MANAGER scope (forced to the claim)', () => {
     it('lists the union of the claim units when no businessUnitId is given', async () => {
       const useCase = buildUseCase([buildUser('u-1')]);

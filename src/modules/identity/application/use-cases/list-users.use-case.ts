@@ -24,6 +24,7 @@ export interface ListUsersInput {
   businessUnitId?: string;
   username?: string;
   email?: string;
+  role?: UserRole;
   cursor?: string;
   limit: number;
 }
@@ -40,7 +41,7 @@ export class ListUsersUseCase {
   // never read users outside their units. A businessUnitId outside the claim
   // reads as not-found (anti-IDOR), never as an empty list that leaks the unit.
   async execute(input: ListUsersInput): Promise<CursorPaginatedResult<User>> {
-    const { actor, businessUnitId, username, email, cursor, limit } = input;
+    const { actor, businessUnitId, username, email, role, cursor, limit } = input;
 
     const scope = this.resolveScope(actor, businessUnitId);
 
@@ -60,6 +61,12 @@ export class ListUsersUseCase {
     }
     if (email !== undefined) {
       filters.email = email;
+    }
+    // Role is a plain AND filter, never a scope widener: a MANAGER asking for
+    // role=CUSTOMER still gets the unit restriction, so it matches nobody
+    // (customers hold no unit links). Reaching customers stays an ADMIN read.
+    if (role !== undefined) {
+      filters.role = role;
     }
 
     let items: User[];

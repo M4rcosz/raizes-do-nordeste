@@ -229,6 +229,9 @@ export class PrismaUserRepository implements UserRepository {
     if (filters.email) {
       where.email = { contains: filters.email, mode: 'insensitive' };
     }
+    if (filters.role !== undefined) {
+      where.role = filters.role;
+    }
     return where;
   }
 
