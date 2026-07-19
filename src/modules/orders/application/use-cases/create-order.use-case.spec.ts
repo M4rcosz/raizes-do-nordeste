@@ -14,6 +14,10 @@ import { ProductUnavailableError } from '../errors/product-unavailable.error';
 import { OrderReferenceNotFoundError } from '../../domain/errors/order-reference-not-found.error';
 import { ORDER_PRODUCT_LOOKUP, type OrderProductLookup } from '../ports/order-product-lookup.port';
 import {
+  ORDER_CUSTOMER_LOOKUP,
+  type OrderCustomerLookup,
+} from '../ports/order-customer-lookup.port';
+import {
   TRANSACTION_RUNNER,
   type TransactionRunner,
 } from '@shared/transaction/transaction-runner.port';
@@ -208,6 +212,7 @@ describe('CreateOrderUseCase', () => {
   let findById: jest.MockedFunction<OrderRepository['findById']>;
   let idempotency: FakeIdempotencyStore;
   let resolveLookup: jest.MockedFunction<OrderProductLookup['resolve']>;
+  let isBindableCustomer: jest.MockedFunction<OrderCustomerLookup['isBindableCustomer']>;
   let logAudit: jest.MockedFunction<AuditLogger['log']>;
   let deductForOrder: jest.MockedFunction<StockDeduction['deductForOrder']>;
   let loyalty: FakeLoyalty;
@@ -252,6 +257,11 @@ describe('CreateOrderUseCase', () => {
       ]),
     );
 
+    isBindableCustomer = jest.fn() as jest.MockedFunction<
+      OrderCustomerLookup['isBindableCustomer']
+    >;
+    isBindableCustomer.mockResolvedValue(true);
+
     logAudit = jest.fn() as jest.MockedFunction<AuditLogger['log']>;
     logAudit.mockResolvedValue(undefined);
 
@@ -281,6 +291,10 @@ describe('CreateOrderUseCase', () => {
         {
           provide: ORDER_PRODUCT_LOOKUP,
           useValue: { resolve: resolveLookup } satisfies OrderProductLookup,
+        },
+        {
+          provide: ORDER_CUSTOMER_LOOKUP,
+          useValue: { isBindableCustomer } satisfies OrderCustomerLookup,
         },
         { provide: TRANSACTION_RUNNER, useValue: transactions },
         {
@@ -371,6 +385,92 @@ describe('CreateOrderUseCase', () => {
     ).rejects.toBeInstanceOf(AttendantRequiredError);
 
     expect(create).not.toHaveBeenCalled();
+  });
+
+  // Without this gate an attendant could bind an order to ANY user id, including a
+  // MANAGER or ADMIN, who would then accrue its loyalty points and see it in their
+  // own order list. The body-supplied id has to be proven to name a real customer.
+  describe('body-supplied customerId is validated', () => {
+    const attendant = { id: 'att-1', canAttend: true };
+
+    it.each([
+      ['no such user', 'ghost-id'],
+      ['a staff account', 'admin-1'],
+      ['a deactivated customer', 'c-inactive'],
+    ])('rejects %s with OrderReferenceNotFoundError and never persists', async (_case, id) => {
+      isBindableCustomer.mockResolvedValue(false);
+
+      await expect(
+        useCase.execute(command({ orderChannel: OrderChannel.COUNTER, customerId: id }), attendant),
+      ).rejects.toBeInstanceOf(OrderReferenceNotFoundError);
+
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    // Inside the tx, so the customer cannot be deactivated between check and insert.
+    it('checks the customer on the same transaction context as the insert', async () => {
+      await useCase.execute(
+        command({ orderChannel: OrderChannel.COUNTER, customerId: 'c-9' }),
+        attendant,
+      );
+
+      expect(isBindableCustomer).toHaveBeenCalledWith('c-9', txContext);
+    });
+
+    it('persists the order when the customer is bindable', async () => {
+      await useCase.execute(
+        command({ orderChannel: OrderChannel.COUNTER, customerId: 'c-9' }),
+        attendant,
+      );
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ customerId: 'c-9', attendantId: 'att-1' }),
+        txContext,
+      );
+    });
+
+    // On APP/WEB the customerId is actor.id, taken from the verified JWT. Re-checking
+    // it would only cost a query, and would reject a legitimately authenticated user
+    // whose account the lookup happens to filter out.
+    it.each([OrderChannel.APP, OrderChannel.WEB])(
+      '%s channel: never consults the lookup, the id comes from the token',
+      async (orderChannel) => {
+        await useCase.execute(command({ orderChannel }), { id: 'u-1', canAttend: false });
+
+        expect(isBindableCustomer).not.toHaveBeenCalled();
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({ customerId: 'u-1' }),
+          txContext,
+        );
+      },
+    );
+
+    // resolveParties discards a body customerId on APP/WEB, so validating it would
+    // 404 the order over a field that never reaches the DB.
+    it('ignores a body customerId on an authenticated channel instead of validating it', async () => {
+      isBindableCustomer.mockResolvedValue(false);
+
+      await useCase.execute(command({ orderChannel: OrderChannel.APP, customerId: 'admin-1' }), {
+        id: 'u-1',
+        canAttend: false,
+      });
+
+      expect(isBindableCustomer).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ customerId: 'u-1' }),
+        txContext,
+      );
+    });
+
+    it('does not consult the lookup for a guest order with no customer', async () => {
+      await useCase.execute(
+        command({ orderChannel: OrderChannel.COUNTER, customerName: 'Maria' }),
+        attendant,
+      );
+
+      expect(isBindableCustomer).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ customerId: null }), txContext);
+    });
   });
 
   describe('guest customer name', () => {

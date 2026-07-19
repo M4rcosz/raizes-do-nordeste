@@ -21,6 +21,10 @@ import { ProductUnavailableError } from '../errors/product-unavailable.error';
 import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order-reference-not-found.error';
 import { ORDER_PRODUCT_LOOKUP, type OrderProductLookup } from '../ports/order-product-lookup.port';
 import {
+  ORDER_CUSTOMER_LOOKUP,
+  type OrderCustomerLookup,
+} from '../ports/order-customer-lookup.port';
+import {
   TRANSACTION_RUNNER,
   type TransactionContext,
   type TransactionRunner,
@@ -103,6 +107,8 @@ export class CreateOrderUseCase {
     private readonly orders: OrderRepository,
     @Inject(ORDER_PRODUCT_LOOKUP)
     private readonly productLookup: OrderProductLookup,
+    @Inject(ORDER_CUSTOMER_LOOKUP)
+    private readonly customerLookup: OrderCustomerLookup,
     @Inject(TRANSACTION_RUNNER)
     private readonly transactions: TransactionRunner,
     @Inject(AUDIT_LOGGER)
@@ -158,6 +164,7 @@ export class CreateOrderUseCase {
     try {
       committed = await this.transactions.run(async (tx) => {
         await this.assertOrderableProducts(command, tx);
+        await this.assertBindableCustomer(command, customerId, tx);
 
         const orderItems = rawOrderItems.map((item) => ({
           ...item,
@@ -417,6 +424,44 @@ export class CreateOrderUseCase {
           `Unit price ${item.unitPrice} does not match the authoritative price ${resolved.price.toDecimalString()} for product ${item.productId} at this business unit.`,
         );
       }
+    }
+  }
+
+  /**
+   * Rejects an order whose body-supplied customerId does not name an active CUSTOMER.
+   * Without this an attendant could bind an order to any user id, including a MANAGER
+   * or ADMIN, who would then accrue its loyalty points and see it in their own orders.
+   *
+   * Checks the RESOLVED customerId, and only when it is the one the body sent. On the
+   * authenticated channels the resolved id is actor.id, straight off the verified JWT,
+   * so it is already trusted; and a customerId the body sent on such a channel is
+   * discarded by resolveParties, so validating it would 404 an order over a field that
+   * never reaches the DB. Comparing the two covers both cases without assuming the
+   * channel policy table keeps its current shape.
+   *
+   * Runs inside the caller's tx, next to assertOrderableProducts, which NARROWS the
+   * window for a concurrent deactivation but does not close it: the runner uses the
+   * Postgres default READ COMMITTED and this read takes no row lock, so a deactivation
+   * committing mid-tx still yields an order bound to an inactive customer. Harmless
+   * (a stale binding, no privilege gain) - upgrade to SELECT ... FOR SHARE if that
+   * ever needs to be an actual guarantee.
+   *
+   * All three failure modes (unknown id, staff account, deactivated) raise the same
+   * 404 - telling them apart would let a caller probe which UUIDs belong to
+   * privileged accounts.
+   */
+  private async assertBindableCustomer(
+    command: CreateOrderCommand,
+    customerId: string | null,
+    tx: TransactionContext,
+  ): Promise<void> {
+    if (!customerId || customerId !== command.customerId) {
+      return;
+    }
+
+    const bindable = await this.customerLookup.isBindableCustomer(customerId, tx);
+    if (!bindable) {
+      throw new OrderReferenceNotFoundError(`Customer ${customerId} not found.`);
     }
   }
 

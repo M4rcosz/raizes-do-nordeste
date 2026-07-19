@@ -940,8 +940,8 @@ Errors follow the standard envelope: `MenuItemAlreadyExistsError` -> `409`,
 | `APP`     | No                   | Authenticated user (`sub`)   | Rejected                                |
 | `WEB`     | No                   | Authenticated user (`sub`)   | Rejected                                |
 | `TOTEM`   | No                   | Anonymous (`null`)           | **Required**                            |
-| `COUNTER` | Yes                  | From request body (optional) | Required only if `customerId` is absent |
-| `PICKUP`  | Yes                  | From request body (optional) | Required only if `customerId` is absent |
+| `COUNTER` | Yes                  | From request body (optional, validated) | Required only if `customerId` is absent |
+| `PICKUP`  | Yes                  | From request body (optional, validated) | Required only if `customerId` is absent |
 
 When the channel requires a staff actor (`COUNTER` / `PICKUP`), a JWT
 belonging to a `CUSTOMER` is rejected with `403 AttendantRequiredError`.
@@ -959,6 +959,22 @@ live from the `User` relation on every read, so it can never go stale.
 > **Breaking change.** `TOTEM` orders previously accepted no name at all.
 > They now **require** `customerName`; an existing TOTEM client that omits it
 > starts getting `422 GuestNameRequiredError`.
+
+#### Binding an existing customer (`customerId`)
+
+When `COUNTER`/`PICKUP` sends a `customerId`, it is validated inside the
+creation transaction: it must name an existing, **active** user whose role is
+`CUSTOMER`. An unknown id, a staff/admin id and a deactivated account all fail
+the same way, `404 OrderReferenceNotFoundError` - telling them apart would let
+a caller probe which UUIDs belong to privileged accounts. On the authenticated
+channels (`APP`/`WEB`) the customer is taken from the verified JWT and a
+body-supplied `customerId` is discarded, so nothing is validated there.
+
+> **Behavior change.** This field was previously accepted with no validation at
+> all: an order could be bound to any user id, including a `MANAGER` or `ADMIN`,
+> who then accrued its loyalty points and saw the order in their own listing.
+> Requests that relied on that now get `404`. Resolve the customer with
+> `GET /api/users/lookup` first and send the id it returns.
 
 #### Idempotent creation (`Idempotency-Key` header)
 
