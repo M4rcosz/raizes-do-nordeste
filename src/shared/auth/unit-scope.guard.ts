@@ -56,7 +56,12 @@ export class UnitScopeGuard implements CanActivate {
     // No param named by the decorator. Either an intentional claim-only route or
     // a route that forgot the decorator. Fail closed: if a unit param is actually
     // present in the path, treat the missing decorator as a config slip and block.
-    if (paramName === undefined) {
+    //
+    // Must be a typeof check, not `=== undefined`: Reflector.createDecorator()
+    // invoked with no argument (@ScopedToBusinessUnit()) stores {}, not undefined,
+    // so an identity check leaves this branch dead and every claim-only route falls
+    // through to the param match below and 404s for non-admin staff.
+    if (typeof paramName !== 'string') {
       if (request.params[BUSINESS_UNIT_PARAM] !== undefined) {
         throw new BusinessUnitScopeError();
       }

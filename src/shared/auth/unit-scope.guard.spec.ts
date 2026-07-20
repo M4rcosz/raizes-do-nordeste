@@ -25,11 +25,17 @@ describe('UnitScopeGuard', () => {
   };
 
   // Returns the configured param name only for the ScopedToBusinessUnit key.
-  const mockParamName = (paramName: string | undefined): void => {
+  // NOTE: the no-argument decorator form stores {}, not undefined - pass CLAIM_ONLY,
+  // never a bare undefined, or this suite drifts back out of sync with the real
+  // Reflector. See unit-scope.guard.real-reflector.spec.ts.
+  const mockParamName = (paramName: string | object | undefined): void => {
     getAllAndOverride.mockImplementation((key: unknown) =>
       key === ScopedToBusinessUnit ? paramName : undefined,
     );
   };
+
+  // What @ScopedToBusinessUnit() (no argument) actually writes.
+  const CLAIM_ONLY = {};
 
   const buildUser = (overrides?: { role?: UserRole; businessUnitIds?: string[] }): JwtPayload => ({
     sub: 'user-1',
@@ -141,14 +147,14 @@ describe('UnitScopeGuard', () => {
 
   describe('claim-only route (no param)', () => {
     it('passes a scoped non-admin', () => {
-      mockParamName(undefined);
+      mockParamName(CLAIM_ONLY);
       const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1'] }));
 
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
     it('blocks a non-admin with an empty scope', () => {
-      mockParamName(undefined);
+      mockParamName(CLAIM_ONLY);
       const ctx = buildContext(buildUser({ businessUnitIds: [] }));
 
       expect(() => guard.canActivate(ctx)).toThrow(BusinessUnitScopeError);
@@ -159,7 +165,7 @@ describe('UnitScopeGuard', () => {
     it('blocks when the decorator is absent but the route carries a unit param', () => {
       // No @ScopedToBusinessUnit metadata, yet a businessUnitId param is present:
       // a config slip. Deny even when the param happens to match the claim.
-      mockParamName(undefined);
+      mockParamName(CLAIM_ONLY);
       const ctx = buildContext(buildUser({ businessUnitIds: ['bu-1'] }), {
         businessUnitId: 'bu-1',
       });
