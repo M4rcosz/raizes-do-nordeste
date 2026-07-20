@@ -7,9 +7,11 @@ import { CreatePromotionUseCase, type CreatePromotionDraft } from './create-prom
 import { Promotion } from '../../domain/entities/promotion.entity';
 import { DiscountType } from '../../domain/value-objects/discount-type';
 import { PromotionNotEligibleError } from '../../domain/errors/promotion-not-eligible.error';
+import { FreeItemNotSupportedError } from '../../domain/errors/free-item-not-supported.error';
 import type { PromotionActor } from '../promotion-actor';
 import type {
   CreatePromotionInput,
+  FindActivePromotionsInput,
   FindPromotionsByBusinessUnitInput,
   PromotionRepository,
   RecordOrderPromotionInput,
@@ -38,6 +40,9 @@ class FakePromotionRepository implements PromotionRepository {
     );
   }
   findById(_id: string): Promise<Promotion | null> {
+    throw new Error('not used');
+  }
+  findManyActive(_input: FindActivePromotionsInput): Promise<Promotion[]> {
     throw new Error('not used');
   }
   findManyByBusinessUnit(_input: FindPromotionsByBusinessUnitInput): Promise<Promotion[]> {
@@ -126,4 +131,23 @@ describe('CreatePromotionUseCase', () => {
     ).rejects.toBeInstanceOf(PromotionNotEligibleError);
     expect(repo.created).toEqual([]);
   });
+
+  it('rejects FREE_ITEM and never persists it', async () => {
+    // A persisted FREE_ITEM is an offer that throws at pricing time, and the public
+    // listing would advertise it. It must not reach the database at all.
+    await expect(
+      useCase.execute(draft({ discountType: DiscountType.FREE_ITEM }), manager()),
+    ).rejects.toBeInstanceOf(FreeItemNotSupportedError);
+    expect(repo.created).toEqual([]);
+  });
+
+  it.each([DiscountType.PERCENTAGE, DiscountType.FIXED_AMOUNT])(
+    'still accepts the supported discount type %s',
+    async (discountType) => {
+      const promotion = await useCase.execute(draft({ discountType }), manager());
+
+      expect(promotion.discountType).toBe(discountType);
+      expect(repo.created).toHaveLength(1);
+    },
+  );
 });

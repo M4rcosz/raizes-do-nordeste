@@ -7,6 +7,7 @@ import { DiscountType } from '../../domain/value-objects/discount-type';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
 import type {
   CreatePromotionInput,
+  FindActivePromotionsInput,
   FindPromotionsByBusinessUnitInput,
   PromotionRepository,
   RecordOrderPromotionInput,
@@ -38,6 +39,10 @@ class FakePromotionRepository implements PromotionRepository {
   }
   failWith(error: Error): void {
     this.error = error;
+  }
+
+  findManyActive(_input: FindActivePromotionsInput): Promise<Promotion[]> {
+    throw new Error('not used');
   }
 
   findManyByBusinessUnit(input: FindPromotionsByBusinessUnitInput): Promise<Promotion[]> {

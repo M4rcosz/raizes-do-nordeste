@@ -28,8 +28,9 @@ customer loyalty program - across multiple business units (franchises).
 > **inventory** (stock deducted atomically on order creation, manual
 > adjustments, low-stock alerts), **loyalty** (auto-enrolment on the first
 > order, consent-gated points credited on approved payments) and
-> **promotions** (percentage / fixed-amount discounts, CRUD plus one promotion
-> applied per order, priced before loyalty), plus a per-user **AI token
+> **promotions** (percentage / fixed-amount discounts, back-office CRUD, a public
+> listing of what is currently on offer, plus one promotion applied per order,
+> priced before loyalty), plus a per-user **AI token
 > membership** (admin-managed, Part 1 of an in-app AI assistant). All eight
 > bounded contexts now have application code shipped (see [Roadmap](#roadmap)).
 
@@ -559,8 +560,9 @@ A global `AuthGuard` protects every route by default; routes opt out with
 `@Public()`. Only the **product reads**, the **public business-unit reads**
 (`GET /api/business-units`, `GET /api/business-units/:id`), the **public menu
 reads** (`GET /api/business-units/:businessUnitId/menu`,
-`GET /api/business-units/:businessUnitId/menu/:menuItemId`), the **payment
-webhook** and **customer self-registration** (`POST /api/users/register`) are
+`GET /api/business-units/:businessUnitId/menu/:menuItemId`), the **public
+promotions read** (`GET /api/promotions/public/by-business-unit/:businessUnitId`),
+the **payment webhook** and **customer self-registration** (`POST /api/users/register`) are
 public; everything else needs a `Bearer` JWT in the `Authorization` header. Some
 routes additionally require a role via `@Roles()` - `POST /api/products` needs
 `ADMIN`/`MANAGER`, `POST /api/business-units` and `PATCH /api/business-units/:id`
@@ -1321,16 +1323,21 @@ route param, not the body.
 
 ### Promotions
 
-| Method  | Path                                               | Auth          | Description                                   |
-| ------- | -------------------------------------------------- | ------------- | --------------------------------------------- |
-| `POST`  | `/api/promotions`                                  | ADMIN/MANAGER | Create a promotion for a business unit.       |
-| `GET`   | `/api/promotions/by-business-unit/:businessUnitId` | ADMIN/MANAGER | List a unit's promotions (cursor-paginated).  |
-| `GET`   | `/api/promotions/:promotionId`                     | ADMIN/MANAGER | Get one promotion by ID.                      |
-| `PATCH` | `/api/promotions/:promotionId`                     | ADMIN/MANAGER | Update a promotion.                           |
+| Method  | Path                                                      | Auth          | Description                                                                 |
+| ------- | --------------------------------------------------------- | ------------- | --------------------------------------------------------------------------- |
+| `POST`  | `/api/promotions`                                         | ADMIN/MANAGER | Create a promotion for a business unit.                                     |
+| `GET`   | `/api/promotions/by-business-unit/:businessUnitId`        | ADMIN/MANAGER | List a unit's promotions (cursor-paginated, back office: all statuses).     |
+| `GET`   | `/api/promotions/public/by-business-unit/:businessUnitId` | Public        | List a unit's currently valid promotions (cursor-paginated, narrowed view). |
+| `GET`   | `/api/promotions/:promotionId`                            | ADMIN/MANAGER | Get one promotion by ID.                                                    |
+| `PATCH` | `/api/promotions/:promotionId`                            | ADMIN/MANAGER | Update a promotion.                                                         |
+| `PATCH` | `/api/promotions/:promotionId/activate`                   | ADMIN/MANAGER | Activate a promotion.                                                       |
+| `PATCH` | `/api/promotions/:promotionId/deactivate`                 | ADMIN/MANAGER | Deactivate a promotion.                                                     |
 
 Promotions carry a `discountType` (`PERCENTAGE` or `FIXED_AMOUNT`), a
 `discountValue`, a `minOrderValue` floor, and a `startDate`/`endDate` window.
-`FREE_ITEM` is rejected (the schema does not model a target item to price).
+`FREE_ITEM` is rejected at both write borders with `422` (create and update): the
+schema does not model a target item to price, so such a promotion could never be
+applied. Rows created before this check can still exist in an older database.
 `businessUnitId` is **required in the request body** for `POST /api/promotions`;
 the use case validates it against the actor's `businessUnitIds` JWT claim, so a
 manager cannot create a promotion for a unit outside its scope (`ADMIN` bypasses
@@ -1338,6 +1345,16 @@ the check). All promotion routes are protected by `UnitScopeGuard`: a non-admin
 staff member can only create, read and update promotions for units in their claim;
 a mismatch or an empty claim returns `404` so the existence of another unit's
 promotions is not disclosed.
+
+The customer-facing listing is separate: `GET /api/promotions/public/by-business-unit/:businessUnitId`
+is `@Public()`, not unit-scoped, and returns only promotions that are active and
+whose `[startDate, endDate)` window contains the current instant. Its response is a
+narrowed shape (no `isActive`, `startDate`, `createdAt` or `updatedAt`), and its
+`cursor` is an **opaque base64url token**, not a promotion id - the filter is
+time-varying, so pagination uses a keyset predicate rather than a positional cursor
+(a positional cursor silently drops a row when the row it points at expires or is
+deactivated between pages). A malformed cursor returns `422`. The back-office
+listing above is unchanged and still uses a bare-id cursor.
 
 At most **one** promotion applies per order (MVP). On order creation the
 promotion is priced against the **gross** items subtotal first, then loyalty
@@ -1617,7 +1634,9 @@ follow-ups below):
       adjustments, cursor-paginated listing, and a `STOCK_ALERT` audit on low
       balance. Reservations still pending.
 - [x] **Promotions** - percentage / fixed-amount discounts, CRUD (create / list
-      by business unit / get / update) and at most one promotion applied per
+      by business unit / get / update / activate / deactivate), a public
+      customer-facing listing of currently valid promotions (keyset-paginated),
+      and at most one promotion applied per
       order, priced on the gross subtotal before the loyalty discount and
       recorded as an `OrderPromotion` in the same transaction. `FREE_ITEM`,
       coupon codes and a unique `(orderId, promotionId)` index are out of MVP

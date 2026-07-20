@@ -8,6 +8,8 @@ import {
 import { PromotionNotFoundError } from '../errors/promotion-not-found.error';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
 import { PromotionNotEligibleError } from '../../domain/errors/promotion-not-eligible.error';
+import { FreeItemNotSupportedError } from '../../domain/errors/free-item-not-supported.error';
+import { DiscountType } from '../../domain/value-objects/discount-type';
 import { actorOwnsUnit, type PromotionActor } from '../promotion-actor';
 
 @Injectable()
@@ -35,6 +37,15 @@ export class UpdatePromotionUseCase {
     // leaks its existence to a scoped actor.
     if (!existing || !actorOwnsUnit(actor, existing.businessUnitId)) {
       throw new PromotionNotFoundError(`Promotion with id "${promotionId}" not found.`);
+    }
+
+    // Closes the other door into a FREE_ITEM row: patching discountType on an existing
+    // promotion. Same rule as creation, checked only when the field is actually being
+    // set - a legacy FREE_ITEM row can still be patched (e.g. deactivated) otherwise.
+    if (input.discountType === DiscountType.FREE_ITEM) {
+      throw new FreeItemNotSupportedError(
+        'FREE_ITEM promotions are not supported: the schema does not model a target item.',
+      );
     }
 
     // A partial update can leave the window invalid (end <= start). Validate against the

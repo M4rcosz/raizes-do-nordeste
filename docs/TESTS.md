@@ -16,7 +16,8 @@ autossuficiente (usa collection variables, sem environment externo).
 - Autenticação: JWT Bearer. `POST /api/auth/login` devolve `{ "access_token": "<jwt>", "refresh_token": "<token>" }`.
   O access token vai no header `Authorization: Bearer <token>` nas rotas protegidas. O refresh token
   pode ser trocado por um novo par em `POST /api/auth/refresh`; use `POST /api/auth/logout` para revogá-lo.
-  São públicas: login, refresh, logout, `GET /api/products...` e `POST /api/payments/webhook`.
+  São públicas: login, refresh, logout, `GET /api/products...`,
+  `GET /api/promotions/public/by-business-unit/:businessUnitId` e `POST /api/payments/webhook`.
 - Papéis: `ADMIN`, `MANAGER`, `ATTENDANT`, `KITCHEN`, `CUSTOMER`.
 - Listagens (`GET /api/products...`, `GET /api/orders`) usam envelope paginado
   `{ data: [...], meta: {...} }`. `GET /api/inventory/:unidade` devolve um array simples.

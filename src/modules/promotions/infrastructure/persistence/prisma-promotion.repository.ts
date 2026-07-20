@@ -9,6 +9,7 @@ import { Promotion } from '@modules/promotions/domain/entities/promotion.entity'
 import { DiscountType } from '@modules/promotions/domain/value-objects/discount-type';
 import type {
   CreatePromotionInput,
+  FindActivePromotionsInput,
   FindPromotionsByBusinessUnitInput,
   PromotionRepository,
   RecordOrderPromotionInput,
@@ -65,6 +66,37 @@ export class PrismaPromotionRepository implements PromotionRepository {
         cursor: { id: pagination.cursor },
         skip: 1,
       }),
+    });
+
+    return raws.map((raw) => this.toEntity(raw));
+  }
+
+  async findManyActive(input: FindActivePromotionsInput): Promise<Promotion[]> {
+    const { businessUnitId, now, take, keyset } = input;
+
+    // Same window predicate as findActiveEligible (half-open right edge: endDate is
+    // the first instant over). Filtering in SQL, not after the page is cut, so a
+    // page never comes back short because expired rows were dropped in memory.
+    //
+    // Keyset, not `cursor`/`skip`: the WHERE is time-varying, so the previous page's
+    // last row may no longer match. Prisma's cursor is positional and would then shift
+    // and silently drop a row. This compares sort VALUES, so the keyset row need not
+    // exist. Mirrors the orderBy exactly: (createdAt desc, id desc).
+    const raws = await this.prisma.promotion.findMany({
+      where: {
+        businessUnitId,
+        isActive: true,
+        startDate: { lte: now },
+        endDate: { gt: now },
+        ...(keyset && {
+          OR: [
+            { createdAt: { lt: keyset.createdAt } },
+            { createdAt: keyset.createdAt, id: { lt: keyset.id } },
+          ],
+        }),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take,
     });
 
     return raws.map((raw) => this.toEntity(raw));
