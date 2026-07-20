@@ -3,6 +3,7 @@ import { AdjustAiMembershipBalanceUseCase } from './adjust-ai-membership-balance
 import { FakeAiMembershipRepository } from './__fakes__/ai-membership-repository.fake';
 import { TokenBudgetExceededError } from '../../domain/errors/token-budget-exceeded.error';
 import { AiMembershipNotFoundError } from '../errors/ai-membership-not-found.error';
+import { AiMembershipRevokedError } from '../errors/ai-membership-revoked.error';
 import { AiMembership, MAX_TOKEN_BALANCE } from '../../domain/entities/ai-membership.entity';
 import type { AuditLogger } from '@modules/audit/application/ports/audit-logger.port';
 
@@ -70,5 +71,14 @@ describe('AdjustAiMembershipBalanceUseCase', () => {
     await expect(
       useCase.execute({ userId: 'u-1', delta: 0, actorId: 'admin-1' }),
     ).rejects.toBeInstanceOf(TokenBudgetExceededError);
+  });
+
+  it('rejects adjusting a revoked membership', async () => {
+    repo.seed(new AiMembership('ai-3', 'u-3', 100, new Date(), new Date(), new Date()));
+
+    await expect(
+      useCase.execute({ userId: 'u-3', delta: 50, actorId: 'admin-1' }),
+    ).rejects.toBeInstanceOf(AiMembershipRevokedError);
+    expect(auditLog).not.toHaveBeenCalled();
   });
 });

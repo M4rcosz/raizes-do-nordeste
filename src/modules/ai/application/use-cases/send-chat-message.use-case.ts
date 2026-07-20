@@ -15,6 +15,7 @@ import { SYSTEM_INSTRUCTION } from '../tools/system-instruction';
 import { AiNotEnrolledError } from '../errors/ai-not-enrolled.error';
 import { AiTokensExhaustedError } from '../errors/ai-tokens-exhausted.error';
 import { AiProviderUnavailableError } from '../errors/ai-provider-unavailable.error';
+import { AiMembershipRevokedError } from '../errors/ai-membership-revoked.error';
 
 export interface SendChatMessageInput {
   actor: ActorContext;
@@ -66,6 +67,10 @@ export class SendChatMessageUseCase {
     const membership = await this.memberships.findByUserId(input.actor.userId);
     if (!membership) {
       throw new AiNotEnrolledError();
+    }
+    // A revoked membership is blocked regardless of any remaining balance.
+    if (membership.isRevoked) {
+      throw new AiMembershipRevokedError();
     }
     if (membership.tokenBalance <= 0) {
       throw new AiTokensExhaustedError();

@@ -47,6 +47,10 @@ export const AUDIT_ACTIONS = {
   AI_MEMBERSHIP_ENROLLED: 'AI_MEMBERSHIP_ENROLLED',
   /** An admin credited or debited a user's AI token balance. */
   AI_MEMBERSHIP_ADJUSTED: 'AI_MEMBERSHIP_ADJUSTED',
+  /** An admin soft-revoked a user's AI membership (balance preserved). */
+  AI_MEMBERSHIP_REVOKED: 'AI_MEMBERSHIP_REVOKED',
+  /** An admin reinstated a previously revoked AI membership. */
+  AI_MEMBERSHIP_REINSTATED: 'AI_MEMBERSHIP_REINSTATED',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

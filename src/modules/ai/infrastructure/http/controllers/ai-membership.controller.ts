@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -15,6 +25,8 @@ import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { GetMyAiMembershipUseCase } from '@modules/ai/application/use-cases/get-my-ai-membership.use-case';
 import { EnrollAiMembershipUseCase } from '@modules/ai/application/use-cases/enroll-ai-membership.use-case';
 import { AdjustAiMembershipBalanceUseCase } from '@modules/ai/application/use-cases/adjust-ai-membership-balance.use-case';
+import { RevokeAiMembershipUseCase } from '@modules/ai/application/use-cases/revoke-ai-membership.use-case';
+import { ReinstateAiMembershipUseCase } from '@modules/ai/application/use-cases/reinstate-ai-membership.use-case';
 import { AiMembershipUserParamDto } from '../dto/ai-membership-user-param.dto';
 import { EnrollAiMembershipDto } from '../dto/enroll-ai-membership.dto';
 import { AdjustAiMembershipBalanceDto } from '../dto/adjust-ai-membership-balance.dto';
@@ -31,6 +43,8 @@ export class AiMembershipController {
     private readonly getMyMembership: GetMyAiMembershipUseCase,
     private readonly enrollMembership: EnrollAiMembershipUseCase,
     private readonly adjustBalance: AdjustAiMembershipBalanceUseCase,
+    private readonly revokeMembership: RevokeAiMembershipUseCase,
+    private readonly reinstateMembership: ReinstateAiMembershipUseCase,
   ) {}
 
   // Declared before :userId so the literal path is not captured by the param route.
@@ -79,6 +93,33 @@ export class AiMembershipController {
       delta: body.delta,
       actorId: user.sub,
     });
+    return AiMembershipResponseDto.fromEntity(membership);
+  }
+
+  @Delete(':userId')
+  @Roles([UserRole.ADMIN])
+  @ApiOperation({ summary: 'Revoke a user AI membership (soft). Admins only.' })
+  @ApiOkResponse({ type: AiMembershipResponseDto })
+  @ApiNotFoundResponse({ description: 'User has no AI membership.' })
+  async revoke(
+    @Param() { userId }: AiMembershipUserParamDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<AiMembershipResponseDto> {
+    const membership = await this.revokeMembership.execute({ userId, actorId: user.sub });
+    return AiMembershipResponseDto.fromEntity(membership);
+  }
+
+  @Post(':userId/reinstate')
+  @Roles([UserRole.ADMIN])
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reinstate a revoked user AI membership. Admins only.' })
+  @ApiOkResponse({ type: AiMembershipResponseDto })
+  @ApiNotFoundResponse({ description: 'User has no AI membership.' })
+  async reinstate(
+    @Param() { userId }: AiMembershipUserParamDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<AiMembershipResponseDto> {
+    const membership = await this.reinstateMembership.execute({ userId, actorId: user.sub });
     return AiMembershipResponseDto.fromEntity(membership);
   }
 }

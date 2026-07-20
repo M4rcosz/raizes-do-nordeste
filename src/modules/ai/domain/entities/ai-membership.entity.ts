@@ -10,7 +10,13 @@ export class AiMembership {
     public readonly tokenBalance: number,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public readonly revokedAt: Date | null = null,
   ) {}
+
+  // A revoked membership keeps its balance but is blocked from chat and adjust.
+  get isRevoked(): boolean {
+    return this.revokedAt !== null;
+  }
 
   /**
    * Fast-fail guard for a token spend: rejects a non-positive/non-integer amount and

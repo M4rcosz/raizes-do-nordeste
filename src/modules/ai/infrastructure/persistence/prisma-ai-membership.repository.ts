@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, type AiMembership as AiMembershipModel } from '@prisma/client';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
 import { AiMembership } from '@modules/ai/domain/entities/ai-membership.entity';
-import { AiMembershipRepository } from '@modules/ai/domain/repositories/ai-membership.repository';
+import {
+  AiMembershipRepository,
+  AiMembershipTransition,
+} from '@modules/ai/domain/repositories/ai-membership.repository';
 import { AiMembershipAlreadyExistsError } from '@modules/ai/application/errors/ai-membership-already-exists.error';
 import { EnrollTargetUserNotFoundError } from '@modules/ai/application/errors/enroll-target-user-not-found.error';
 
@@ -46,21 +49,28 @@ export class PrismaAiMembershipRepository implements AiMembershipRepository {
     actorId: string,
   ): Promise<AiMembership | null> {
     if (delta > 0) {
-      // Credit: no lower bound to guard, so a plain update is safe.
-      const raw = await this.prisma.aiMembership.update({
-        where: { userId },
+      // Credit: no lower bound to guard, but revoked_at IS NULL is the optimistic
+      // guard so a concurrent revoke (landing between the use case pre-check and here)
+      // cannot top up a revoked wallet. count = 0 means revoked or gone; return null
+      // and let the caller re-read to report which.
+      const { count } = await this.prisma.aiMembership.updateMany({
+        where: { userId, revokedAt: null },
         data: { tokenBalance: { increment: delta }, updatedById: actorId },
       });
-      return this.toEntity(raw);
+      if (count === 0) {
+        return null;
+      }
+      const raw = await this.prisma.aiMembership.findUnique({ where: { userId } });
+      return raw ? this.toEntity(raw) : null;
     }
 
-    // Debit: the where clause (token_balance >= |delta|) is the optimistic guard.
-    // updateMany reports the affected count, so a clawback that would go below zero
-    // (or a concurrent debit) leaves count = 0 and we return null instead of going
-    // negative. No SELECT FOR UPDATE.
+    // Debit: the where clause (revoked_at IS NULL AND token_balance >= |delta|) is the
+    // optimistic guard. updateMany reports the affected count, so a clawback that would
+    // go below zero, hit a revoked wallet, or lose a concurrent debit leaves count = 0
+    // and we return null instead of writing. No SELECT FOR UPDATE.
     const amount = -delta;
     const { count } = await this.prisma.aiMembership.updateMany({
-      where: { userId, tokenBalance: { gte: amount } },
+      where: { userId, revokedAt: null, tokenBalance: { gte: amount } },
       data: { tokenBalance: { decrement: amount }, updatedById: actorId },
     });
     if (count === 0) {
@@ -83,15 +93,50 @@ export class PrismaAiMembershipRepository implements AiMembershipRepository {
       return false;
     }
     // Same conditional decrement as a negative adjust, but boolean-only: this is the
-    // Part 2 metering seam, called on each token spend, no entity round-trip needed.
+    // metering seam, called on each token spend. revoked_at IS NULL is part of the
+    // guard, so a revoke landing mid-conversation makes the next spend return false
+    // and the chat loop stops gracefully - no entity round-trip needed.
     const { count } = await this.prisma.aiMembership.updateMany({
-      where: { userId, tokenBalance: { gte: amount } },
+      where: { userId, revokedAt: null, tokenBalance: { gte: amount } },
       data: { tokenBalance: { decrement: amount } },
     });
     return count > 0;
   }
 
+  async revoke(userId: string, actorId: string): Promise<AiMembershipTransition | null> {
+    // Conditional guard (revokedAt is null): only an active row is stamped, so
+    // concurrent revokes converge to a single write. count is the number of rows this
+    // call flipped (1 = we stamped it, 0 = already revoked or no row). The re-fetch
+    // tells "already revoked" (row exists) apart from "no membership" (null).
+    const { count } = await this.prisma.aiMembership.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date(), updatedById: actorId },
+    });
+    const raw = await this.prisma.aiMembership.findUnique({ where: { userId } });
+    return raw ? { changed: count > 0, membership: this.toEntity(raw) } : null;
+  }
+
+  async reinstate(userId: string, actorId: string): Promise<AiMembershipTransition | null> {
+    // Conditional guard (revokedAt is not null): only a revoked row is cleared. The
+    // balance is never touched, so reinstate fully restores the prior state. count = 1
+    // means this call did the clear; 0 means already active (or no row, disambiguated
+    // by the re-fetch).
+    const { count } = await this.prisma.aiMembership.updateMany({
+      where: { userId, revokedAt: { not: null } },
+      data: { revokedAt: null, updatedById: actorId },
+    });
+    const raw = await this.prisma.aiMembership.findUnique({ where: { userId } });
+    return raw ? { changed: count > 0, membership: this.toEntity(raw) } : null;
+  }
+
   private toEntity(raw: AiMembershipModel): AiMembership {
-    return new AiMembership(raw.id, raw.userId, raw.tokenBalance, raw.createdAt, raw.updatedAt);
+    return new AiMembership(
+      raw.id,
+      raw.userId,
+      raw.tokenBalance,
+      raw.createdAt,
+      raw.updatedAt,
+      raw.revokedAt,
+    );
   }
 }

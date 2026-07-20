@@ -13,6 +13,7 @@ import { FakePromotionForAi } from '../tools/__fakes__/promotion-for-ai.fake';
 import { AiNotEnrolledError } from '../errors/ai-not-enrolled.error';
 import { AiTokensExhaustedError } from '../errors/ai-tokens-exhausted.error';
 import { AiProviderUnavailableError } from '../errors/ai-provider-unavailable.error';
+import { AiMembershipRevokedError } from '../errors/ai-membership-revoked.error';
 import { SendChatMessageUseCase } from './send-chat-message.use-case';
 import { FakeChatModel } from './__fakes__/chat-model.fake';
 import { FakeAiMembershipRepository } from './__fakes__/ai-membership-repository.fake';
@@ -179,6 +180,14 @@ describe('SendChatMessageUseCase', () => {
     seedMembership(0);
     await expect(useCase.execute({ actor, message: 'hi' })).rejects.toBeInstanceOf(
       AiTokensExhaustedError,
+    );
+    expect(chatModel.callCount).toBe(0);
+  });
+
+  it('rejects a revoked membership even with a healthy balance', async () => {
+    memberships.seed(new AiMembership('ai-1', 'user-1', 1000, new Date(), new Date(), new Date()));
+    await expect(useCase.execute({ actor, message: 'hi' })).rejects.toBeInstanceOf(
+      AiMembershipRevokedError,
     );
     expect(chatModel.callCount).toBe(0);
   });
