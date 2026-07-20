@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.2.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.1.0...v3.2.0) (2026-07-20)
+
+
+### Features
+
+* **ai:** add soft revocation and reinstatement of AI memberships ([64ffd51](https://github.com/M4rcosz/raizes-do-nordeste/commit/64ffd510ed3a9f38ebb4c3b542c605539a608652))
+* **promotions:** add a public listing of currently valid promotions ([9a96f20](https://github.com/M4rcosz/raizes-do-nordeste/commit/9a96f20b770a3f71c0f1d4e4c336dc5bd2c235a1))
+
+
+### Bug Fixes
+
+* **auth:** restore the dead claim-only branch in UnitScopeGuard ([6abd98d](https://github.com/M4rcosz/raizes-do-nordeste/commit/6abd98d93101e91dc39ade56cf44fc42936abbed))
+
 ## [3.1.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.0.0...v3.1.0) (2026-07-19)
 
 
