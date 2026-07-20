@@ -8,9 +8,11 @@ import { DiscountType } from '../../domain/value-objects/discount-type';
 import { PromotionNotFoundError } from '../errors/promotion-not-found.error';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
 import { PromotionNotEligibleError } from '../../domain/errors/promotion-not-eligible.error';
+import { FreeItemNotSupportedError } from '../../domain/errors/free-item-not-supported.error';
 import type { PromotionActor } from '../promotion-actor';
 import type {
   CreatePromotionInput,
+  FindActivePromotionsInput,
   FindPromotionsByBusinessUnitInput,
   PromotionRepository,
   RecordOrderPromotionInput,
@@ -70,6 +72,9 @@ class FakePromotionRepository implements PromotionRepository {
     );
   }
   create(_input: CreatePromotionInput): Promise<Promotion> {
+    throw new Error('not used');
+  }
+  findManyActive(_input: FindActivePromotionsInput): Promise<Promotion[]> {
     throw new Error('not used');
   }
   findManyByBusinessUnit(_input: FindPromotionsByBusinessUnitInput): Promise<Promotion[]> {
@@ -167,5 +172,40 @@ describe('UpdatePromotionUseCase', () => {
     );
 
     expect(updated.startDate).toEqual(new Date('2026-06-10T00:00:00.000Z'));
+  });
+
+  it('rejects patching discountType to FREE_ITEM and never updates', async () => {
+    repo.seed(existing());
+
+    // The other door into a persisted FREE_ITEM row: converting a valid promotion.
+    await expect(
+      useCase.execute('promo-1', { discountType: DiscountType.FREE_ITEM }, owner()),
+    ).rejects.toBeInstanceOf(FreeItemNotSupportedError);
+    expect(repo.updates).toEqual([]);
+  });
+
+  it('still lets a legacy FREE_ITEM row be patched when discountType is not being set', async () => {
+    // Rows predating the write-border check must stay reachable - deactivating one is
+    // exactly how an admin cleans it up, so the guard must not lock them.
+    repo.seed(
+      new Promotion(
+        'promo-1',
+        'bu-1',
+        'Brinde',
+        DiscountType.FREE_ITEM,
+        Money.fromDecimalString('10.00'),
+        Money.fromDecimalString('30.00'),
+        new Date('2026-06-01T00:00:00.000Z'),
+        new Date('2026-06-30T00:00:00.000Z'),
+        true,
+        new Date(),
+        new Date(),
+      ),
+    );
+
+    const updated = await useCase.execute('promo-1', { isActive: false }, owner());
+
+    expect(updated.isActive).toBe(false);
+    expect(repo.updates).toEqual([{ id: 'promo-1', input: { isActive: false } }]);
   });
 });

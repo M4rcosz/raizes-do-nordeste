@@ -7,11 +7,13 @@ import { CreatePromotionUseCase } from '@modules/promotions/application/use-case
 import { UpdatePromotionUseCase } from '@modules/promotions/application/use-cases/update-promotion.use-case';
 import { FindPromotionByIdUseCase } from '@modules/promotions/application/use-cases/find-promotion-by-id.use-case';
 import { ListPromotionsUseCase } from '@modules/promotions/application/use-cases/list-promotions.use-case';
+import { ListActivePromotionsUseCase } from '@modules/promotions/application/use-cases/list-active-promotions.use-case';
 import { ActivatePromotionUseCase } from '@modules/promotions/application/use-cases/activate-promotion.use-case';
 import { DeactivatePromotionUseCase } from '@modules/promotions/application/use-cases/deactivate-promotion.use-case';
 import { Promotion } from '@modules/promotions/domain/entities/promotion.entity';
 import { DiscountType } from '@modules/promotions/domain/value-objects/discount-type';
 import { PromotionResponseDto } from '../dto/promotion-response.dto';
+import { PublicPromotionResponseDto } from '../dto/promotion-public-response.dto';
 import { PromotionNotFoundError } from '@modules/promotions/application/errors/promotion-not-found.error';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
@@ -50,6 +52,7 @@ describe('PromotionsController', () => {
   let updatePromotion: jest.Mocked<UpdatePromotionUseCase>;
   let findPromotionById: jest.Mocked<FindPromotionByIdUseCase>;
   let listPromotions: jest.Mocked<ListPromotionsUseCase>;
+  let listActivePromotions: jest.Mocked<ListActivePromotionsUseCase>;
   let activatePromotion: jest.Mocked<ActivatePromotionUseCase>;
   let deactivatePromotion: jest.Mocked<DeactivatePromotionUseCase>;
 
@@ -58,6 +61,9 @@ describe('PromotionsController', () => {
     updatePromotion = { execute: jest.fn() } as unknown as jest.Mocked<UpdatePromotionUseCase>;
     findPromotionById = { execute: jest.fn() } as unknown as jest.Mocked<FindPromotionByIdUseCase>;
     listPromotions = { execute: jest.fn() } as unknown as jest.Mocked<ListPromotionsUseCase>;
+    listActivePromotions = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<ListActivePromotionsUseCase>;
     activatePromotion = {
       execute: jest.fn(),
     } as unknown as jest.Mocked<ActivatePromotionUseCase>;
@@ -72,6 +78,7 @@ describe('PromotionsController', () => {
         { provide: UpdatePromotionUseCase, useValue: updatePromotion },
         { provide: FindPromotionByIdUseCase, useValue: findPromotionById },
         { provide: ListPromotionsUseCase, useValue: listPromotions },
+        { provide: ListActivePromotionsUseCase, useValue: listActivePromotions },
         { provide: ActivatePromotionUseCase, useValue: activatePromotion },
         { provide: DeactivatePromotionUseCase, useValue: deactivatePromotion },
       ],
@@ -126,6 +133,60 @@ describe('PromotionsController', () => {
       });
       expect(response).toBeInstanceOf(PaginatedResponseDto);
       expect(response.data[0]).toBeInstanceOf(PromotionResponseDto);
+    });
+  });
+
+  describe('findActiveByBusinessUnit', () => {
+    it('clamps the limit, forwards the cursor and returns a paginated envelope', async () => {
+      listActivePromotions.execute.mockResolvedValue({
+        data: [buildPromotion()],
+        meta: { limit: 100, hasMore: false, nextCursor: null },
+      });
+
+      const response = await controller.findActiveByBusinessUnit(
+        { businessUnitId: 'bu-1' },
+        { limit: 99999, cursor: 'c-1' },
+      );
+
+      expect(listActivePromotions.execute).toHaveBeenCalledWith({
+        businessUnitId: 'bu-1',
+        cursor: 'c-1',
+        limit: 100,
+      });
+      expect(response).toBeInstanceOf(PaginatedResponseDto);
+      expect(response.data[0]).toBeInstanceOf(PublicPromotionResponseDto);
+    });
+
+    it('goes through the active-only use case, never the back-office listing', async () => {
+      listActivePromotions.execute.mockResolvedValue({
+        data: [],
+        meta: { limit: 20, hasMore: false, nextCursor: null },
+      });
+
+      await controller.findActiveByBusinessUnit({ businessUnitId: 'bu-1' }, {});
+
+      expect(listPromotions.execute).not.toHaveBeenCalled();
+    });
+
+    it('never exposes back-office fields to customers', async () => {
+      listActivePromotions.execute.mockResolvedValue({
+        data: [buildPromotion()],
+        meta: { limit: 20, hasMore: false, nextCursor: null },
+      });
+
+      const response = await controller.findActiveByBusinessUnit({ businessUnitId: 'bu-1' }, {});
+
+      // The public shape is the contract: leaking isActive/timestamps would tell a
+      // customer about promotions the back office has not published.
+      expect(Object.keys(response.data[0]).sort()).toEqual([
+        'businessUnitId',
+        'discountType',
+        'discountValue',
+        'endDate',
+        'id',
+        'minOrderValue',
+        'name',
+      ]);
     });
   });
 

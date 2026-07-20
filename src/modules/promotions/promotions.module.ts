@@ -9,6 +9,7 @@ import { CreatePromotionUseCase } from './application/use-cases/create-promotion
 import { UpdatePromotionUseCase } from './application/use-cases/update-promotion.use-case';
 import { FindPromotionByIdUseCase } from './application/use-cases/find-promotion-by-id.use-case';
 import { ListPromotionsUseCase } from './application/use-cases/list-promotions.use-case';
+import { ListActivePromotionsUseCase } from './application/use-cases/list-active-promotions.use-case';
 import { ActivatePromotionUseCase } from './application/use-cases/activate-promotion.use-case';
 import { DeactivatePromotionUseCase } from './application/use-cases/deactivate-promotion.use-case';
 import { PROMOTION_FOR_AI } from './application/ports/promotion-for-ai.port';
@@ -30,6 +31,7 @@ import { PromotionForAiService } from './application/services/promotion-for-ai.s
     UpdatePromotionUseCase,
     FindPromotionByIdUseCase,
     ListPromotionsUseCase,
+    ListActivePromotionsUseCase,
     ActivatePromotionUseCase,
     DeactivatePromotionUseCase,
     {

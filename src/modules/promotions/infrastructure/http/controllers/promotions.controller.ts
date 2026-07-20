@@ -11,6 +11,7 @@ import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { Roles } from '@shared/auth/roles.decorator';
 import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
+import { Public } from '@shared/auth/public.decorator';
 import { UnitScopeGuard } from '@shared/auth/unit-scope.guard';
 import { ScopedToBusinessUnit } from '@shared/auth/scoped-to-business-unit.decorator';
 import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto';
@@ -20,12 +21,15 @@ import { CreatePromotionUseCase } from '@modules/promotions/application/use-case
 import { UpdatePromotionUseCase } from '@modules/promotions/application/use-cases/update-promotion.use-case';
 import { FindPromotionByIdUseCase } from '@modules/promotions/application/use-cases/find-promotion-by-id.use-case';
 import { ListPromotionsUseCase } from '@modules/promotions/application/use-cases/list-promotions.use-case';
+import { ListActivePromotionsUseCase } from '@modules/promotions/application/use-cases/list-active-promotions.use-case';
 import { ActivatePromotionUseCase } from '@modules/promotions/application/use-cases/activate-promotion.use-case';
 import { DeactivatePromotionUseCase } from '@modules/promotions/application/use-cases/deactivate-promotion.use-case';
 import { CreatePromotionDto } from '../dto/create-promotion.dto';
 import { UpdatePromotionDto } from '../dto/update-promotion.dto';
 import { PromotionResponseDto } from '../dto/promotion-response.dto';
 import { PaginatedPromotionResponseDto } from '../dto/paginated-promotion-response.dto';
+import { PublicPromotionResponseDto } from '../dto/promotion-public-response.dto';
+import { PaginatedPublicPromotionResponseDto } from '../dto/paginated-public-promotion-response.dto';
 import {
   PromotionBusinessUnitIdParamDto,
   PromotionIdParamDto,
@@ -33,18 +37,19 @@ import {
 } from '../dto/promotion-query.dto';
 
 @ApiTags('promotions')
-@ApiBearerAuth()
 @Controller('promotions')
-// Every route is unit-scoped management. The guard rejects a non-admin staff
-// acting outside their claim (reported as not-found). Routes that carry the unit
-// in a :businessUnitId param name it; the rest derive/check the unit from the claim.
-@UseGuards(UnitScopeGuard)
+// The management routes are unit-scoped: UnitScopeGuard rejects a non-admin staff
+// acting outside their claim (reported as not-found). Routes that carry the unit in a
+// :businessUnitId param name it; the rest derive/check the unit from the claim.
+// The guard is per-method, NOT class-wide, because it throws when request.user is
+// absent - which is exactly the case on the @Public customer route below.
 export class PromotionsController {
   constructor(
     private readonly createPromotion: CreatePromotionUseCase,
     private readonly updatePromotion: UpdatePromotionUseCase,
     private readonly findPromotionById: FindPromotionByIdUseCase,
     private readonly listPromotions: ListPromotionsUseCase,
+    private readonly listActivePromotions: ListActivePromotionsUseCase,
     private readonly activatePromotion: ActivatePromotionUseCase,
     private readonly deactivatePromotion: DeactivatePromotionUseCase,
   ) {}
@@ -54,7 +59,9 @@ export class PromotionsController {
     return { role: user.role, businessUnitIds: user.businessUnitIds };
   }
 
+  @ApiBearerAuth()
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
   @ScopedToBusinessUnit()
   @Post()
   @ApiOperation({ summary: 'Create a promotion' })
@@ -69,7 +76,9 @@ export class PromotionsController {
     return PromotionResponseDto.fromEntity(promotion);
   }
 
+  @ApiBearerAuth()
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
   @ScopedToBusinessUnit('businessUnitId')
   @Get('by-business-unit/:businessUnitId')
   @ApiOperation({ summary: 'List promotions for a business unit (cursor-paginated)' })
@@ -91,7 +100,38 @@ export class PromotionsController {
     );
   }
 
+  // Declared before @Get(':promotionId') so the literal 'public' segment is matched
+  // first; Nest resolves routes in declaration order.
+  @Public()
+  @Get('public/by-business-unit/:businessUnitId')
+  @ApiOperation({
+    summary: 'List the currently valid promotions of a business unit (public)',
+    description:
+      'Customer-facing. Returns only promotions that are active and inside their date window.',
+  })
+  @ApiOkResponse({ type: PaginatedPublicPromotionResponseDto })
+  async findActiveByBusinessUnit(
+    @Param() { businessUnitId }: PromotionBusinessUnitIdParamDto,
+    @Query() query: PromotionsQueryDto,
+  ): Promise<PaginatedResponseDto<PublicPromotionResponseDto>> {
+    // No unit scoping here: a customer browsing a unit's offers is not staff acting on
+    // a unit. The use case filters to active-and-in-window, so nothing unpublished
+    // can leak regardless of who asks.
+    const limit = sanitizeLimit(query.limit);
+    const result = await this.listActivePromotions.execute({
+      businessUnitId,
+      cursor: query.cursor,
+      limit,
+    });
+    return new PaginatedResponseDto(
+      result.data.map((promotion) => PublicPromotionResponseDto.fromEntity(promotion)),
+      result.meta,
+    );
+  }
+
+  @ApiBearerAuth()
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
   @ScopedToBusinessUnit()
   @Get(':promotionId')
   @ApiOperation({ summary: 'Get a promotion by ID' })
@@ -106,7 +146,9 @@ export class PromotionsController {
     return PromotionResponseDto.fromEntity(promotion);
   }
 
+  @ApiBearerAuth()
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
   @ScopedToBusinessUnit()
   @Patch(':promotionId')
   @ApiOperation({ summary: 'Update a promotion' })
@@ -122,7 +164,9 @@ export class PromotionsController {
     return PromotionResponseDto.fromEntity(promotion);
   }
 
+  @ApiBearerAuth()
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
   @ScopedToBusinessUnit()
   @Patch(':promotionId/activate')
   @ApiOperation({ summary: 'Activate a promotion' })
@@ -141,7 +185,9 @@ export class PromotionsController {
     return PromotionResponseDto.fromEntity(promotion);
   }
 
+  @ApiBearerAuth()
   @Roles([UserRole.ADMIN, UserRole.MANAGER])
+  @UseGuards(UnitScopeGuard)
   @ScopedToBusinessUnit()
   @Patch(':promotionId/deactivate')
   @ApiOperation({ summary: 'Deactivate a promotion' })

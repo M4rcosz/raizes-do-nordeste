@@ -14,6 +14,7 @@ import { PromotionNotFoundError } from '../errors/promotion-not-found.error';
 import type { PromotionActor } from '../promotion-actor';
 import type {
   CreatePromotionInput,
+  FindActivePromotionsInput,
   FindPromotionsByBusinessUnitInput,
   PromotionRepository,
   RecordOrderPromotionInput,
@@ -65,6 +66,9 @@ class FakePromotionRepository implements PromotionRepository {
     );
   }
   create(_input: CreatePromotionInput): Promise<Promotion> {
+    throw new Error('not used');
+  }
+  findManyActive(_input: FindActivePromotionsInput): Promise<Promotion[]> {
     throw new Error('not used');
   }
   findManyByBusinessUnit(_input: FindPromotionsByBusinessUnitInput): Promise<Promotion[]> {

@@ -6,6 +6,7 @@ import { Promotion } from '../../domain/entities/promotion.entity';
 import { DiscountType } from '../../domain/value-objects/discount-type';
 import type {
   CreatePromotionInput,
+  FindActivePromotionsInput,
   FindPromotionsByBusinessUnitInput,
   PromotionRepository,
   RecordOrderPromotionInput,
@@ -60,6 +61,9 @@ class FakePromotionRepository implements PromotionRepository {
   }
   findById(_id: string): Promise<Promotion | null> {
     throw new Error('not used in this spec');
+  }
+  findManyActive(_input: FindActivePromotionsInput): Promise<Promotion[]> {
+    throw new Error('not used');
   }
   findManyByBusinessUnit(_input: FindPromotionsByBusinessUnitInput): Promise<Promotion[]> {
     throw new Error('not used in this spec');

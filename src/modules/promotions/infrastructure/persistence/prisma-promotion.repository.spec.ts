@@ -134,6 +134,60 @@ describe('PrismaPromotionRepository', () => {
     });
   });
 
+  describe('findManyActive', () => {
+    it('filters to active-in-window in SQL and paginates with the id tie-break', async () => {
+      const now = new Date('2026-06-15T12:00:00.000Z');
+      promotionFindMany.mockResolvedValue([persistedRow()]);
+
+      const result = await repo.findManyActive({ businessUnitId: 'bu-1', now, take: 21 });
+
+      expect(promotionFindMany).toHaveBeenCalledWith({
+        where: {
+          businessUnitId: 'bu-1',
+          isActive: true,
+          startDate: { lte: now },
+          endDate: { gt: now },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 21,
+      });
+      expect(result[0]).toBeInstanceOf(Promotion);
+    });
+
+    it('paginates with a keyset predicate, never a positional cursor', async () => {
+      promotionFindMany.mockResolvedValue([]);
+      const now = new Date('2026-06-15T12:00:00.000Z');
+      const keysetAt = new Date('2026-06-10T08:00:00.000Z');
+
+      await repo.findManyActive({
+        businessUnitId: 'bu-1',
+        now,
+        take: 21,
+        keyset: { createdAt: keysetAt, id: 'promo-7' },
+      });
+
+      const call = promotionFindMany.mock.calls[0][0] as {
+        where: Record<string, unknown>;
+        cursor?: unknown;
+        skip?: unknown;
+      };
+
+      // The OR mirrors the orderBy (createdAt desc, id desc) exactly: strictly older
+      // rows, plus same-instant rows with a smaller id as the tie-break.
+      expect(call.where.OR).toEqual([
+        { createdAt: { lt: keysetAt } },
+        { createdAt: keysetAt, id: { lt: 'promo-7' } },
+      ]);
+      // Prisma's positional cursor must NOT be used: with this time-varying filter a
+      // keyset row that stopped matching would shift the position and drop a row.
+      expect(call.cursor).toBeUndefined();
+      expect(call.skip).toBeUndefined();
+      // The window filter still applies alongside the keyset.
+      expect(call.where.isActive).toBe(true);
+      expect(call.where.endDate).toEqual({ gt: now });
+    });
+  });
+
   describe('recordOrderPromotion', () => {
     it('inserts the OrderPromotion on the provided transaction client', async () => {
       const txCreate = jest.fn() as jest.MockedFunction<Fn>;

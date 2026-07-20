@@ -16,7 +16,10 @@ export class PromotionsQueryDto {
 
   @ApiPropertyOptional({
     example: '550e8400-e29b-41d4-a716-446655440000',
-    description: 'ID of the last item from the previous page (cursor)',
+    description:
+      'Cursor from the previous page. Treat as opaque and pass back verbatim: the ' +
+      'back-office listing returns the last item id, the public listing returns a ' +
+      'base64url keyset token. A malformed cursor on the public listing returns 422.',
   })
   @IsOptional()
   @IsString()
