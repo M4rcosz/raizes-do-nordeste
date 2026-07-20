@@ -8,6 +8,7 @@ import {
 } from '../../domain/repositories/ai-membership.repository';
 import { TokenBudgetExceededError } from '../../domain/errors/token-budget-exceeded.error';
 import { AiMembershipNotFoundError } from '../errors/ai-membership-not-found.error';
+import { AiMembershipRevokedError } from '../errors/ai-membership-revoked.error';
 
 export interface AdjustAiMembershipBalanceInput {
   userId: string;
@@ -36,6 +37,13 @@ export class AdjustAiMembershipBalanceUseCase {
       throw new AiMembershipNotFoundError(`User ${input.userId} has no AI membership.`);
     }
 
+    // Can't top up or claw back a revoked wallet; reinstate it first.
+    if (existing.isRevoked) {
+      throw new AiMembershipRevokedError(
+        `User ${input.userId} AI membership is revoked; reinstate it before adjusting.`,
+      );
+    }
+
     // A positive delta credits: run the domain guard so an int4 overflow becomes a
     // clean 422 instead of a Postgres 22003 escaping as a 500. The negative path is
     // guarded below by the repo's conditional decrement (count = 0 -> null).
@@ -45,8 +53,19 @@ export class AdjustAiMembershipBalanceUseCase {
 
     const updated = await this.memberships.adjustBalance(input.userId, input.delta, input.actorId);
     if (!updated) {
-      // Only a negative delta can fail the conditional decrement: the clawback would
-      // drive the balance below zero (or a race drained it). Adjust never goes negative.
+      // The guarded write (revoked_at IS NULL, and for a debit token_balance >= |delta|)
+      // matched no row. In the common path that is an over-clawback. Under a concurrent
+      // revoke or delete landing between the pre-check and the write, re-read to report
+      // the real reason instead of a misleading "below zero".
+      const current = await this.memberships.findByUserId(input.userId);
+      if (!current) {
+        throw new AiMembershipNotFoundError(`User ${input.userId} has no AI membership.`);
+      }
+      if (current.isRevoked) {
+        throw new AiMembershipRevokedError(
+          `User ${input.userId} AI membership was revoked; reinstate before adjusting.`,
+        );
+      }
       throw new TokenBudgetExceededError(
         `Adjustment of ${input.delta} would drive user ${input.userId} balance below zero.`,
       );

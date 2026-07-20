@@ -6,6 +6,22 @@ const buildMembership = (tokenBalance: number): AiMembership =>
   new AiMembership('ai-1', 'u-1', tokenBalance, new Date(), new Date());
 
 describe('AiMembership', () => {
+  describe('isRevoked', () => {
+    it('is false when revokedAt is null', () => {
+      expect(buildMembership(100).isRevoked).toBe(false);
+    });
+
+    it('is false when revokedAt defaults to null (omitted)', () => {
+      const membership = new AiMembership('ai-1', 'u-1', 100, new Date(), new Date());
+      expect(membership.isRevoked).toBe(false);
+    });
+
+    it('is true when revokedAt is set', () => {
+      const membership = new AiMembership('ai-1', 'u-1', 100, new Date(), new Date(), new Date());
+      expect(membership.isRevoked).toBe(true);
+    });
+  });
+
   describe('debit', () => {
     it('returns the remaining balance when the spend fits', () => {
       expect(buildMembership(100).debit(30)).toBe(70);

@@ -13,6 +13,8 @@ import { PrismaAiMembershipRepository } from './infrastructure/persistence/prism
 import { GetMyAiMembershipUseCase } from './application/use-cases/get-my-ai-membership.use-case';
 import { EnrollAiMembershipUseCase } from './application/use-cases/enroll-ai-membership.use-case';
 import { AdjustAiMembershipBalanceUseCase } from './application/use-cases/adjust-ai-membership-balance.use-case';
+import { RevokeAiMembershipUseCase } from './application/use-cases/revoke-ai-membership.use-case';
+import { ReinstateAiMembershipUseCase } from './application/use-cases/reinstate-ai-membership.use-case';
 import { SendChatMessageUseCase } from './application/use-cases/send-chat-message.use-case';
 import { ToolRegistry } from './application/tools/tool-registry';
 import { CHAT_MODEL } from './application/ports/chat-model.port';
@@ -42,6 +44,8 @@ import { GeminiChatModelAdapter } from './infrastructure/ai/gemini-chat-model.ad
     GetMyAiMembershipUseCase,
     EnrollAiMembershipUseCase,
     AdjustAiMembershipBalanceUseCase,
+    RevokeAiMembershipUseCase,
+    ReinstateAiMembershipUseCase,
     SendChatMessageUseCase,
   ],
 })

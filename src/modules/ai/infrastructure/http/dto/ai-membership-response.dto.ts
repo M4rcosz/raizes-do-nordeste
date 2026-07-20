@@ -14,12 +14,19 @@ export class AiMembershipResponseDto {
   @ApiProperty()
   readonly createdAt!: Date;
 
+  @ApiProperty({
+    nullable: true,
+    description: 'When the membership was soft-revoked, or null if active.',
+  })
+  readonly revokedAt!: Date | null;
+
   static fromEntity(membership: AiMembership): AiMembershipResponseDto {
     return Object.assign(new AiMembershipResponseDto(), {
       id: membership.id,
       userId: membership.userId,
       tokenBalance: membership.tokenBalance,
       createdAt: membership.createdAt,
+      revokedAt: membership.revokedAt,
     });
   }
 }
