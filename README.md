@@ -1356,7 +1356,7 @@ The standard `data`/`meta` page envelope plus the window the totals cover.
       "createdAt": "2026-07-14T12:00:00.000Z"
     }
   ],
-  "meta": { "nextCursor": "eyJ0...", "hasMore": true }
+  "meta": { "limit": 20, "nextCursor": "eyJ0...", "hasMore": true }
 }
 ```
 
