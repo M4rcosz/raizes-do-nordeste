@@ -16,6 +16,8 @@ import { LookupCustomerUseCase } from './application/use-cases/lookup-customer.u
 import { UpdateUserBusinessUnitsUseCase } from './application/use-cases/update-user-business-units.use-case';
 import { USER_FOR_AI } from './application/ports/user-for-ai.port';
 import { UserForAiService } from './application/services/user-for-ai.service';
+import { USER_DIRECTORY } from './application/ports/user-directory.port';
+import { UserDirectoryService } from './application/services/user-directory.service';
 import { AuthController } from './infrastructure/http/controllers/auth.controller';
 import { UsersController } from './infrastructure/http/controllers/users.controller';
 import {
@@ -128,7 +130,11 @@ const DEFAULT_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
       provide: USER_FOR_AI,
       useClass: UserForAiService,
     },
+    {
+      provide: USER_DIRECTORY,
+      useClass: UserDirectoryService,
+    },
   ],
-  exports: [USER_FOR_AI],
+  exports: [USER_FOR_AI, USER_DIRECTORY],
 })
 export class IdentityModule {}

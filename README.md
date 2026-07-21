@@ -507,7 +507,7 @@ npm run devs
 | Payments          | `payments`                                                             |
 | Promotions        | `promotions`, `order_promotions`                                       |
 | Loyalty           | `loyalty_accounts`, `loyalty_transactions`                             |
-| AI                | `ai_memberships`                                                       |
+| AI                | `ai_memberships`, `ai_conversations`, `ai_conversation_messages`, `ai_token_usages` |
 
 > All domains above now have application code shipped, including **Promotions**
 > (`promotions`, `order_promotions`): CRUD use cases, a controller and a Prisma
@@ -1276,15 +1276,18 @@ transaction as the order, recorded as a `REDEEM` `LoyaltyTransaction`.
 
 ### AI Memberships
 
-| Method  | Path                                  | Auth  | Description                                                  |
-| ------- | ------------------------------------- | ----- | ----------------------------------------------------------- |
-| `GET`   | `/api/ai/memberships/me`              | Any   | Get the authenticated user's AI token balance.              |
-| `POST`  | `/api/ai/memberships/:userId`         | ADMIN | Enroll a user with an initial token balance.                |
-| `PATCH` | `/api/ai/memberships/:userId/balance` | ADMIN | Credit or debit a user's token balance by a signed `delta`. |
+| Method   | Path                                    | Auth  | Description                                                                                                |
+| -------- | --------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/ai/memberships`                   | ADMIN | List memberships with balance and token spend over a window (`from`/`to`, default last 30 days). Paginated. |
+| `GET`    | `/api/ai/memberships/me`                | Any   | Get the authenticated user's AI token balance.                                                             |
+| `POST`   | `/api/ai/memberships/:userId`           | ADMIN | Enroll a user with an initial token balance.                                                               |
+| `PATCH`  | `/api/ai/memberships/:userId/balance`   | ADMIN | Credit or debit a user's token balance by a signed `delta`.                                                |
+| `DELETE` | `/api/ai/memberships/:userId`           | ADMIN | Soft-revoke a membership (balance is preserved).                                                           |
+| `POST`   | `/api/ai/memberships/:userId/reinstate` | ADMIN | Lift a revocation.                                                                                         |
 
 An AI membership is a per-user token quota that an admin grants and tops up; the
-balance depletes as tokens are spent (Part 2 - the in-app AI assistant - is not
-yet wired). It is **not** scoped to a business unit. `GET /api/ai/memberships/me`
+balance depletes as tokens are spent through `POST /api/ai/chat`. It is **not**
+scoped to a business unit. `GET /api/ai/memberships/me`
 returns `404` until an admin enrolls the caller. Enrolment is a one-time create
 per user: `POST` returns `201`, `409` if the user already has a membership, and
 `404` if the target `userId` has no user row. `PATCH` applies a signed `delta`
@@ -1318,6 +1321,103 @@ route param, not the body.
   "userId": "f3b7...",
   "tokenBalance": 10000,
   "createdAt": "2026-07-14T12:00:00.000Z"
+}
+```
+
+#### Query params - `GET /api/ai/memberships`
+
+`from` and `to` are optional ISO instants bounding the spend window, both
+inclusive. Default: `to` is now, `from` is 30 days earlier. A `from` after `to`
+is rejected with `422`. `limit` and `cursor` drive the usual keyset pagination;
+a malformed `cursor` is `422`.
+
+Spend is read from an append-only ledger keyed by user, so it is unaffected by a
+member revoking their membership or soft-deleting their conversations.
+
+#### Response - `AiMembershipUsageResponseDto`
+
+The standard `data`/`meta` page envelope plus the window the totals cover.
+`userName`/`userEmail` are `null` when the user record no longer resolves.
+
+```json
+{
+  "periodFrom": "2026-06-21T00:00:00.000Z",
+  "periodTo": "2026-07-21T00:00:00.000Z",
+  "data": [
+    {
+      "id": "a1c4...",
+      "userId": "f3b7...",
+      "userName": "Davi Silva",
+      "userEmail": "davi@example.com",
+      "tokenBalance": 9680,
+      "tokensUsedInPeriod": 320,
+      "isRevoked": false,
+      "revokedAt": null,
+      "createdAt": "2026-07-14T12:00:00.000Z"
+    }
+  ],
+  "meta": { "nextCursor": "eyJ0...", "hasMore": true }
+}
+```
+
+### AI Conversations
+
+| Method   | Path                        | Auth | Description                                                        |
+| -------- | --------------------------- | ---- | ------------------------------------------------------------------ |
+| `GET`    | `/api/ai/conversations`     | Any  | List the caller's own threads, last activity first. Paginated.     |
+| `GET`    | `/api/ai/conversations/:id` | Any  | Read one of the caller's threads with its turns, oldest first.     |
+| `DELETE` | `/api/ai/conversations/:id` | Any  | Soft-delete one of the caller's threads.                           |
+
+Chat threads are stored server-side; pass the `conversationId` returned by
+`POST /api/ai/chat` back on the next call to continue one. Every route here is
+self-scoped from the JWT - there is no `:userId` param, and ownership is part of
+the SQL predicate rather than a post-filter. A thread that belongs to someone
+else, does not exist, or was soft-deleted answers `404` identically, so ids
+cannot be probed.
+
+`DELETE` is idempotent: deleting an already-deleted thread returns `200` with
+the same row rather than `404`. Soft-deleted threads disappear from both read
+routes and can no longer be continued, but the token spend they produced stays
+in the usage ledger - hiding a conversation never reduces reported spend.
+
+Only the last 40 turns of a thread are replayed to the model on each call. The
+read route above is uncapped and still returns every stored turn.
+
+#### Response - `AiConversationResponseDto` (list item and delete reply)
+
+```json
+{
+  "id": "c9e1...",
+  "isDeleted": false,
+  "createdAt": "2026-07-20T21:00:00.000Z",
+  "updatedAt": "2026-07-21T09:12:00.000Z"
+}
+```
+
+#### Response - `AiConversationDetailResponseDto` (`GET /api/ai/conversations/:id`)
+
+Adds a `messages` array, oldest first:
+
+```json
+{
+  "id": "c9e1...",
+  "isDeleted": false,
+  "createdAt": "2026-07-20T21:00:00.000Z",
+  "updatedAt": "2026-07-21T09:12:00.000Z",
+  "messages": [
+    {
+      "id": "m1a2...",
+      "role": "USER",
+      "content": "Qual o status do pedido 4821?",
+      "createdAt": "2026-07-20T21:00:00.000Z"
+    },
+    {
+      "id": "m3b4...",
+      "role": "MODEL",
+      "content": "Seu pedido #4821 esta em preparo.",
+      "createdAt": "2026-07-20T21:00:04.000Z"
+    }
+  ]
 }
 ```
 

@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -17,7 +18,9 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import { sanitizeLimit } from '@shared/pagination/pagination';
 import { Roles } from '@shared/auth/roles.decorator';
 import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
@@ -27,10 +30,13 @@ import { EnrollAiMembershipUseCase } from '@modules/ai/application/use-cases/enr
 import { AdjustAiMembershipBalanceUseCase } from '@modules/ai/application/use-cases/adjust-ai-membership-balance.use-case';
 import { RevokeAiMembershipUseCase } from '@modules/ai/application/use-cases/revoke-ai-membership.use-case';
 import { ReinstateAiMembershipUseCase } from '@modules/ai/application/use-cases/reinstate-ai-membership.use-case';
+import { ListAiMembershipsUseCase } from '@modules/ai/application/use-cases/list-ai-memberships.use-case';
 import { AiMembershipUserParamDto } from '../dto/ai-membership-user-param.dto';
 import { EnrollAiMembershipDto } from '../dto/enroll-ai-membership.dto';
 import { AdjustAiMembershipBalanceDto } from '../dto/adjust-ai-membership-balance.dto';
 import { AiMembershipResponseDto } from '../dto/ai-membership-response.dto';
+import { ListAiMembershipsQueryDto } from '../dto/list-ai-memberships-query.dto';
+import { AiMembershipUsageResponseDto } from '../dto/ai-membership-usage-response.dto';
 
 // Membership is per-user and global (not scoped to a business unit), so no
 // UnitScopeGuard here - enroll/adjust are ADMIN-only, the read is self-service.
@@ -45,7 +51,27 @@ export class AiMembershipController {
     private readonly adjustBalance: AdjustAiMembershipBalanceUseCase,
     private readonly revokeMembership: RevokeAiMembershipUseCase,
     private readonly reinstateMembership: ReinstateAiMembershipUseCase,
+    private readonly listMemberships: ListAiMembershipsUseCase,
   ) {}
+
+  @Get()
+  @Roles([UserRole.ADMIN])
+  @ApiOperation({
+    summary: 'List AI memberships with balance and period spend, paginated. Admins only.',
+  })
+  @ApiOkResponse({ type: AiMembershipUsageResponseDto })
+  @ApiUnprocessableEntityResponse({
+    description: 'Malformed pagination cursor, or inverted period.',
+  })
+  async list(@Query() query: ListAiMembershipsQueryDto): Promise<AiMembershipUsageResponseDto> {
+    const result = await this.listMemberships.execute({
+      from: query.from,
+      to: query.to,
+      cursor: query.cursor,
+      limit: sanitizeLimit(query.limit),
+    });
+    return AiMembershipUsageResponseDto.fromResult(result);
+  }
 
   // Declared before :userId so the literal path is not captured by the param route.
   @Get('me')

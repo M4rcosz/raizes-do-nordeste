@@ -11,6 +11,7 @@ export function createFakeUserRepository(overrides?: Partial<UserRepository>): U
     findByUsername: () =>
       Promise.reject(new Error('FakeUserRepository.findByUsername not stubbed')),
     findById: () => Promise.reject(new Error('FakeUserRepository.findById not stubbed')),
+    findByIds: () => Promise.reject(new Error('FakeUserRepository.findByIds not stubbed')),
     findActiveCustomerByContact: () =>
       Promise.reject(new Error('FakeUserRepository.findActiveCustomerByContact not stubbed')),
     create: () => Promise.reject(new Error('FakeUserRepository.create not stubbed')),

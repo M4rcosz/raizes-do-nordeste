@@ -59,6 +59,7 @@ describe('SignInUseCase', () => {
     const userRepo: jest.Mocked<UserRepository> = {
       findByUsername,
       findById: jest.fn() as jest.MockedFunction<UserRepository['findById']>,
+      findByIds: jest.fn() as jest.MockedFunction<UserRepository['findByIds']>,
       create: jest.fn() as jest.MockedFunction<UserRepository['create']>,
       deactivateIfRole: jest.fn() as jest.MockedFunction<UserRepository['deactivateIfRole']>,
       reactivateIfRole: jest.fn() as jest.MockedFunction<UserRepository['reactivateIfRole']>,

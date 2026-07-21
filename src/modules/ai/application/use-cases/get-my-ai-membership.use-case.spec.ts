@@ -29,6 +29,7 @@ describe('GetMyAiMembershipUseCase', () => {
   it('wraps a persistence failure as AiMembershipFetchError', async () => {
     const failing: AiMembershipRepository = {
       findByUserId: () => Promise.reject(new Error('db down')),
+      listAll: () => Promise.reject(new Error('not stubbed')),
       create: () => Promise.reject(new Error('not stubbed')),
       adjustBalance: () => Promise.reject(new Error('not stubbed')),
       debit: () => Promise.reject(new Error('not stubbed')),

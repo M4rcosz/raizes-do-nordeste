@@ -1,3 +1,4 @@
+import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { AiMembership } from '../entities/ai-membership.entity';
 
 /**
@@ -10,8 +11,29 @@ export interface AiMembershipTransition {
   membership: AiMembership;
 }
 
+/**
+ * Keyset position for the membership listing: the sort key of the last row of the
+ * previous page, not a row id to seek to. Same reasoning as the thread listing - the
+ * predicate compares values, so the cursor row need not still exist.
+ */
+export interface AiMembershipKeyset {
+  createdAt: Date;
+  id: string;
+}
+
+export interface ListAiMembershipsInput {
+  take: number;
+  keyset?: AiMembershipKeyset;
+}
+
 export interface AiMembershipRepository {
   findByUserId(userId: string): Promise<AiMembership | null>;
+  /**
+   * One page of memberships, revoked ones included, newest first. Over-fetch by one
+   * (`take: limit + 1`) to detect a next page. Paginated rather than unbounded so the
+   * admin report cannot turn into a full-table read as enrollment grows.
+   */
+  listAll(input: ListAiMembershipsInput): Promise<AiMembership[]>;
   /**
    * Creates the user's membership with `initialBalance`. `userId` is unique, so a
    * concurrent duplicate insert (P2002) is mapped to AiMembershipAlreadyExistsError.
@@ -30,8 +52,9 @@ export interface AiMembershipRepository {
    * Spends `amount` tokens with a conditional decrement (revoked_at IS NULL AND
    * token_balance >= amount). Returns false when nothing matched (revoked, insufficient
    * balance, or a race) - a revoke that lands mid-conversation stops further spend.
+   * `tx` lets the caller keep the decrement and its usage-ledger row in one unit.
    */
-  debit(userId: string, amount: number): Promise<boolean>;
+  debit(userId: string, amount: number, tx?: TransactionContext): Promise<boolean>;
   /**
    * Soft-revokes the membership by stamping revoked_at, guarded by revoked_at IS NULL
    * so concurrent revokes converge to one write. The balance is never touched. Returns

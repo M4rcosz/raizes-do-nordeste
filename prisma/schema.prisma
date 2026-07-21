@@ -52,6 +52,8 @@ model User {
   inventoryTransactions InventoryTransaction[]
   loyaltyAccounts       LoyaltyAccount[]
   aiMemberships         AiMembership[]
+  aiConversations       AiConversation[]
+  aiTokenUsages         AiTokenUsage[]
   refreshTokens         RefreshToken[]
 
   userUpdatedBy            User[]           @relation("UserUpdatedBy")
@@ -445,13 +447,13 @@ model LoyaltyAccount {
 // is topped up by an admin (enroll + adjust). Tokens are a plain Int count, not
 // money, so no Decimal here. Balance changes are conditional so it never goes negative.
 model AiMembership {
-  id           String   @id @default(uuid())
-  userId       String   @unique @map("user_id")
-  tokenBalance Int      @default(0) @map("token_balance")
+  id           String    @id @default(uuid())
+  userId       String    @unique @map("user_id")
+  tokenBalance Int       @default(0) @map("token_balance")
   revokedAt    DateTime? @map("revoked_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-  updatedById  String?  @map("updated_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  updatedById  String?   @map("updated_by")
 
   user      User  @relation(fields: [userId], references: [id])
   updatedBy User? @relation("AiMembershipsUpdatedBy", fields: [updatedById], references: [id])
@@ -484,6 +486,73 @@ model LoyaltyTransaction {
   @@index([orderId])
   @@index([expiresAt])
   @@map("loyalty_transactions")
+}
+
+// ============================================================
+// AI
+// ============================================================
+
+enum AiMessageRole {
+  USER
+  MODEL
+}
+
+// One assistant thread. Soft-deleted (deleted_at) so a user can hide a thread
+// without erasing what it cost: the spend lives in AiTokenUsage, which does not
+// depend on the conversation surviving.
+model AiConversation {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  messages    AiConversationMessage[]
+  tokenUsages AiTokenUsage[]
+
+  // Serves the owner's listing as an ordered scan: userId filters, updatedAt is
+  // both the sort key and the keyset column the cursor pages on.
+  @@index([userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+// Turns inside a thread. Only user/model text is stored: tool turns are server-side
+// plumbing and are never replayed to the client or back into the model from here.
+model AiConversationMessage {
+  id             String        @id @default(uuid())
+  conversationId String        @map("conversation_id")
+  role           AiMessageRole
+  content        String
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Serves the ordered, limited replay load (last N turns of one thread) without
+  // reading and sorting the whole thread.
+  @@index([conversationId, createdAt])
+  @@map("ai_conversation_messages")
+}
+
+// Append-only spend ledger, one row per metered model call. Messages cannot
+// reconstruct this: tokens are metered per model call, and a tool-only turn spends
+// tokens while producing no message text. conversationId is nullable and cleared on
+// delete, so purging a thread can never subtract from reported spend.
+model AiTokenUsage {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  conversationId String?  @map("conversation_id")
+  tokensUsed     Int      @map("tokens_used")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User            @relation(fields: [userId], references: [id])
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  // Serves the per-user period aggregate as an ordered scan: userId leads the
+  // grouping, createdAt bounds the window.
+  @@index([userId, createdAt])
+  @@map("ai_token_usages")
 }
 
 // ============================================================
