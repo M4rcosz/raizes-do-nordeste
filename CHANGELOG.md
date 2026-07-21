@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.2.0...v3.3.0) (2026-07-21)
+
+
+### Features
+
+* **ai:** add usage reporting and persisted chat conversations ([e40979f](https://github.com/M4rcosz/raizes-do-nordeste/commit/e40979fee68042ebfa3b5b2e1767d754646a4203))
+
 ## [3.2.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.1.0...v3.2.0) (2026-07-20)
 
 
