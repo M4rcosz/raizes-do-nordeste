@@ -59,6 +59,12 @@ export interface UserRepository {
   findByUsername(username: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   /**
+   * Batched point lookup: resolves many ids in one query so a caller enriching a
+   * list never loops findById. Missing ids are simply absent from the result, and
+   * an empty input returns [] without querying.
+   */
+  findByIds(ids: string[]): Promise<User[]>;
+  /**
    * Resolves a single active CUSTOMER by an exact phone or email. Both columns are
    * unique (email is citext, so its match is case-insensitive), which is what keeps
    * this a point lookup: no substring matching, so an attendant token cannot page

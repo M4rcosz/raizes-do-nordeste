@@ -36,6 +36,18 @@ export class PrismaUserRepository implements UserRepository {
     return raw ? this.toEntity(raw) : null;
   }
 
+  async findByIds(ids: string[]): Promise<User[]> {
+    // An empty `in` list matches nothing, so skip the round trip entirely.
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      include: WITH_UNITS,
+    });
+    return rows.map((raw) => this.toEntity(raw));
+  }
+
   async findActiveCustomerByContact(contact: CustomerContact): Promise<User | null> {
     // Guard before building the term: an empty where would match the first active
     // customer in the table and hand back a stranger's record. The DTO already

@@ -64,12 +64,47 @@ active membership returns `200` with the current row and no error.
 
 ### POST `/api/ai/chat` - the metered assistant
 Any authenticated user. Enrollment, revoke, and balance are enforced here, not by a role gate.
-- Body: `{ "message": string (1..4000), "history?": ChatMessage[] (<= 50) }`
+- Body: `{ "conversationId?": uuid, "message": string (1..4000), "history?": ChatMessage[] (<= 50) }`
   where `ChatMessage = { "role": "user" | "model", "text": string }`.
+  - Omit `conversationId` to start a new thread, optionally seeded with `history`.
+  - Pass a prior `conversationId` to continue that thread. The server then replays its
+    own stored turns and **ignores** the client's `history` entirely.
+  - Only the last 40 stored turns are replayed to the model, so cost per call stays
+    bounded no matter how long the thread gets.
 - Rate limited to **20 requests / minute / user** (tighter than the global default).
-- `200` -> `{ "reply": string, "tokensSpent": number, "balanceRemaining": number }`
+- `200` -> `{ "conversationId": string, "reply": string, "tokensSpent": number, "balanceRemaining": number }`
+  Echo `conversationId` back on the next call to keep the thread going. **If you do not,
+  every message opens a new single-turn thread** - the field is optional for wire
+  compatibility, not because round-tripping it is optional in practice.
 - `403` -> not enrolled, revoked, or out of tokens (distinguish by message - see caveat).
+- `404` -> the given `conversationId` is not the caller's, was deleted, or does not exist
+  (indistinguishable on purpose).
 - `503` -> the assistant provider is temporarily unavailable. Safe to offer a retry.
+
+### GET `/api/ai/conversations` - the caller's threads
+Self-scoped from the JWT; there is no `:userId` param. Last activity first,
+keyset-paginated (`limit`/`cursor`, same envelope as the rest of the API).
+- `200` -> `{ "data": ConversationSummary[], "meta": { "nextCursor": string | null, "hasMore": boolean } }`
+- `422` -> malformed `cursor`.
+
+### GET `/api/ai/conversations/:id` - read one thread
+- `200` -> `ConversationDetail` (all stored turns, oldest first - this route is not capped).
+- `404` -> not the caller's, deleted, or unknown. Do not use this to probe ids.
+
+### DELETE `/api/ai/conversations/:id` - soft delete
+Idempotent: deleting an already-deleted thread returns `200` with the same row, not `404`.
+The thread then disappears from both read routes and can no longer be continued.
+- `200` -> `ConversationSummary` with `isDeleted: true`.
+- `404` -> not the caller's, or unknown.
+
+Token spend the thread produced is **not** affected - it lives in a separate ledger keyed
+by user, so deleting conversations never changes what the admin report shows.
+
+### GET `/api/ai/memberships` - admin usage report
+ADMIN only. Lists memberships with balance and spend over a window.
+- Query: `from?`/`to?` (ISO instants, inclusive; default is the last 30 days), `limit?`, `cursor?`.
+- `200` -> `{ "periodFrom", "periodTo", "data": MembershipUsage[], "meta": {...} }`
+- `422` -> `from` after `to`, or a malformed `cursor`.
 
 ## Response shapes
 
@@ -85,6 +120,46 @@ Any authenticated user. Enrollment, revoke, and balance are enforced here, not b
 ```
 `revokedAt` is an ISO timestamp when revoked, `null` when active. It is the single source
 of truth for the revoked state - do not infer it from anything else.
+
+`ChatResponse`:
+```json
+{
+  "conversationId": "uuid",
+  "reply": "Seu pedido #4821 esta em preparo.",
+  "tokensSpent": 42,
+  "balanceRemaining": 9638
+}
+```
+
+`ConversationSummary`:
+```json
+{
+  "id": "uuid",
+  "isDeleted": false,
+  "createdAt": "2026-07-20T21:00:00.000Z",
+  "updatedAt": "2026-07-21T09:12:00.000Z"
+}
+```
+`ConversationDetail` is the same plus `"messages"`, oldest first, each
+`{ "id": uuid, "role": "USER" | "MODEL", "content": string, "createdAt": ISO }`.
+Note the roles are uppercase here, unlike the lowercase `"user"`/`"model"` used by the
+`history` field on the chat request.
+
+`MembershipUsage` (items of the admin report):
+```json
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "userName": "Davi Silva",
+  "userEmail": "davi@example.com",
+  "tokenBalance": 9680,
+  "tokensUsedInPeriod": 320,
+  "isRevoked": false,
+  "revokedAt": null,
+  "createdAt": "2026-07-14T12:00:00.000Z"
+}
+```
+`userName`/`userEmail` are `null` when the user record no longer resolves.
 
 ## Errors
 

@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, type AiMembership as AiMembershipModel } from '@prisma/client';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
+import { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { AiMembership } from '@modules/ai/domain/entities/ai-membership.entity';
 import {
   AiMembershipRepository,
   AiMembershipTransition,
+  ListAiMembershipsInput,
 } from '@modules/ai/domain/repositories/ai-membership.repository';
 import { AiMembershipAlreadyExistsError } from '@modules/ai/application/errors/ai-membership-already-exists.error';
 import { EnrollTargetUserNotFoundError } from '@modules/ai/application/errors/enroll-target-user-not-found.error';
@@ -18,6 +20,30 @@ export class PrismaAiMembershipRepository implements AiMembershipRepository {
   async findByUserId(userId: string): Promise<AiMembership | null> {
     const raw = await this.prisma.aiMembership.findUnique({ where: { userId } });
     return raw ? this.toEntity(raw) : null;
+  }
+
+  async listAll(input: ListAiMembershipsInput): Promise<AiMembership[]> {
+    const { take, keyset } = input;
+
+    // Revoked rows are included: an admin report that hid them would under-report
+    // spend, since a revoked wallet keeps every token it already burned.
+    //
+    // Keyset, not `cursor`/`skip`: a positional cursor resolves a position in the
+    // result set, so a row inserted or removed between two pages shifts it and the
+    // `skip: 1` drops a row. Mirrors the orderBy exactly: (createdAt desc, id desc).
+    const rows = await this.prisma.aiMembership.findMany({
+      ...(keyset && {
+        where: {
+          OR: [
+            { createdAt: { lt: keyset.createdAt } },
+            { createdAt: keyset.createdAt, id: { lt: keyset.id } },
+          ],
+        },
+      }),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take,
+    });
+    return rows.map((raw) => this.toEntity(raw));
   }
 
   async create(userId: string, initialBalance: number, actorId: string): Promise<AiMembership> {
@@ -85,18 +111,21 @@ export class PrismaAiMembershipRepository implements AiMembershipRepository {
     return raw ? this.toEntity(raw) : null;
   }
 
-  async debit(userId: string, amount: number): Promise<boolean> {
+  async debit(userId: string, amount: number, tx?: TransactionContext): Promise<boolean> {
     // Guard the seam: a non-positive amount makes the gte trivially true and decrements
     // a non-positive value (no-op, or an unbounded credit for a negative). No route hits
     // this yet, but Part 2 calls it on every spend.
     if (!Number.isInteger(amount) || amount <= 0) {
       return false;
     }
+    // On the caller's tx when given, so the decrement and its usage-ledger row commit
+    // or roll back together.
+    const db = (tx as Prisma.TransactionClient) ?? this.prisma;
     // Same conditional decrement as a negative adjust, but boolean-only: this is the
     // metering seam, called on each token spend. revoked_at IS NULL is part of the
     // guard, so a revoke landing mid-conversation makes the next spend return false
     // and the chat loop stops gracefully - no entity round-trip needed.
-    const { count } = await this.prisma.aiMembership.updateMany({
+    const { count } = await db.aiMembership.updateMany({
       where: { userId, revokedAt: null, tokenBalance: { gte: amount } },
       data: { tokenBalance: { decrement: amount } },
     });

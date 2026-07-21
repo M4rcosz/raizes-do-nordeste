@@ -6,13 +6,27 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { ChatMessageDto } from './chat-message.dto';
 
 export class SendChatMessageDto {
-  @ApiPropertyOptional({ type: [ChatMessageDto], maxItems: 50 })
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Continue this thread. When set, history is loaded from the server and `history` is ignored.',
+  })
+  @IsOptional()
+  @IsUUID()
+  conversationId?: string;
+
+  @ApiPropertyOptional({
+    type: [ChatMessageDto],
+    maxItems: 50,
+    description: 'Ignored when conversationId is set. Fallback context for a brand-new thread.',
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(50)

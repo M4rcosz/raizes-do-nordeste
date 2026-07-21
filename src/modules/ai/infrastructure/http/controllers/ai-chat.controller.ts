@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiServiceUnavailableResponse,
@@ -32,6 +33,7 @@ export class AiChatController {
   @ApiOperation({ summary: 'Ask the support assistant a question. Metered against AI tokens.' })
   @ApiOkResponse({ type: ChatResponseDto })
   @ApiForbiddenResponse({ description: 'Not enrolled for AI access, or out of tokens.' })
+  @ApiNotFoundResponse({ description: 'The given conversation does not exist for this user.' })
   @ApiServiceUnavailableResponse({ description: 'The assistant is temporarily unavailable.' })
   async chat(
     @Body() body: SendChatMessageDto,
@@ -46,7 +48,12 @@ export class AiChatController {
       role: m.role,
       text: m.text,
     }));
-    const result = await this.sendChatMessage.execute({ actor, history, message: body.message });
+    const result = await this.sendChatMessage.execute({
+      actor,
+      conversationId: body.conversationId,
+      history,
+      message: body.message,
+    });
     return ChatResponseDto.fromResult(result);
   }
 }

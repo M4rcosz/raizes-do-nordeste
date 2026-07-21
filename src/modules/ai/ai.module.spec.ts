@@ -5,6 +5,9 @@ import { PrismaModule } from '@shared/infrastructure/prisma/prisma.module';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { AiModule } from './ai.module';
 import { ToolRegistry } from './application/tools/tool-registry';
+import { ListAiMembershipsUseCase } from './application/use-cases/list-ai-memberships.use-case';
+import { SendChatMessageUseCase } from './application/use-cases/send-chat-message.use-case';
+import { DeleteConversationUseCase } from './application/use-cases/delete-conversation.use-case';
 
 /**
  * Boots the module graph (compile only - no DB connection) to prove every provider,
@@ -34,5 +37,19 @@ describe('AiModule', () => {
     expect(names).toContain('listInventory');
     expect(names).toContain('listUsers');
     expect(names).toContain('listMenuItems');
+  });
+
+  it('resolves the use cases that depend on the new repositories and ports', async () => {
+    moduleRef = await Test.createTestingModule({
+      imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AiModule],
+    }).compile();
+
+    // ListAiMemberships is the one that reaches across contexts: it fails to
+    // resolve unless IdentityModule actually exports USER_DIRECTORY.
+    expect(moduleRef.get(ListAiMembershipsUseCase)).toBeDefined();
+    // SendChatMessage now needs the conversation repo, the usage ledger and the
+    // transaction runner on top of what it had.
+    expect(moduleRef.get(SendChatMessageUseCase)).toBeDefined();
+    expect(moduleRef.get(DeleteConversationUseCase)).toBeDefined();
   });
 });

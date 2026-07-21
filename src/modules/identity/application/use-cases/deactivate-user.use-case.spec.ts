@@ -54,6 +54,10 @@ class FakeUserRepository implements UserRepository {
     return Promise.resolve(snapshot);
   }
 
+  findByIds(): Promise<User[]> {
+    return Promise.reject(new Error('not used'));
+  }
+
   create(_input: CreateUserInput): Promise<User> {
     return Promise.reject(new Error('not used'));
   }

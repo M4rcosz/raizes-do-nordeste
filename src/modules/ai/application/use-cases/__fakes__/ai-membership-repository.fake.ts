@@ -1,7 +1,9 @@
+import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { AiMembership } from '@modules/ai/domain/entities/ai-membership.entity';
 import {
   AiMembershipRepository,
   AiMembershipTransition,
+  ListAiMembershipsInput,
 } from '@modules/ai/domain/repositories/ai-membership.repository';
 import { AiMembershipAlreadyExistsError } from '@modules/ai/application/errors/ai-membership-already-exists.error';
 
@@ -20,6 +22,22 @@ export class FakeAiMembershipRepository implements AiMembershipRepository {
 
   findByUserId(userId: string): Promise<AiMembership | null> {
     return Promise.resolve(this.store.get(userId) ?? null);
+  }
+
+  listAll(input: ListAiMembershipsInput): Promise<AiMembership[]> {
+    const { take, keyset } = input;
+    // Revoked rows included, (createdAt desc, id desc) - same as the real query.
+    const rows = [...this.store.values()]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1))
+      // Keyset predicate: strictly after the given sort key, never a position.
+      .filter(
+        (m) =>
+          keyset === undefined ||
+          m.createdAt < keyset.createdAt ||
+          (m.createdAt.getTime() === keyset.createdAt.getTime() && m.id < keyset.id),
+      )
+      .slice(0, take);
+    return Promise.resolve(rows);
   }
 
   create(userId: string, initialBalance: number): Promise<AiMembership> {
@@ -61,7 +79,10 @@ export class FakeAiMembershipRepository implements AiMembershipRepository {
     return Promise.resolve(updated);
   }
 
-  debit(userId: string, amount: number): Promise<boolean> {
+  // tx is accepted and ignored: an in-memory store has nothing to enlist, but the
+  // signature has to match so callers can be exercised as they really run.
+  debit(userId: string, amount: number, tx?: TransactionContext): Promise<boolean> {
+    void tx;
     const current = this.store.get(userId);
     // Mirror the real guard: no spend on a missing, revoked, or under-funded wallet.
     if (!current || current.isRevoked || current.tokenBalance < amount) {
