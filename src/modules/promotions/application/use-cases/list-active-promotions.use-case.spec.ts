@@ -6,10 +6,7 @@ import { Promotion } from '../../domain/entities/promotion.entity';
 import { DiscountType } from '../../domain/value-objects/discount-type';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
 import { InvalidPromotionCursorError } from '../errors/invalid-promotion-cursor.error';
-import {
-  decodeActivePromotionCursor,
-  encodeActivePromotionCursor,
-} from '../list-active-promotions-cursor';
+import { decodePromotionCursor, encodePromotionCursor } from '../promotion-keyset-cursor';
 import type {
   CreatePromotionInput,
   FindActivePromotionsInput,
@@ -102,9 +99,9 @@ describe('ListActivePromotionsUseCase', () => {
     expect(result.meta.hasMore).toBe(true);
     // Opaque token carrying the whole sort key, not the bare id.
     expect(result.meta.nextCursor).not.toBeNull();
-    expect(decodeActivePromotionCursor(result.meta.nextCursor!)).toEqual({
+    expect(decodePromotionCursor(result.meta.nextCursor!)).toEqual({
       id: 'p-2',
-      createdAt: promotionCreatedAt.toISOString(),
+      timestamp: promotionCreatedAt,
     });
   });
 
@@ -129,13 +126,13 @@ describe('ListActivePromotionsUseCase', () => {
 
   it('decodes the cursor into a keyset the repository can compare on', async () => {
     repository.seed([promotion('p-9')]);
-    const cursor = encodeActivePromotionCursor(promotionCreatedAt, 'p-8');
+    const cursor = encodePromotionCursor(promotionCreatedAt, 'p-8');
 
     await useCase.execute({ businessUnitId: 'bu-1', limit: 20, cursor });
 
     // Both sort terms must reach the repository: an id alone cannot express the
     // keyset predicate, which is the whole reason this listing is not row-cursored.
-    expect(repository.lastInput?.keyset).toEqual({ createdAt: promotionCreatedAt, id: 'p-8' });
+    expect(repository.lastInput?.keyset).toEqual({ timestamp: promotionCreatedAt, id: 'p-8' });
   });
 
   it('rejects a malformed cursor as invalid input, not as a fetch outage', async () => {

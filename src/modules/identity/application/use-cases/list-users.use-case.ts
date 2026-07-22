@@ -13,6 +13,7 @@ import {
 } from '@modules/identity/domain/repositories/user.repository';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { UsersFetchError } from '../errors/users-fetch.error';
+import { decodeUserCursor, encodeUserCursor } from '../user-keyset-cursor';
 
 export interface ListUsersActor {
   role: UserRole;
@@ -42,6 +43,10 @@ export class ListUsersUseCase {
   // reads as not-found (anti-IDOR), never as an empty list that leaks the unit.
   async execute(input: ListUsersInput): Promise<CursorPaginatedResult<User>> {
     const { actor, businessUnitId, username, email, role, cursor, limit } = input;
+
+    // Decode before the scope check so a malformed token is the caller's error (422)
+    // rather than an empty page that reads as "no users in scope".
+    const keyset = cursor === undefined ? undefined : decodeUserCursor(cursor);
 
     const scope = this.resolveScope(actor, businessUnitId);
 
@@ -73,13 +78,14 @@ export class ListUsersUseCase {
     try {
       items = await this.users.findMany({
         filters,
-        pagination: { cursor, take: limit + 1 },
+        take: limit + 1,
+        keyset,
       });
     } catch (err) {
       throw new UsersFetchError('Could not retrieve users.', { cause: err });
     }
 
-    return buildCursorPage(items, limit);
+    return buildCursorPage(items, limit, (user) => encodeUserCursor(user.createdAt, user.id));
   }
 
   // ADMIN: free businessUnitId filter, or none (all units). MANAGER: pinned to

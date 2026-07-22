@@ -7,9 +7,15 @@ import {
   CategoryRepository,
 } from '../../domain/repositories/category.repository';
 import { CategoriesFetchError } from '../errors/category-fetch.error';
+import { encodeCatalogCursor } from '../catalog-keyset-cursor';
+
+// Fixed so the expected page token is computable: the token is derived from the
+// row's createdAt, not from its id.
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
+const CURSOR = encodeCatalogCursor(CREATED_AT, 'last-id');
 
 const buildCategory = (id: string): Category =>
-  new Category(id, `Category ${id}`, null, true, new Date(), new Date());
+  new Category(id, `Category ${id}`, null, true, CREATED_AT, CREATED_AT);
 
 // In-memory fake. findAllActive returns the queued page and records the input
 // so the spec can assert the over-fetch (take = limit + 1) contract.
@@ -54,7 +60,8 @@ describe('ListCategoriesUseCase', () => {
     await useCase.execute({ limit: 20 });
 
     expect(repo.lastInput).toEqual({
-      pagination: { cursor: undefined, take: 21 },
+      take: 21,
+      keyset: undefined,
       filters: undefined,
     });
   });
@@ -62,10 +69,11 @@ describe('ListCategoriesUseCase', () => {
   it('forwards cursor and filters to the repository', async () => {
     repo.page = [];
 
-    await useCase.execute({ limit: 10, cursor: 'last-id', filters: { search: 'beb' } });
+    await useCase.execute({ limit: 10, cursor: CURSOR, filters: { search: 'beb' } });
 
     expect(repo.lastInput).toEqual({
-      pagination: { cursor: 'last-id', take: 11 },
+      take: 11,
+      keyset: { timestamp: CREATED_AT, id: 'last-id' },
       filters: { search: 'beb' },
     });
   });
@@ -85,7 +93,11 @@ describe('ListCategoriesUseCase', () => {
     const result = await useCase.execute({ limit: 2 });
 
     expect(result.data.map((c) => c.id)).toEqual(['a', 'b']);
-    expect(result.meta).toEqual({ limit: 2, hasMore: true, nextCursor: 'b' });
+    expect(result.meta).toEqual({
+      limit: 2,
+      hasMore: true,
+      nextCursor: encodeCatalogCursor(CREATED_AT, 'b'),
+    });
   });
 
   it('throws CategoriesFetchError wrapping the original error when the repository fails', async () => {

@@ -98,7 +98,7 @@ describe('PromotionForAiService.listForActor', () => {
 
     const result = await service.listForActor('bu-1', manager);
 
-    expect(repo.lastInput?.pagination.take).toBe(11);
+    expect(repo.lastInput?.take).toBe(11);
     expect(result.promotions).toHaveLength(10);
     expect(result.hasMore).toBe(true);
   });

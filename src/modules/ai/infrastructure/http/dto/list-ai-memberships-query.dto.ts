@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsInt, IsOptional, IsString } from 'class-validator';
+import { IsDate, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { MAX_CURSOR_LENGTH } from '@shared/pagination/pagination';
 
 export class ListAiMembershipsQueryDto {
   @ApiPropertyOptional({
@@ -21,6 +22,7 @@ export class ListAiMembershipsQueryDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_CURSOR_LENGTH)
   cursor?: string;
 
   @ApiPropertyOptional({

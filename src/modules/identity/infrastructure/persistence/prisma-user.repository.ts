@@ -199,13 +199,30 @@ export class PrismaUserRepository implements UserRepository {
   }
 
   async findMany(input: FindUsersInput): Promise<User[]> {
-    const { filters, pagination } = input;
+    const { filters, take, keyset } = input;
+
+    // Keyset, not `cursor`/`skip`: role and unit membership are editable, so the row a
+    // positional cursor names can leave the filtered set between two requests, shifting
+    // the position so `skip: 1` swallows the next user. Mirrors the orderBy exactly.
+    const where = this.buildWhere(filters);
+    if (keyset) {
+      // Appended, not assigned: buildWhere may already have set AND.
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: [
+            { createdAt: { lt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+          ],
+        },
+      ];
+    }
+
     const rows = await this.prisma.user.findMany({
-      where: this.buildWhere(filters),
+      where,
       include: WITH_UNITS,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && { cursor: { id: pagination.cursor }, skip: 1 }),
+      take,
     });
     return rows.map((row) => this.toEntity(row));
   }

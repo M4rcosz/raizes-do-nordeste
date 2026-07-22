@@ -22,18 +22,23 @@ export class PrismaInventoryRepository implements InventoryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findManyByUnit(input: FindInventoryByUnitInput): Promise<Inventory[]> {
-    const { businessUnitId, pagination } = input;
+    const { businessUnitId, take, keyset } = input;
 
-    // Stable order for cursoring: createdAt then id as the tiebreaker. The cursor
-    // is the last item's id; skip:1 starts the next page after it.
+    // Keyset on (createdAt asc, id asc). Ascending, so the predicate seeks GREATER
+    // values - the mirror of the descending listings. Compares values rather than
+    // locating a row, so a deleted keyset row cannot break the next page.
     const raws = await this.prisma.inventory.findMany({
-      where: { businessUnitId },
+      where: {
+        businessUnitId,
+        ...(keyset && {
+          OR: [
+            { createdAt: { gt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { gt: keyset.id } },
+          ],
+        }),
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
     return raws.map((raw) => this.toEntity(raw));
   }

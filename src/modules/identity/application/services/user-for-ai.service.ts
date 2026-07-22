@@ -42,7 +42,7 @@ export class UserForAiService implements UserForAi {
         username: filters.username,
         businessUnitIds: filters.businessUnitId ? [filters.businessUnitId] : undefined,
       },
-      pagination: { take: AI_PAGE_SIZE + 1 },
+      take: AI_PAGE_SIZE + 1,
     });
     const page = buildCursorPage(items, AI_PAGE_SIZE);
     return {

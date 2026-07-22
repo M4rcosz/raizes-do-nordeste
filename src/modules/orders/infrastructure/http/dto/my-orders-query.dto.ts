@@ -2,7 +2,8 @@ import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel
 import { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { MAX_CURSOR_LENGTH } from '@shared/pagination/pagination';
 
 /**
  * Query for a customer listing their own orders. Deliberately has no
@@ -21,11 +22,13 @@ export class MyOrdersQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    example: '550e8400-e29b-41d4-a716-446655440000',
-    description: 'ID of the last item from the previous page (cursor)',
+    description:
+      'Cursor from the previous page. Opaque base64url keyset token - pass it back ' +
+      'verbatim. A malformed cursor returns 422.',
   })
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_CURSOR_LENGTH)
   cursor?: string;
 
   @ApiPropertyOptional({ enum: OrderChannel, description: 'Filter by channel' })

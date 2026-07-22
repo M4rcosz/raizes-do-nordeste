@@ -38,7 +38,7 @@ export class InventoryForAiService implements InventoryForAi {
     // Fetch one extra row to know whether another page exists.
     const items = await this.inventory.findManyByUnit({
       businessUnitId,
-      pagination: { take: AI_PAGE_SIZE + 1 },
+      take: AI_PAGE_SIZE + 1,
     });
     const page = buildCursorPage(items, AI_PAGE_SIZE);
     return {

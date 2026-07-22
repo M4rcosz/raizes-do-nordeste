@@ -100,7 +100,7 @@ describe('PrismaAuditLogRepository', () => {
     });
 
     it('maps rows to entities', async () => {
-      const logs = await repo.findMany({ pagination: { take: 20 } });
+      const logs = await repo.findMany({ take: 20 });
 
       expect(logs).toHaveLength(1);
       expect(logs[0].id).toBe('al-1');
@@ -109,25 +109,25 @@ describe('PrismaAuditLogRepository', () => {
     });
 
     it('builds an empty where clause when no filters are given', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+      await repo.findMany({ take: 20 });
 
       expect(argsOf(prisma.auditLog.findMany).where).toStrictEqual({});
     });
 
     it('builds an open-ended lower bound from `from` alone', async () => {
-      await repo.findMany({ filters: { from: FROM }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { from: FROM }, take: 20 });
 
       expect(argsOf(prisma.auditLog.findMany).where).toStrictEqual({ createdAt: { gte: FROM } });
     });
 
     it('builds an open-ended upper bound from `to` alone', async () => {
-      await repo.findMany({ filters: { to: TO }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { to: TO }, take: 20 });
 
       expect(argsOf(prisma.auditLog.findMany).where).toStrictEqual({ createdAt: { lte: TO } });
     });
 
     it('builds a closed range when both bounds are given', async () => {
-      await repo.findMany({ filters: { from: FROM, to: TO }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { from: FROM, to: TO }, take: 20 });
 
       expect(argsOf(prisma.auditLog.findMany).where).toStrictEqual({
         createdAt: { gte: FROM, lte: TO },
@@ -137,7 +137,7 @@ describe('PrismaAuditLogRepository', () => {
     it('AND-combines the scalar filters', async () => {
       await repo.findMany({
         filters: { userId: 'u-1', action: 'USER_CREATED', entity: 'User', entityId: 'u-2' },
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(argsOf(prisma.auditLog.findMany).where).toStrictEqual({
@@ -149,7 +149,7 @@ describe('PrismaAuditLogRepository', () => {
     });
 
     it('orders by a stable (createdAt, id) key so the cursor cannot skip rows', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+      await repo.findMany({ take: 20 });
 
       expect(argsOf(prisma.auditLog.findMany).orderBy).toEqual([
         { createdAt: 'desc' },
@@ -157,18 +157,39 @@ describe('PrismaAuditLogRepository', () => {
       ]);
     });
 
-    it('skips the cursor row itself when paging forward', async () => {
-      await repo.findMany({ pagination: { take: 20, cursor: 'al-0' } });
+    it('pages by comparing the sort key, never by a positional cursor', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
-      expect(argsOf(prisma.auditLog.findMany)).toMatchObject({
-        take: 20,
-        cursor: { id: 'al-0' },
-        skip: 1,
+      await repo.findMany({ take: 20, keyset: { timestamp: keysetAt, id: 'al-0' } });
+
+      const args = argsOf(prisma.auditLog.findMany) as { where?: Record<string, unknown> };
+      expect(args.where).toMatchObject({
+        AND: [
+          {
+            OR: [{ createdAt: { lt: keysetAt } }, { createdAt: keysetAt, id: { lt: 'al-0' } }],
+          },
+        ],
       });
+      expect(args).toMatchObject({ take: 20 });
+      expect(args).not.toHaveProperty('cursor');
+      expect(args).not.toHaveProperty('skip');
+    });
+
+    it('keeps the window filter alongside the keyset instead of replacing it', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
+
+      await repo.findMany({
+        take: 20,
+        keyset: { timestamp: keysetAt, id: 'al-0' },
+        filters: { userId: 'u-1' },
+      });
+
+      const args = argsOf(prisma.auditLog.findMany) as { where?: Record<string, unknown> };
+      expect(args.where).toMatchObject({ userId: 'u-1' });
     });
 
     it('omits cursor and skip on the first page', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+      await repo.findMany({ take: 20 });
 
       const args = argsOf(prisma.auditLog.findMany);
       expect(args).not.toHaveProperty('cursor');
@@ -178,7 +199,7 @@ describe('PrismaAuditLogRepository', () => {
     it('maps a null metadata column to null', async () => {
       prisma.auditLog.findMany.mockResolvedValue([{ ...rawLog, metadata: null }]);
 
-      const logs = await repo.findMany({ pagination: { take: 20 } });
+      const logs = await repo.findMany({ take: 20 });
 
       expect(logs[0].metadata).toBeNull();
     });

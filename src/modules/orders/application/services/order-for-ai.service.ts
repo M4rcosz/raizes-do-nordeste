@@ -81,7 +81,7 @@ export class OrderForAiService implements OrderForAi {
         // would let a model argument silently overwrite the scope.
         ...scope,
       },
-      pagination: { take: AI_PAGE_SIZE + 1 },
+      take: AI_PAGE_SIZE + 1,
     });
     const page = buildCursorPage(items, AI_PAGE_SIZE);
     return {

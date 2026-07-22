@@ -230,20 +230,20 @@ describe('PrismaBusinessUnitRepository', () => {
     });
 
     it('maps every row to a domain BusinessUnit', async () => {
-      const units = await repo.findMany({ pagination: { take: 20 } });
+      const units = await repo.findMany({ take: 20 });
 
       expect(units).toHaveLength(1);
       expect(units[0]).toBeInstanceOf(BusinessUnit);
     });
 
     it('builds an empty where clause when no filters are given', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+      await repo.findMany({ take: 20 });
 
       expect(argsOf().where).toStrictEqual({});
     });
 
     it('matches the search term against the name, case-insensitively', async () => {
-      await repo.findMany({ filters: { search: 'pelo' }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { search: 'pelo' }, take: 20 });
 
       expect(argsOf().where).toStrictEqual({
         name: { contains: 'pelo', mode: 'insensitive' },
@@ -251,7 +251,7 @@ describe('PrismaBusinessUnitRepository', () => {
     });
 
     it('filters by exact city', async () => {
-      await repo.findMany({ filters: { city: 'Salvador' }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { city: 'Salvador' }, take: 20 });
 
       expect(argsOf().where).toStrictEqual({ city: 'Salvador' });
     });
@@ -261,7 +261,7 @@ describe('PrismaBusinessUnitRepository', () => {
     it.each([true, false])(
       'filters by isActive=%s rather than treating it as absent',
       async (isActive) => {
-        await repo.findMany({ filters: { isActive }, pagination: { take: 20 } });
+        await repo.findMany({ filters: { isActive }, take: 20 });
 
         expect(argsOf().where).toStrictEqual({ isActive });
       },
@@ -270,7 +270,7 @@ describe('PrismaBusinessUnitRepository', () => {
     it('AND-combines every filter', async () => {
       await repo.findMany({
         filters: { search: 'pelo', city: 'Salvador', isActive: true },
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(argsOf().where).toStrictEqual({
@@ -281,20 +281,49 @@ describe('PrismaBusinessUnitRepository', () => {
     });
 
     it('orders by a stable (createdAt, id) key so the cursor cannot skip rows', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+      await repo.findMany({ take: 20 });
 
       expect(argsOf().orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     });
 
-    it('skips the cursor row itself when paging forward', async () => {
-      await repo.findMany({ pagination: { take: 20, cursor: 'uuid-0' } });
+    it('pages by comparing the sort key, never by a positional cursor', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
-      expect(argsOf()).toMatchObject({ take: 20, cursor: { id: 'uuid-0' }, skip: 1 });
+      await repo.findMany({ take: 20, keyset: { timestamp: keysetAt, id: 'uuid-0' } });
+
+      // name, city and isActive are all editable, so the row a positional cursor names
+      // can stop matching the filter between two pages and shift the position.
+      expect(argsOf().where).toMatchObject({
+        AND: [
+          {
+            OR: [{ createdAt: { lt: keysetAt } }, { createdAt: keysetAt, id: { lt: 'uuid-0' } }],
+          },
+        ],
+      });
+      expect(argsOf()).toMatchObject({ take: 20 });
+      expect(argsOf()).not.toHaveProperty('cursor');
+      expect(argsOf()).not.toHaveProperty('skip');
     });
 
-    it('omits cursor and skip on the first page', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+    it('appends the keyset to an existing filter instead of replacing it', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
+      await repo.findMany({
+        take: 20,
+        keyset: { timestamp: keysetAt, id: 'uuid-0' },
+        filters: { city: 'Recife', isActive: true },
+      });
+
+      // The filter terms have to survive alongside the keyset: dropping them would
+      // widen the page past the caller's scope.
+      expect(argsOf().where).toMatchObject({ city: 'Recife', isActive: true });
+      expect(argsOf().where?.AND).toHaveLength(1);
+    });
+
+    it('omits the keyset predicate on the first page', async () => {
+      await repo.findMany({ take: 20 });
+
+      expect(argsOf().where).not.toHaveProperty('AND');
       expect(argsOf()).not.toHaveProperty('cursor');
       expect(argsOf()).not.toHaveProperty('skip');
     });

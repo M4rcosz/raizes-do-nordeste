@@ -33,8 +33,8 @@ export class FakeAiMembershipRepository implements AiMembershipRepository {
       .filter(
         (m) =>
           keyset === undefined ||
-          m.createdAt < keyset.createdAt ||
-          (m.createdAt.getTime() === keyset.createdAt.getTime() && m.id < keyset.id),
+          m.createdAt < keyset.timestamp ||
+          (m.createdAt.getTime() === keyset.timestamp.getTime() && m.id < keyset.id),
       )
       .slice(0, take);
     return Promise.resolve(rows);

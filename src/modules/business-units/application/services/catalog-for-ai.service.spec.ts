@@ -132,7 +132,7 @@ describe('CatalogForAiService', () => {
 
       const result = await service.listBusinessUnits();
 
-      expect(units.lastInput?.pagination.take).toBe(11);
+      expect(units.lastInput?.take).toBe(11);
       expect(result.businessUnits).toHaveLength(10);
       expect(result.hasMore).toBe(true);
     });
@@ -182,7 +182,7 @@ describe('CatalogForAiService', () => {
 
       const result = await service.listMenuItems('bu-1');
 
-      expect(menu.lastInput?.pagination.take).toBe(11);
+      expect(menu.lastInput?.take).toBe(11);
       expect(result.menuItems).toHaveLength(10);
       expect(result.hasMore).toBe(true);
     });

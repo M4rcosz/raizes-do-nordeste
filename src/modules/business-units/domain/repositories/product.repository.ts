@@ -1,5 +1,5 @@
 import { Product } from '../entities/product.entity';
-import { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 
 /**
  * Query filters for listing products. All fields are optional.
@@ -10,8 +10,16 @@ export interface ProductFilters {
   categoryId?: string;
 }
 
+/**
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to. The WHERE here is built from toggleable
+ * flags, so the row a positional cursor names can stop matching between two requests
+ * and `skip: 1` would then drop the following row. Here the keyset timestamp is
+ * createdAt.
+ */
 export interface FindProductsInput {
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
   filters?: ProductFilters;
 }
 

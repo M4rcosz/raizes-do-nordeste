@@ -8,7 +8,6 @@ import {
 import { AiMembership } from '../../domain/entities/ai-membership.entity';
 import {
   AI_MEMBERSHIP_REPOSITORY,
-  type AiMembershipKeyset,
   type AiMembershipRepository,
 } from '../../domain/repositories/ai-membership.repository';
 import {
@@ -69,7 +68,7 @@ export class ListAiMembershipsUseCase {
 
     // Decode before the fetch: a malformed token is the caller's error (422), not a
     // repository failure, and must not surface as an outage.
-    const keyset = cursor === undefined ? undefined : this.toKeyset(cursor);
+    const keyset = cursor === undefined ? undefined : decodeAiKeysetCursor(cursor);
 
     let page: CursorPaginatedResult<AiMembership>;
     let totals: Map<string, number>;
@@ -108,11 +107,6 @@ export class ListAiMembershipsUseCase {
         meta: page.meta,
       },
     };
-  }
-
-  private toKeyset(cursor: string): AiMembershipKeyset {
-    const decoded = decodeAiKeysetCursor(cursor);
-    return { createdAt: new Date(decoded.timestamp), id: decoded.id };
   }
 
   private static resolvePeriod(input: ListAiMembershipsInput): { from: Date; to: Date } {

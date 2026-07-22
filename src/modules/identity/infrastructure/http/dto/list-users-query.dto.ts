@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
+import { MAX_CURSOR_LENGTH } from '@shared/pagination/pagination';
 
 export class ListUsersQueryDto {
   @ApiPropertyOptional({
@@ -16,11 +17,13 @@ export class ListUsersQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    example: '550e8400-e29b-41d4-a716-446655440000',
-    description: 'ID of the last item from the previous page (cursor)',
+    description:
+      'Cursor from the previous page. Opaque base64url keyset token - pass it back ' +
+      'verbatim. A malformed cursor returns 422.',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @MaxLength(MAX_CURSOR_LENGTH)
   cursor?: string;
 
   @ApiPropertyOptional({

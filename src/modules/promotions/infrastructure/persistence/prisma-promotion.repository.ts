@@ -56,16 +56,23 @@ export class PrismaPromotionRepository implements PromotionRepository {
   }
 
   async findManyByBusinessUnit(input: FindPromotionsByBusinessUnitInput): Promise<Promotion[]> {
-    const { businessUnitId, pagination } = input;
+    const { businessUnitId, take, keyset } = input;
 
+    // Keyset, same as findManyActive: the predicate compares values, so the row it
+    // names need not still exist. A promotion deleted between two pages would leave a
+    // positional cursor with nothing to locate.
     const raws = await this.prisma.promotion.findMany({
-      where: { businessUnitId },
+      where: {
+        businessUnitId,
+        ...(keyset && {
+          OR: [
+            { createdAt: { lt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+          ],
+        }),
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
 
     return raws.map((raw) => this.toEntity(raw));
@@ -90,8 +97,8 @@ export class PrismaPromotionRepository implements PromotionRepository {
         endDate: { gt: now },
         ...(keyset && {
           OR: [
-            { createdAt: { lt: keyset.createdAt } },
-            { createdAt: keyset.createdAt, id: { lt: keyset.id } },
+            { createdAt: { lt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { lt: keyset.id } },
           ],
         }),
       },

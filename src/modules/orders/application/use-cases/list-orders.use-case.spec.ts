@@ -31,7 +31,9 @@ const manager = (units: string[]): OrderActor => ({
   businessUnitIds: units,
 });
 
-const makeOrder = (id: string): Order =>
+const CREATED_AT = new Date('2026-07-19T10:00:00.000Z');
+
+const makeOrder = (id: string, createdAt: Date = CREATED_AT, total = Money.zero()): Order =>
   new Order(
     id,
     'bu-1',
@@ -40,11 +42,11 @@ const makeOrder = (id: string): Order =>
     null,
     0,
     0,
-    Money.zero(),
+    total,
     null,
     OrderChannel.APP,
     OrderStatus.PENDING,
-    new Date(),
+    createdAt,
     new Date(),
     null,
     [],
@@ -70,7 +72,7 @@ describe('ListOrdersUseCase', () => {
 
     await useCase.execute({
       limit: 10,
-      cursor: encodeOrderCursor('o-0', DEFAULT_SORT),
+      cursor: encodeOrderCursor('o-0', CREATED_AT.toISOString(), DEFAULT_SORT),
       filters: { orderChannel: OrderChannel.APP },
       actor: admin,
     });
@@ -82,7 +84,9 @@ describe('ListOrdersUseCase', () => {
         businessUnitIds: undefined,
         orderChannel: OrderChannel.APP,
       },
-      pagination: { cursor: 'o-0', take: 11 },
+      take: 11,
+      keyset: { sortValue: CREATED_AT.toISOString(), id: 'o-0' },
+      sort: DEFAULT_SORT,
       sort: DEFAULT_SORT,
     });
   });
@@ -97,7 +101,9 @@ describe('ListOrdersUseCase', () => {
         ...NO_FILTERS,
         businessUnitIds: ['bu-1', 'bu-2'],
       },
-      pagination: { cursor: undefined, take: 11 },
+      take: 11,
+      keyset: undefined,
+      sort: DEFAULT_SORT,
       sort: DEFAULT_SORT,
     });
   });
@@ -114,7 +120,9 @@ describe('ListOrdersUseCase', () => {
     // bu-9 is not in the claim: empty IN list matches nothing, never another unit.
     expect(findMany).toHaveBeenCalledWith({
       filters: { ...NO_FILTERS, businessUnitIds: [] },
-      pagination: { cursor: undefined, take: 11 },
+      take: 11,
+      keyset: undefined,
+      sort: DEFAULT_SORT,
       sort: DEFAULT_SORT,
     });
   });
@@ -150,7 +158,9 @@ describe('ListOrdersUseCase', () => {
         minTotal: '10.00',
         maxTotal: '250.00',
       },
-      pagination: { cursor: undefined, take: 11 },
+      take: 11,
+      keyset: undefined,
+      sort: DEFAULT_SORT,
       sort: DEFAULT_SORT,
     });
   });
@@ -200,18 +210,21 @@ describe('ListOrdersUseCase', () => {
 
       await useCase.execute({
         limit: 10,
-        cursor: encodeOrderCursor('o-42', DEFAULT_SORT),
+        cursor: encodeOrderCursor('o-42', CREATED_AT.toISOString(), DEFAULT_SORT),
         actor: admin,
       });
 
       expect(findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ pagination: { cursor: 'o-42', take: 11 } }),
+        expect.objectContaining({
+          take: 11,
+          keyset: { sortValue: CREATED_AT.toISOString(), id: 'o-42' },
+        }),
       );
     });
 
     it('rejects a cursor minted under a different sortBy', async () => {
       findMany.mockResolvedValue([]);
-      const cursor = encodeOrderCursor('o-1', {
+      const cursor = encodeOrderCursor('o-1', CREATED_AT.toISOString(), {
         field: OrderSortField.TOTAL_AMOUNT,
         direction: SortDirection.DESC,
       });
@@ -229,7 +242,7 @@ describe('ListOrdersUseCase', () => {
 
     it('rejects a cursor minted under a different sortDir', async () => {
       findMany.mockResolvedValue([]);
-      const cursor = encodeOrderCursor('o-1', {
+      const cursor = encodeOrderCursor('o-1', CREATED_AT.toISOString(), {
         field: OrderSortField.CREATED_AT,
         direction: SortDirection.ASC,
       });
@@ -267,6 +280,7 @@ describe('ListOrdersUseCase', () => {
     expect(decodeOrderCursor(result.meta.nextCursor!)).toEqual({
       sortBy: OrderSortField.CREATED_AT,
       sortDir: SortDirection.DESC,
+      sortValue: CREATED_AT.toISOString(),
       id: 'o-2',
     });
   });
@@ -283,6 +297,8 @@ describe('ListOrdersUseCase', () => {
     expect(decodeOrderCursor(result.meta.nextCursor!)).toEqual({
       sortBy: OrderSortField.TOTAL_AMOUNT,
       sortDir: SortDirection.ASC,
+      // The sorted COLUMN's value, not createdAt: a totalAmount sort keysets on money.
+      sortValue: '0.00',
       id: 'o-1',
     });
   });
@@ -295,7 +311,7 @@ describe('ListOrdersUseCase', () => {
     await useCase.execute({ limit: 1, sort, cursor: first.meta.nextCursor!, actor: admin });
 
     expect(findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pagination: { cursor: 'o-1', take: 2 } }),
+      expect.objectContaining({ take: 2, keyset: { sortValue: '0.00', id: 'o-1' } }),
     );
   });
 

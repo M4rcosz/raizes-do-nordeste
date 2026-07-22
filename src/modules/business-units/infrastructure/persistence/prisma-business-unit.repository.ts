@@ -20,16 +20,29 @@ export class PrismaBusinessUnitRepository implements BusinessUnitRepository {
   }
 
   async findMany(input: FindBusinessUnitsInput): Promise<BusinessUnit[]> {
-    const { pagination, filters } = input;
+    const { take, keyset, filters } = input;
+
+    // Keyset, not `cursor`/`skip`: name, city and isActive are all editable, so the row
+    // a positional cursor names can stop matching the filter between two requests and
+    // `skip: 1` would then swallow the next unit. Mirrors the orderBy exactly.
+    const where = this.buildWhere(filters);
+    if (keyset) {
+      // AND-wrapped so a future OR-based filter in buildWhere cannot clobber the key.
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: [
+            { createdAt: { lt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+          ],
+        },
+      ];
+    }
 
     const raws = await this.prisma.businessUnit.findMany({
-      where: this.buildWhere(filters),
+      where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
 
     return raws.map((raw) => this.toEntity(raw));

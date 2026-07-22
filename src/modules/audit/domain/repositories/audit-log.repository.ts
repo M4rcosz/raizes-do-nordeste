@@ -1,4 +1,4 @@
-import type { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 import { AuditAction } from '../audit-actions';
 import { AuditLog } from '../entities/audit-log.entity';
 
@@ -19,9 +19,14 @@ export interface AuditLogFilters {
   entityId?: string;
 }
 
+/**
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to. Here the keyset timestamp is createdAt.
+ */
 export interface FindAuditLogsInput {
   filters?: AuditLogFilters;
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
 }
 
 export interface AuditLogRepository {

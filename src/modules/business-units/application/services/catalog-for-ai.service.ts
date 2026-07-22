@@ -45,7 +45,7 @@ export class CatalogForAiService implements CatalogForAi {
     // unit is not an answer. Mirrors the public GET /business-units route.
     const items = await this.businessUnits.findMany({
       filters: { search, isActive: true },
-      pagination: { take: AI_PAGE_SIZE + 1 },
+      take: AI_PAGE_SIZE + 1,
     });
     const page = buildCursorPage(items, AI_PAGE_SIZE);
     return {
@@ -57,7 +57,7 @@ export class CatalogForAiService implements CatalogForAi {
   async listCategories(search?: string): Promise<CategoryListForAiResult> {
     const items = await this.categories.findAllActive({
       filters: { search },
-      pagination: { take: AI_PAGE_SIZE + 1 },
+      take: AI_PAGE_SIZE + 1,
     });
     const page = buildCursorPage(items, AI_PAGE_SIZE);
     return {
@@ -71,7 +71,7 @@ export class CatalogForAiService implements CatalogForAi {
     // can never offer a customer something the unit is not selling.
     const items = await this.menuItems.findAllByBusinessUnit({
       businessUnitId,
-      pagination: { take: AI_PAGE_SIZE + 1 },
+      take: AI_PAGE_SIZE + 1,
     });
     // buildCursorPage keys the cursor off `id`; a MenuItemWithProduct is a pair, so
     // map to the view (which has one) before paging.

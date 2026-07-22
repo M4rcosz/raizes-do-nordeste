@@ -6,6 +6,7 @@ import type { FindUsersInput } from '../../domain/repositories/user.repository';
 import { UserRole } from '../../domain/value-objects/user-role';
 import { UsersFetchError } from '../errors/users-fetch.error';
 import { createFakeUserRepository } from './__fakes__/user-repository.fake';
+import { encodeUserCursor } from '../user-keyset-cursor';
 
 const buildUser = (id: string): User =>
   new User(
@@ -162,10 +163,14 @@ describe('ListUsersUseCase', () => {
 
       const result = await useCase.execute({ actor: admin, limit: 2 });
 
-      expect(calls[0].pagination.take).toBe(3);
+      expect(calls[0].take).toBe(3);
       expect(result.data).toHaveLength(2);
       expect(result.meta.hasMore).toBe(true);
-      expect(result.meta.nextCursor).toBe('u-2');
+      // Opaque keyset token, not the bare id: the next page compares sort VALUES so it
+      // stays correct when u-2's role or unit changes between the two requests.
+      expect(result.meta.nextCursor).toBe(
+        encodeUserCursor(new Date('2026-01-01T00:00:00Z'), 'u-2'),
+      );
     });
 
     it('reports no more pages when the result fits the limit', async () => {

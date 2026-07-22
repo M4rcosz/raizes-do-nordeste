@@ -91,8 +91,8 @@ export class PrismaAiConversationRepository implements AiConversationRepository 
         deletedAt: null,
         ...(keyset && {
           OR: [
-            { updatedAt: { lt: keyset.updatedAt } },
-            { updatedAt: keyset.updatedAt, id: { lt: keyset.id } },
+            { updatedAt: { lt: keyset.timestamp } },
+            { updatedAt: keyset.timestamp, id: { lt: keyset.id } },
           ],
         }),
       },

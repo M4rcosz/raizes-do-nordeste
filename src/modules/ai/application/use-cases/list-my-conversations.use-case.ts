@@ -3,7 +3,6 @@ import { buildCursorPage, type CursorPaginatedResult } from '@shared/pagination/
 import { AiConversation } from '../../domain/entities/ai-conversation.entity';
 import {
   AI_CONVERSATION_REPOSITORY,
-  type AiConversationKeyset,
   type AiConversationRepository,
 } from '../../domain/repositories/ai-conversation.repository';
 import { decodeAiKeysetCursor, encodeAiKeysetCursor } from '../ai-keyset-cursor';
@@ -33,7 +32,7 @@ export class ListMyConversationsUseCase {
 
     // Decode before the fetch: a malformed token is the caller's error (422), not a
     // repository failure, and must not surface as an outage.
-    const keyset = cursor === undefined ? undefined : this.toKeyset(cursor);
+    const keyset = cursor === undefined ? undefined : decodeAiKeysetCursor(cursor);
 
     // Over-fetch by one to detect a next page.
     const items = await this.conversations.listForUser(userId, { take: limit + 1, keyset });
@@ -43,10 +42,5 @@ export class ListMyConversationsUseCase {
     return buildCursorPage(items, limit, (conversation) =>
       encodeAiKeysetCursor(conversation.updatedAt, conversation.id),
     );
-  }
-
-  private toKeyset(cursor: string): AiConversationKeyset {
-    const decoded = decodeAiKeysetCursor(cursor);
-    return { updatedAt: new Date(decoded.timestamp), id: decoded.id };
   }
 }

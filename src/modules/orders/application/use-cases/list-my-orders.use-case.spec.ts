@@ -6,6 +6,11 @@ import type { OrderRepository } from '../../domain/repositories/order.repository
 import { Order } from '../../domain/entities/order.entity';
 import { OrderChannel } from '../../domain/value-objects/order-channel';
 import { OrderStatus } from '../../domain/value-objects/order-status';
+import { DEFAULT_ORDER_SORT } from '../../domain/value-objects/order-sort';
+import { decodeOrderCursor, encodeOrderCursor } from '../list-orders-cursor';
+import { InvalidOrderCursorError } from '../errors/invalid-order-cursor.error';
+
+const CREATED_AT = new Date('2026-07-19T10:00:00.000Z');
 
 const makeOrder = (id: string): Order =>
   new Order(
@@ -20,7 +25,7 @@ const makeOrder = (id: string): Order =>
     null,
     OrderChannel.APP,
     OrderStatus.PENDING,
-    new Date(),
+    CREATED_AT,
     new Date(),
     null,
     [],
@@ -47,7 +52,7 @@ describe('ListMyOrdersUseCase', () => {
     await useCase.execute({
       customerId: 'c-1',
       limit: 10,
-      cursor: 'cursor-1',
+      cursor: encodeOrderCursor('o-0', CREATED_AT.toISOString(), DEFAULT_ORDER_SORT),
       filters: { orderStatus: OrderStatus.PENDING },
     });
 
@@ -57,7 +62,9 @@ describe('ListMyOrdersUseCase', () => {
         orderChannel: undefined,
         orderStatus: OrderStatus.PENDING,
       },
-      pagination: { cursor: 'cursor-1', take: 11 },
+      take: 11,
+      keyset: { sortValue: CREATED_AT.toISOString(), id: 'o-0' },
+      sort: DEFAULT_ORDER_SORT,
     });
   });
 
@@ -68,7 +75,21 @@ describe('ListMyOrdersUseCase', () => {
 
     expect(result.data).toHaveLength(2);
     expect(result.meta.hasMore).toBe(true);
-    expect(result.meta.nextCursor).toBe('o-2');
+    // Opaque keyset token now, not the bare row id.
+    expect(result.meta.nextCursor).not.toBe('o-2');
+    expect(decodeOrderCursor(result.meta.nextCursor!)).toEqual({
+      sortBy: DEFAULT_ORDER_SORT.field,
+      sortDir: DEFAULT_ORDER_SORT.direction,
+      sortValue: CREATED_AT.toISOString(),
+      id: 'o-2',
+    });
+  });
+
+  it('rejects a malformed cursor instead of silently restarting at page 1', async () => {
+    await expect(
+      useCase.execute({ customerId: 'c-1', limit: 2, cursor: 'not-a-token' }),
+    ).rejects.toBeInstanceOf(InvalidOrderCursorError);
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it('reports no more pages when fewer than limit+1 rows come back', async () => {

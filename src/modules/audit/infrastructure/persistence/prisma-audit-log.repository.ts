@@ -27,16 +27,28 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
   }
 
   async findMany(input: FindAuditLogsInput): Promise<AuditLog[]> {
-    const { filters, pagination } = input;
+    const { filters, take, keyset } = input;
+
+    // Keyset on (createdAt desc, id desc). Audit rows are immutable, so this listing
+    // was not dropping rows - it pages this way so every listing pages alike.
+    const where = this.buildWhere(filters);
+    if (keyset) {
+      // Appended, not assigned: buildWhere may already have set AND.
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: [
+            { createdAt: { lt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+          ],
+        },
+      ];
+    }
 
     const rows = await this.prisma.auditLog.findMany({
-      where: this.buildWhere(filters),
+      where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
 
     return rows.map((row) => this.toEntity(row));

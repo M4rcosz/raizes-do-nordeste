@@ -131,7 +131,7 @@ describe('OrderForAiService.listForActor', () => {
 
       const result = await service.listForActor({}, manager);
 
-      expect(repo.lastInput?.pagination.take).toBe(11);
+      expect(repo.lastInput?.take).toBe(11);
       expect(result.orders).toHaveLength(10);
       expect(result.hasMore).toBe(true);
     });

@@ -1,5 +1,5 @@
 import { Category } from '../entities/category.entity';
-import { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 
 /**
  * Query filters for listing categories. All fields are optional.
@@ -9,8 +9,16 @@ export interface CategoryFilters {
   search?: string;
 }
 
+/**
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to. The WHERE here is built from toggleable
+ * flags, so the row a positional cursor names can stop matching between two requests
+ * and `skip: 1` would then drop the following row. Here the keyset timestamp is
+ * createdAt.
+ */
 export interface FindCategoriesInput {
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
   filters?: CategoryFilters;
 }
 

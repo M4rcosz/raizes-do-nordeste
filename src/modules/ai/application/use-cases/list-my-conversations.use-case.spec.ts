@@ -59,7 +59,7 @@ describe('ListMyConversationsUseCase', () => {
     // The token carries the whole sort key, so the next page needs no re-read of the
     // row it points at.
     expect(decodeAiKeysetCursor(result.meta.nextCursor!)).toEqual({
-      timestamp: AT(2).toISOString(),
+      timestamp: AT(2),
       id: 'conv-2',
     });
   });
@@ -133,6 +133,6 @@ describe('ListMyConversationsUseCase', () => {
   it('round-trips a cursor through encode and decode', () => {
     const token = encodeAiKeysetCursor(AT(3), 'conv-3');
 
-    expect(decodeAiKeysetCursor(token)).toEqual({ timestamp: AT(3).toISOString(), id: 'conv-3' });
+    expect(decodeAiKeysetCursor(token)).toEqual({ timestamp: AT(3), id: 'conv-3' });
   });
 });

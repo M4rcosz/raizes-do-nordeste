@@ -8,6 +8,12 @@ import {
 } from '../../domain/repositories/product.repository';
 import { Product } from '../../domain/entities/product.entity';
 import { ProductsFetchError } from '../errors/product-fetch.error';
+import { encodeCatalogCursor } from '../catalog-keyset-cursor';
+
+// Fixed so the expected page token is computable: the token is derived from the
+// row's createdAt, not from its id.
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
+const CURSOR = encodeCatalogCursor(CREATED_AT, 'last-id');
 
 describe('GetProductsByBusinessUnitUseCase', () => {
   let useCase: GetProductsByBusinessUnitUseCase;
@@ -21,8 +27,8 @@ describe('GetProductsByBusinessUnitUseCase', () => {
       Money.fromDecimalString('10.00'),
       true,
       'category-1',
-      new Date(),
-      new Date(),
+      CREATED_AT,
+      CREATED_AT,
       'example.com',
     );
 
@@ -59,13 +65,14 @@ describe('GetProductsByBusinessUnitUseCase', () => {
       await useCase.execute({
         businessUnitId: 'bu-1',
         limit: 5,
-        cursor: 'last-id',
+        cursor: CURSOR,
         filters: { search: 'juice' },
       });
 
       expect(findAllByBusinessUnit).toHaveBeenCalledWith({
         businessUnitId: 'bu-1',
-        pagination: { cursor: 'last-id', take: 6 },
+        take: 6,
+        keyset: { timestamp: CREATED_AT, id: 'last-id' },
         filters: { search: 'juice' },
       });
     });
@@ -80,7 +87,11 @@ describe('GetProductsByBusinessUnitUseCase', () => {
       const result = await useCase.execute({ businessUnitId: 'bu-1', limit: 2 });
 
       expect(result.data.map((p) => p.id)).toEqual(['a', 'b']);
-      expect(result.meta).toEqual({ limit: 2, hasMore: true, nextCursor: 'b' });
+      expect(result.meta).toEqual({
+        limit: 2,
+        hasMore: true,
+        nextCursor: encodeCatalogCursor(CREATED_AT, 'b'),
+      });
     });
 
     it('should return hasMore=false when fewer than limit + 1 items are returned', async () => {

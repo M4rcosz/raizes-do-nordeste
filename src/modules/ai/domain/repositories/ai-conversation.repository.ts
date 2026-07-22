@@ -1,3 +1,4 @@
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 import { AiConversation } from '../entities/ai-conversation.entity';
 import { AiMessageRole } from '../value-objects/ai-message-role';
 
@@ -8,18 +9,13 @@ export interface AppendMessageInput {
 }
 
 /**
- * Keyset position for the thread listing: the sort key of the last row of the previous
- * page, not a row id to seek to. Deliberately NOT CursorPaginationParams - updatedAt
- * moves on every appended turn, so a positional cursor would shift and drop rows.
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to. updatedAt moves on every appended turn, so
+ * a positional cursor would shift and drop rows. Here the keyset timestamp is updatedAt.
  */
-export interface AiConversationKeyset {
-  updatedAt: Date;
-  id: string;
-}
-
 export interface ListConversationsInput {
   take: number;
-  keyset?: AiConversationKeyset;
+  keyset?: TimestampKeyset;
 }
 
 export interface AiConversationRepository {

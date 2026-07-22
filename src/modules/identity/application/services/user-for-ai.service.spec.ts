@@ -117,7 +117,7 @@ describe('UserForAiService.listForActor', () => {
 
     const result = await service.listForActor({}, admin);
 
-    expect(repo.lastInput?.pagination.take).toBe(11);
+    expect(repo.lastInput?.take).toBe(11);
     expect(result.users).toHaveLength(10);
     expect(result.hasMore).toBe(true);
   });

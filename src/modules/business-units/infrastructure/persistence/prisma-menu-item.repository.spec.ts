@@ -198,7 +198,7 @@ describe('PrismaMenuItemRepository', () => {
 
       const result = await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
-        pagination: { take: 21 },
+        take: 21,
       });
 
       expect(findMany).toHaveBeenCalledWith(
@@ -218,19 +218,66 @@ describe('PrismaMenuItemRepository', () => {
     it('drops the availability filters when includeUnavailable is set (management view)', async () => {
       findMany.mockResolvedValue([]);
 
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
+
       await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
-        pagination: { take: 21, cursor: 'cursor-id' },
+        take: 21,
+        keyset: { timestamp: keysetAt, id: 'cursor-id' },
         includeUnavailable: true,
       });
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { businessUnitId: 'bu-1' },
-          cursor: { id: 'cursor-id' },
-          skip: 1,
+          where: {
+            businessUnitId: 'bu-1',
+            AND: [
+              {
+                OR: [
+                  { createdAt: { lt: keysetAt } },
+                  { createdAt: keysetAt, id: { lt: 'cursor-id' } },
+                ],
+              },
+            ],
+          },
         }),
       );
+    });
+
+    it('pages the public view by comparing the sort key, never by a positional cursor', async () => {
+      findMany.mockResolvedValue([]);
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
+
+      await repo.findAllByBusinessUnit({
+        businessUnitId: 'bu-1',
+        take: 21,
+        keyset: { timestamp: keysetAt, id: 'cursor-id' },
+      });
+
+      // The public view filters on three toggleable flags at once (isAvailable,
+      // product.isActive, businessUnit.isActive). Flip any of them on the cursor's row
+      // and a positional cursor shifts, so `skip: 1` returns a silently short menu.
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            businessUnitId: 'bu-1',
+            isAvailable: true,
+            product: { isActive: true },
+            businessUnit: { isActive: true },
+            AND: [
+              {
+                OR: [
+                  { createdAt: { lt: keysetAt } },
+                  { createdAt: keysetAt, id: { lt: 'cursor-id' } },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+      const args = findMany.mock.calls[0][0] as Record<string, unknown>;
+      expect(args).not.toHaveProperty('cursor');
+      expect(args).not.toHaveProperty('skip');
     });
   });
 

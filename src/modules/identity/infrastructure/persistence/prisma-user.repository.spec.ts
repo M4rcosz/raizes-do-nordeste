@@ -448,20 +448,48 @@ describe('PrismaUserRepository', () => {
       expect(argsOf(prisma.user.findMany).orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     });
 
-    it('skips the cursor row itself when paging forward', async () => {
-      await repo.findMany({ pagination: { take: 20, cursor: 'u-0' } });
+    it('pages by comparing the sort key, never by a positional cursor', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
-      expect(argsOf(prisma.user.findMany)).toMatchObject({
+      await repo.findMany({ take: 20, keyset: { timestamp: keysetAt, id: 'u-0' } });
+
+      // Role and unit membership are editable, so the row a positional cursor names can
+      // leave a filtered listing between two pages and `skip: 1` would eat the next user.
+      const args = argsOf(prisma.user.findMany) as { where?: Record<string, unknown> };
+      expect(args.where).toMatchObject({
+        AND: [
+          {
+            OR: [{ createdAt: { lt: keysetAt } }, { createdAt: keysetAt, id: { lt: 'u-0' } }],
+          },
+        ],
+      });
+      expect(args).toMatchObject({ take: 20 });
+      expect(args).not.toHaveProperty('cursor');
+      expect(args).not.toHaveProperty('skip');
+    });
+
+    it('keeps the scope filter alongside the keyset instead of replacing it', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
+
+      await repo.findMany({
         take: 20,
-        cursor: { id: 'u-0' },
-        skip: 1,
+        keyset: { timestamp: keysetAt, id: 'u-0' },
+        filters: { businessUnitIds: ['bu-1'] },
+      });
+
+      // Losing the unit filter here would widen an admin listing past the caller's
+      // scope, so the keyset must be additive.
+      const args = argsOf(prisma.user.findMany) as { where?: Record<string, unknown> };
+      expect(args.where).toMatchObject({
+        businessUnits: { some: { businessUnitId: { in: ['bu-1'] } } },
       });
     });
 
-    it('omits cursor and skip on the first page', async () => {
-      await repo.findMany({ pagination: { take: 20 } });
+    it('omits the keyset predicate on the first page', async () => {
+      await repo.findMany({ take: 20 });
 
-      const args = argsOf(prisma.user.findMany);
+      const args = argsOf(prisma.user.findMany) as { where?: Record<string, unknown> };
+      expect(args.where).not.toHaveProperty('AND');
       expect(args).not.toHaveProperty('cursor');
       expect(args).not.toHaveProperty('skip');
     });

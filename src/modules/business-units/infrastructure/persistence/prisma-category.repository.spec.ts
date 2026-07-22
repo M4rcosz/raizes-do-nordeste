@@ -70,29 +70,39 @@ describe('PrismaCategoryRepository', () => {
   });
 
   describe('findAllActive', () => {
-    it('filters to active rows and forwards the cursor page', async () => {
+    it('filters to active rows and pages by comparing the sort key', async () => {
       findMany.mockResolvedValue([persistedRow]);
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
       const result = await repo.findAllActive({
-        pagination: { cursor: 'prev-id', take: 21 },
+        take: 21,
+        keyset: { timestamp: keysetAt, id: 'prev-id' },
         filters: { search: 'beb' },
       });
 
+      // No cursor/skip: isActive is toggleable, so a positional cursor would shift
+      // once the category it names is deactivated between two pages.
       expect(findMany).toHaveBeenCalledWith({
-        where: { isActive: true, name: { contains: 'beb', mode: 'insensitive' } },
+        where: {
+          isActive: true,
+          name: { contains: 'beb', mode: 'insensitive' },
+          AND: [
+            {
+              OR: [{ createdAt: { lt: keysetAt } }, { createdAt: keysetAt, id: { lt: 'prev-id' } }],
+            },
+          ],
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 21,
-        cursor: { id: 'prev-id' },
-        skip: 1,
       });
       expect(result).toHaveLength(1);
       expect(result[0]).toBeInstanceOf(Category);
     });
 
-    it('omits cursor/skip on the first page and applies no filters', async () => {
+    it('omits the keyset predicate on the first page and applies no filters', async () => {
       findMany.mockResolvedValue([]);
 
-      await repo.findAllActive({ pagination: { cursor: undefined, take: 21 } });
+      await repo.findAllActive({ take: 21 });
 
       expect(findMany).toHaveBeenCalledWith({
         where: { isActive: true },

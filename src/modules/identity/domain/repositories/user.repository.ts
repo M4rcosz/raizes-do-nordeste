@@ -1,4 +1,4 @@
-import type { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import { User } from '../entities/user.entity';
 import { UserRole } from '../value-objects/user-role';
@@ -41,9 +41,16 @@ export interface ListUsersFilters {
   role?: UserRole;
 }
 
+/**
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to. Role and unit membership are both editable,
+ * so a positional cursor's row can leave a filtered listing between two pages and
+ * `skip: 1` would drop the next user. Here the keyset timestamp is createdAt.
+ */
 export interface FindUsersInput {
   filters?: ListUsersFilters;
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
 }
 
 /**

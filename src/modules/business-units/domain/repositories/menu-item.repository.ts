@@ -1,5 +1,5 @@
 import { MenuItem } from '../entities/menu-item.entity';
-import { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 
 /**
  * Read model pairing a menu item with the public-facing product fields it
@@ -16,9 +16,17 @@ export interface MenuItemWithProduct {
   };
 }
 
+/**
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to. The WHERE here is built from toggleable
+ * flags, so the row a positional cursor names can stop matching between two requests
+ * and `skip: 1` would then drop the following row. Here the keyset timestamp is
+ * createdAt.
+ */
 export interface FindMenuItemsByBusinessUnitInput {
   businessUnitId: string;
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
   /**
    * Management view. When true, returns every item regardless of its
    * availability flag or the product/unit active flags. Defaults to the public

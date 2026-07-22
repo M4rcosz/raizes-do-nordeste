@@ -62,7 +62,7 @@ describe('PrismaAiMembershipRepository', () => {
     it('pages by comparing the sort key, never by a positional cursor', async () => {
       prisma.aiMembership.findMany.mockResolvedValue([]);
 
-      await repo.listAll({ take: 21, keyset: { createdAt: CREATED_AT, id: 'ai-9' } });
+      await repo.listAll({ take: 21, keyset: { timestamp: CREATED_AT, id: 'ai-9' } });
 
       const args = prisma.aiMembership.findMany.mock.calls[0]?.[0] as {
         where?: Record<string, unknown>;

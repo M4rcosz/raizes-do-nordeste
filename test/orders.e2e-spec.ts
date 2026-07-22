@@ -914,6 +914,41 @@ describe('Orders (e2e)', () => {
         .expect(422);
     });
 
+    it('does not drop a row when the cursor order leaves the filter between pages', async () => {
+      // The keyset predicate's reason for existing. With Prisma's positional cursor the
+      // page-2 query resolves a POSITION inside the filtered set; once the cursor order
+      // no longer matches orderStatus=PENDING the position shifts and `skip: 1` eats the
+      // next order instead. Measured on the promotions listing before the fix: a 5-row
+      // unit paged 3 then 2 silently lost a row. Orders transition status constantly, so
+      // this is the everyday case, not an edge case.
+      const filter = `${tiedFilter}&orderStatus=PENDING&sortBy=createdAt&sortDir=desc`;
+      const page1 = await fetchPage(`${filter}&limit=3`);
+      expect(page1.data).toHaveLength(3);
+      expect(page1.meta.hasMore).toBe(true);
+
+      const cursorOrderId = page1.data[page1.data.length - 1].id;
+      await prisma.order.update({
+        where: { id: cursorOrderId },
+        data: { orderStatus: 'CONFIRMED' },
+      });
+      try {
+        const page2 = await fetchPage(
+          `${filter}&limit=3&cursor=${encodeURIComponent(page1.meta.nextCursor ?? '')}`,
+        );
+
+        // The two orders after the cursor must both still arrive.
+        const seen = [...page1.data.map((o) => o.id), ...page2.data.map((o) => o.id)];
+        expect(page2.data).toHaveLength(2);
+        expect(new Set(seen).size).toBe(5);
+        expect(seen.slice().sort()).toEqual(tiedOrderIds.slice().sort());
+      } finally {
+        await prisma.order.update({
+          where: { id: cursorOrderId },
+          data: { orderStatus: 'PENDING' },
+        });
+      }
+    });
+
     it('filters by the createdAt range', async () => {
       const past = new Date('2020-01-01T00:00:00.000Z').toISOString();
 

@@ -1,12 +1,10 @@
 /**
- * Repository-level cursor pagination input.
- * `take` is the page size; `cursor` (when provided) marks the last item
- * of the previous page - results begin AFTER it.
+ * There is deliberately no shared "repository pagination params" type here any more.
+ * Every listing takes `take` plus an optional keyset (see
+ * `@shared/pagination/keyset-cursor`), because a positional row cursor drops rows
+ * whenever the row it names stops matching the WHERE between two page requests.
+ * Reintroducing a `{ cursor, take }` port type would invite that bug back.
  */
-export interface CursorPaginationParams {
-  cursor?: string;
-  take: number;
-}
 
 /**
  * Generic, framework-agnostic paginated result envelope.
@@ -25,6 +23,13 @@ export interface CursorPaginationMeta {
 
 export const DEFAULT_LIMIT = 20;
 export const MAX_LIMIT = 100;
+
+/**
+ * Upper bound for a page token on the query string. Every issued token is well under
+ * 200 chars; the cap exists so an attacker cannot make the server base64-decode and
+ * JSON.parse a multi-KB blob per request. Same defensive intent as sanitizeLimit.
+ */
+export const MAX_CURSOR_LENGTH = 512;
 
 /**
  * Sanitizes raw `limit` from the query string.

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsInt, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsDate, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { MAX_CURSOR_LENGTH } from '@shared/pagination/pagination';
 
 export class AuditLogQueryDto {
   @ApiPropertyOptional({
@@ -15,11 +16,13 @@ export class AuditLogQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    example: '550e8400-e29b-41d4-a716-446655440000',
-    description: 'ID of the last item from the previous page (cursor)',
+    description:
+      'Cursor from the previous page. Opaque base64url keyset token - pass it back ' +
+      'verbatim. A malformed cursor returns 422.',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @MaxLength(MAX_CURSOR_LENGTH)
   cursor?: string;
 
   @ApiPropertyOptional({

@@ -5,6 +5,10 @@ import { ListPromotionsUseCase } from './list-promotions.use-case';
 import { Promotion } from '../../domain/entities/promotion.entity';
 import { DiscountType } from '../../domain/value-objects/discount-type';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
+import { encodePromotionCursor } from '../promotion-keyset-cursor';
+
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
+
 import type {
   CreatePromotionInput,
   FindActivePromotionsInput,
@@ -25,8 +29,8 @@ const promotion = (id: string): Promotion =>
     new Date('2026-06-01T00:00:00.000Z'),
     new Date('2026-06-30T00:00:00.000Z'),
     true,
-    new Date(),
-    new Date(),
+    CREATED_AT,
+    CREATED_AT,
   );
 
 class FakePromotionRepository implements PromotionRepository {
@@ -51,7 +55,7 @@ class FakePromotionRepository implements PromotionRepository {
       return Promise.reject(this.error);
     }
     // Honor the over-fetch take so the use case can detect a next page.
-    return Promise.resolve(this.rows.slice(0, input.pagination.take));
+    return Promise.resolve(this.rows.slice(0, input.take));
   }
   create(_input: CreatePromotionInput): Promise<Promotion> {
     throw new Error('not used');
@@ -84,7 +88,7 @@ describe('ListPromotionsUseCase', () => {
 
     const result = await useCase.execute({ businessUnitId: 'bu-1', limit: 5 });
 
-    expect(repo.lastInput?.pagination.take).toBe(6);
+    expect(repo.lastInput?.take).toBe(6);
     expect(result.data).toHaveLength(2);
     expect(result.meta).toEqual({ limit: 5, hasMore: false, nextCursor: null });
   });
@@ -95,15 +99,23 @@ describe('ListPromotionsUseCase', () => {
     const result = await useCase.execute({ businessUnitId: 'bu-1', limit: 2 });
 
     expect(result.data).toHaveLength(2);
-    expect(result.meta).toEqual({ limit: 2, hasMore: true, nextCursor: 'p-2' });
+    expect(result.meta).toEqual({
+      limit: 2,
+      hasMore: true,
+      nextCursor: encodePromotionCursor(CREATED_AT, 'p-2'),
+    });
   });
 
   it('forwards the cursor to the repository', async () => {
     repo.seed([]);
 
-    await useCase.execute({ businessUnitId: 'bu-1', limit: 5, cursor: 'p-9' });
+    await useCase.execute({
+      businessUnitId: 'bu-1',
+      limit: 5,
+      cursor: encodePromotionCursor(CREATED_AT, 'p-9'),
+    });
 
-    expect(repo.lastInput?.pagination.cursor).toBe('p-9');
+    expect(repo.lastInput?.keyset).toEqual({ timestamp: CREATED_AT, id: 'p-9' });
   });
 
   it('wraps a repository failure as PromotionsFetchError', async () => {

@@ -99,8 +99,8 @@ export class FakeAiConversationRepository implements AiConversationRepository {
       .filter(
         (c) =>
           keyset === undefined ||
-          c.updatedAt < keyset.updatedAt ||
-          (c.updatedAt.getTime() === keyset.updatedAt.getTime() && c.id < keyset.id),
+          c.updatedAt < keyset.timestamp ||
+          (c.updatedAt.getTime() === keyset.timestamp.getTime() && c.id < keyset.id),
       )
       .slice(0, take);
     return Promise.resolve(rows);
