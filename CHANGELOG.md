@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [4.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.3.0...v4.0.0) (2026-07-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **pagination:** the page token format changed. Cursors used to be a bare
+row id (a UUID) and are now an opaque base64url token, so any client that
+built a cursor from a row id, typed or validated it as a UUID, or persisted
+one across the deploy now gets 422. Pass meta.nextCursor back verbatim and
+treat it as a black box.
+
+Cursor format changed (12 endpoints):
+  GET /api/products
+  GET /api/products/by-business-unit/:businessUnitId
+  GET /api/business-units
+  GET /api/business-units/internal
+  GET /api/business-units/:businessUnitId/menu
+  GET /api/business-units/:businessUnitId/menu/manage
+  GET /api/categories
+  GET /api/users
+  GET /api/audit-logs
+  GET /api/inventory/:businessUnitId
+  GET /api/promotions/by-business-unit/:businessUnitId
+  GET /api/orders/me
+
+Already a token, payload changed so old tokens now 422 (2 endpoints):
+  GET /api/orders
+  GET /api/promotions/public/by-business-unit/:businessUnitId
+
+Unchanged, existing tokens still decode (2 endpoints):
+  GET /api/ai/conversations
+  GET /api/ai/memberships
+
+GET /api/orders additionally binds the cursor to the sortBy/sortDir it was
+issued under: changing the sort requires dropping the cursor, otherwise the
+request is rejected rather than silently restarting at page 1.
+
+### Features
+
+* **pagination:** migrate every listing to keyset cursors ([8e0eb80](https://github.com/M4rcosz/raizes-do-nordeste/commit/8e0eb802ec1f9146567e27bc00e0ca08faf56dac))
+
+
+### Documentation
+
+* **ai:** add frontend integration guide for conversations and usage report ([df06039](https://github.com/M4rcosz/raizes-do-nordeste/commit/df060393c07c4855efbab4de4c7beb2bb3d4eae6))
+
 ## [3.3.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.2.0...v3.3.0) (2026-07-21)
 
 
