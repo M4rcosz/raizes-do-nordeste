@@ -127,6 +127,9 @@ model BusinessUnit {
   inventory  Inventory[]
   promotions Promotion[]
 
+  // Backs the (createdAt desc, id desc) keyset on the unit listing. Without it
+  // Postgres sorts the whole filtered set on every page.
+  @@index([createdAt, id])
   @@map("business_units")
 }
 
@@ -140,6 +143,11 @@ model Category {
 
   products Product[]
 
+  // findAllActive always filters isActive then sorts (createdAt desc, id desc), so the
+  // equality column leads: it pins the scan and the remaining two satisfy the ORDER BY.
+  // A bare (createdAt, id) would walk newest-first and discard inactive rows as it went,
+  // degrading linearly as deactivated categories accumulate.
+  @@index([isActive, createdAt, id])
   @@map("categories")
 }
 
@@ -161,7 +169,10 @@ model Product {
   orderItems OrderItem[]
 
   @@index([categoryId])
-  @@index([isActive])
+  // Both product listings filter isActive then sort (createdAt desc, id desc). The
+  // equality column leads for the same reason as categories; this also subsumes the
+  // standalone isActive index, which was a redundant prefix of it.
+  @@index([isActive, createdAt, id])
   @@map("products")
 }
 
@@ -179,6 +190,9 @@ model BusinessUnitMenuItem {
   product      Product      @relation(fields: [productId], references: [id])
 
   @@unique([businessUnitId, productId])
+  // Backs the (createdAt desc, id desc) keyset on the menu listing, unit-prefixed
+  // because every menu query is scoped to one business unit first.
+  @@index([businessUnitId, createdAt, id])
   @@map("business_unit_menu_items")
 }
 
@@ -396,6 +410,9 @@ model Promotion {
 
   @@index([businessUnitId])
   @@index([isActive, startDate, endDate])
+  // Backs the (createdAt desc, id desc) keyset on both promotion listings,
+  // unit-prefixed because both are scoped to one business unit first.
+  @@index([businessUnitId, createdAt, id])
   @@map("promotions")
 }
 
@@ -458,6 +475,9 @@ model AiMembership {
   user      User  @relation(fields: [userId], references: [id])
   updatedBy User? @relation("AiMembershipsUpdatedBy", fields: [updatedById], references: [id])
 
+  // listAll is unfiltered and orders by (createdAt desc, id desc); without this the
+  // admin spend report sorts the whole table on every page.
+  @@index([createdAt, id])
   @@map("ai_memberships")
 }
 
@@ -514,7 +534,9 @@ model AiConversation {
 
   // Serves the owner's listing as an ordered scan: userId filters, updatedAt is
   // both the sort key and the keyset column the cursor pages on.
-  @@index([userId, updatedAt])
+  // Widened with the id tie-break so the (updatedAt desc, id desc) keyset is satisfied
+  // from the index alone rather than needing a sort for tied updatedAt values.
+  @@index([userId, updatedAt, id])
   @@map("ai_conversations")
 }
 
@@ -597,5 +619,8 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
+  // The audit log is the fastest-growing table here and its keyset orders by
+  // (createdAt desc, id desc); the id tie-break has to be in the index to serve it.
+  @@index([createdAt, id])
   @@map("audit_logs")
 }

@@ -3,6 +3,7 @@ import {
   CreateOrderInput,
   FindOrdersInput,
   OrderFilters,
+  OrderKeyset,
   OrderRepository,
   UpdateOrderStatusInput,
 } from '@modules/orders/domain/repositories/order.repository';
@@ -17,8 +18,9 @@ import { OrderReferenceNotFoundError } from '@modules/orders/domain/errors/order
 import { TransactionContext } from '@shared/transaction/transaction-runner.port';
 import {
   DEFAULT_ORDER_SORT,
+  OrderSortField,
+  SortDirection,
   type OrderSort,
-  type OrderSortField,
 } from '@modules/orders/domain/value-objects/order-sort';
 
 @Injectable()
@@ -69,20 +71,55 @@ export class PrismaOrderRepository implements OrderRepository {
   }
 
   async findMany(input: FindOrdersInput): Promise<Order[]> {
-    const { filters, pagination, sort } = input;
+    const { filters, take, keyset, sort } = input;
+    const effectiveSort = sort ?? DEFAULT_ORDER_SORT;
+
+    const where = this.buildWhere(filters);
+    if (keyset) {
+      // AND-wrapped, not merged into `where` directly: the range filters above may
+      // already constrain createdAt/totalAmount, and a bare OR key would also be
+      // clobbered by any future OR-based filter.
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        this.buildKeysetPredicate(keyset, effectiveSort),
+      ];
+    }
 
     const raws = await this.prisma.order.findMany({
-      where: this.buildWhere(filters),
-      orderBy: this.buildOrderBy(sort),
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      where,
+      orderBy: this.buildOrderBy(effectiveSort),
+      take,
       include: { orderItems: true, customer: { select: { name: true } } },
     });
 
     return raws.map((raw) => this.toEntity(raw));
+  }
+
+  /**
+   * "Strictly after the previous page's last row", expressed as a value comparison so
+   * the row it names need not still exist or still match the filters. Mirrors
+   * buildOrderBy exactly: the sorted column, then id as the tie-break, both in the
+   * sort direction. Descending seeks smaller values, ascending larger ones.
+   *
+   * Prisma's positional `cursor` + `skip: 1` cannot be used here: an order that
+   * transitions out of an orderStatus filter between two requests shifts the cursor's
+   * position, and `skip: 1` then swallows the following row instead.
+   */
+  private buildKeysetPredicate(keyset: OrderKeyset, sort: OrderSort): Prisma.OrderWhereInput {
+    // The wire value is typed per column: an ISO instant for createdAt, a decimal
+    // string for totalAmount (handed to Prisma untouched so money never becomes a
+    // JS number).
+    const value: Date | string =
+      sort.field === OrderSortField.CREATED_AT ? new Date(keyset.sortValue) : keyset.sortValue;
+
+    const beyond = sort.direction === SortDirection.DESC ? 'lt' : 'gt';
+
+    return {
+      OR: [
+        { [sort.field]: { [beyond]: value } },
+        { [sort.field]: value, id: { [beyond]: keyset.id } },
+      ],
+    };
   }
 
   async updateStatus(
@@ -120,8 +157,8 @@ export class PrismaOrderRepository implements OrderRepository {
    * unique, so id is always appended. It also tie-breaks rows sharing a sort value
    * (two orders with the same totalAmount) into a stable, repeatable order.
    */
-  private buildOrderBy(sort?: OrderSort): Prisma.OrderOrderByWithRelationInput[] {
-    const { field, direction } = sort ?? DEFAULT_ORDER_SORT;
+  private buildOrderBy(sort: OrderSort): Prisma.OrderOrderByWithRelationInput[] {
+    const { field, direction } = sort;
     const term: Record<OrderSortField, Prisma.OrderOrderByWithRelationInput> = {
       createdAt: { createdAt: direction },
       totalAmount: { totalAmount: direction },

@@ -9,6 +9,12 @@ import {
 } from '../../domain/repositories/menu-item.repository';
 import { MenuItem } from '../../domain/entities/menu-item.entity';
 import { MenuItemsFetchError } from '../errors/menu-items-fetch.error';
+import { encodeCatalogCursor } from '../catalog-keyset-cursor';
+
+// Fixed so the expected page token is computable: the token is derived from the
+// row's createdAt, not from its id.
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
+const CURSOR = encodeCatalogCursor(CREATED_AT, 'last-id');
 
 describe('GetMenuByBusinessUnitUseCase', () => {
   let useCase: GetMenuByBusinessUnitUseCase;
@@ -21,8 +27,8 @@ describe('GetMenuByBusinessUnitUseCase', () => {
       `product-${id}`,
       Money.fromDecimalString('10.00'),
       true,
-      new Date(),
-      new Date(),
+      CREATED_AT,
+      CREATED_AT,
     ),
     product: {
       id: `product-${id}`,
@@ -65,13 +71,14 @@ describe('GetMenuByBusinessUnitUseCase', () => {
       await useCase.execute({
         businessUnitId: 'bu-1',
         limit: 5,
-        cursor: 'last-id',
+        cursor: CURSOR,
         includeUnavailable: true,
       });
 
       expect(findAllByBusinessUnit).toHaveBeenCalledWith({
         businessUnitId: 'bu-1',
-        pagination: { cursor: 'last-id', take: 6 },
+        take: 6,
+        keyset: { timestamp: CREATED_AT, id: 'last-id' },
         includeUnavailable: true,
       });
     });
@@ -86,7 +93,11 @@ describe('GetMenuByBusinessUnitUseCase', () => {
       const result = await useCase.execute({ businessUnitId: 'bu-1', limit: 2 });
 
       expect(result.data.map((rm) => rm.menuItem.id)).toEqual(['a', 'b']);
-      expect(result.meta).toEqual({ limit: 2, hasMore: true, nextCursor: 'b' });
+      expect(result.meta).toEqual({
+        limit: 2,
+        hasMore: true,
+        nextCursor: encodeCatalogCursor(CREATED_AT, 'b'),
+      });
     });
 
     it('should return hasMore=false when fewer than limit + 1 items are returned', async () => {

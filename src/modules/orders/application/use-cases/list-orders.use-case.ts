@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ORDER_REPOSITORY,
+  type OrderKeyset,
   type OrderRepository,
 } from '@modules/orders/domain/repositories/order.repository';
 import { Order } from '@modules/orders/domain/entities/order.entity';
@@ -15,6 +16,7 @@ import { OrdersFetchError } from '../errors/orders-fetch.error';
 import { InvalidOrderCursorError } from '../errors/invalid-order-cursor.error';
 import { decodeOrderCursor, encodeOrderCursor } from '../list-orders-cursor';
 import { resolveOrderUnitScope, type OrderActor } from '../order-actor';
+import { sortValueOf } from '../order-sort-value';
 
 /** Caller-supplied filters off the query string; businessUnitId narrows within the actor's scope. */
 export interface ListOrdersUserFilters {
@@ -54,7 +56,7 @@ export class ListOrdersUseCase {
     // Every filter below is an extra AND-term on this already-clamped set.
     const businessUnitIds = resolveOrderUnitScope(actor, filters?.businessUnitId);
 
-    const cursorId = cursor === undefined ? undefined : this.resolveCursorId(cursor, sort);
+    const keyset = cursor === undefined ? undefined : this.resolveKeyset(cursor, sort);
 
     let items: Order[];
     try {
@@ -71,14 +73,17 @@ export class ListOrdersUseCase {
           minTotal: filters?.minTotal,
           maxTotal: filters?.maxTotal,
         },
-        pagination: { cursor: cursorId, take: limit + 1 },
+        take: limit + 1,
+        keyset,
         sort,
       });
     } catch (err) {
       throw new OrdersFetchError('Could not retrieve orders.', { cause: err });
     }
 
-    return buildCursorPage(items, limit, (order) => encodeOrderCursor(order.id, sort));
+    return buildCursorPage(items, limit, (order) =>
+      encodeOrderCursor(order.id, sortValueOf(order, sort.field), sort),
+    );
   }
 
   /**
@@ -86,11 +91,11 @@ export class ListOrdersUseCase {
    * against a different sort it would yield a wrong page, so we reject instead of
    * silently restarting at page 1, which the client would read as a working sort.
    */
-  private resolveCursorId(cursor: string, sort: OrderSort): string {
+  private resolveKeyset(cursor: string, sort: OrderSort): OrderKeyset {
     const decoded = decodeOrderCursor(cursor);
     if (decoded.sortBy !== sort.field || decoded.sortDir !== sort.direction) {
       throw new InvalidOrderCursorError('Pagination cursor does not match the requested sort.');
     }
-    return decoded.id;
+    return { sortValue: decoded.sortValue, id: decoded.id };
   }
 }

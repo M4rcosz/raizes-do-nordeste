@@ -283,25 +283,38 @@ describe('PrismaOrderRepository', () => {
           orderChannel: OrderChannel.APP,
           orderStatus: 'PENDING',
         },
-        pagination: { cursor: 'order-0', take: 11 },
+        take: 11,
+        keyset: { sortValue: '2026-07-19T10:00:00.000Z', id: 'order-0' },
       });
 
       expect(findMany).toHaveBeenCalledWith({
-        where: { businessUnitId: { in: ['bu-1'] }, orderChannel: 'APP', orderStatus: 'PENDING' },
+        where: {
+          businessUnitId: { in: ['bu-1'] },
+          orderChannel: 'APP',
+          orderStatus: 'PENDING',
+          // Keyset AND-wrapped so it composes with the field filters instead of
+          // clobbering a createdAt/totalAmount range set above.
+          AND: [
+            {
+              OR: [
+                { createdAt: { lt: new Date('2026-07-19T10:00:00.000Z') } },
+                { createdAt: new Date('2026-07-19T10:00:00.000Z'), id: { lt: 'order-0' } },
+              ],
+            },
+          ],
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 11,
-        cursor: { id: 'order-0' },
-        skip: 1,
         include: { orderItems: true, customer: { select: { name: true } } },
       });
       expect(orders).toHaveLength(1);
       expect(orders[0]).toBeInstanceOf(Order);
     });
 
-    it('omits cursor/skip when no cursor is provided and sends an empty where for no filters', async () => {
+    it('sends no keyset clause when no cursor is provided, and an empty where for no filters', async () => {
       findMany.mockResolvedValue([]);
 
-      await repo.findMany({ pagination: { take: 20 } });
+      await repo.findMany({ take: 20 });
 
       expect(findMany).toHaveBeenCalledWith({
         where: {},
@@ -314,7 +327,7 @@ describe('PrismaOrderRepository', () => {
     it('scopes by customerId for the customer self-listing path', async () => {
       findMany.mockResolvedValue([]);
 
-      await repo.findMany({ filters: { customerId: 'c-1' }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { customerId: 'c-1' }, take: 20 });
 
       expect(findMany).toHaveBeenCalledWith({
         where: { customerId: 'c-1' },
@@ -327,7 +340,7 @@ describe('PrismaOrderRepository', () => {
     it('turns an empty unit scope into IN () so a clamped-out staff sees no rows', async () => {
       findMany.mockResolvedValue([]);
 
-      await repo.findMany({ filters: { businessUnitIds: [] }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { businessUnitIds: [] }, take: 20 });
 
       expect(findMany).toHaveBeenCalledWith({
         where: { businessUnitId: { in: [] } },
@@ -341,7 +354,7 @@ describe('PrismaOrderRepository', () => {
       findMany.mockResolvedValue([]);
 
       await repo.findMany({
-        pagination: { take: 20 },
+        take: 20,
         sort: { field: OrderSortField.TOTAL_AMOUNT, direction: SortDirection.ASC },
       });
 
@@ -355,7 +368,7 @@ describe('PrismaOrderRepository', () => {
       findMany.mockResolvedValue([]);
 
       await repo.findMany({
-        pagination: { take: 20 },
+        take: 20,
         sort: { field: OrderSortField.CREATED_AT, direction: SortDirection.ASC },
       });
 
@@ -367,7 +380,7 @@ describe('PrismaOrderRepository', () => {
     it('filters by attendantId', async () => {
       findMany.mockResolvedValue([]);
 
-      await repo.findMany({ filters: { attendantId: 'att-1' }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { attendantId: 'att-1' }, take: 20 });
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { attendantId: 'att-1' } }),
@@ -381,7 +394,7 @@ describe('PrismaOrderRepository', () => {
 
       await repo.findMany({
         filters: { createdAtFrom: from, createdAtTo: to },
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(findMany).toHaveBeenCalledWith(
@@ -393,7 +406,7 @@ describe('PrismaOrderRepository', () => {
       findMany.mockResolvedValue([]);
       const from = new Date('2026-07-01T00:00:00.000Z');
 
-      await repo.findMany({ filters: { createdAtFrom: from }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { createdAtFrom: from }, take: 20 });
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { createdAt: { gte: from } } }),
@@ -404,7 +417,7 @@ describe('PrismaOrderRepository', () => {
       findMany.mockResolvedValue([]);
       const to = new Date('2026-07-31T23:59:59.999Z');
 
-      await repo.findMany({ filters: { createdAtTo: to }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { createdAtTo: to }, take: 20 });
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { createdAt: { lte: to } } }),
@@ -416,7 +429,7 @@ describe('PrismaOrderRepository', () => {
 
       await repo.findMany({
         filters: { minTotal: '10.00', maxTotal: '250.00' },
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(findMany).toHaveBeenCalledWith(
@@ -427,7 +440,7 @@ describe('PrismaOrderRepository', () => {
     it('leaves the upper end open when only minTotal is given', async () => {
       findMany.mockResolvedValue([]);
 
-      await repo.findMany({ filters: { minTotal: '10.00' }, pagination: { take: 20 } });
+      await repo.findMany({ filters: { minTotal: '10.00' }, take: 20 });
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { totalAmount: { gte: '10.00' } } }),

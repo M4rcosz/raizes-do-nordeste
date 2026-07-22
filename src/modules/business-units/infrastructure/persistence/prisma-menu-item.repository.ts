@@ -47,8 +47,12 @@ export class PrismaMenuItemRepository implements MenuItemRepository {
   async findAllByBusinessUnit(
     input: FindMenuItemsByBusinessUnitInput,
   ): Promise<MenuItemWithProduct[]> {
-    const { businessUnitId, pagination, includeUnavailable } = input;
+    const { businessUnitId, take, keyset, includeUnavailable } = input;
 
+    // The sharpest case for a keyset in the catalog: the public view filters on THREE
+    // toggleable flags (isAvailable, product.isActive, businessUnit.isActive). Flip any
+    // one of them on the row a positional cursor names and the position shifts, so
+    // `skip: 1` eats the next item and the menu comes back silently short.
     const rows = await this.prisma.businessUnitMenuItem.findMany({
       where: {
         businessUnitId,
@@ -59,14 +63,24 @@ export class PrismaMenuItemRepository implements MenuItemRepository {
               product: { isActive: true },
               businessUnit: { isActive: true },
             }),
+        // AND-wrapped like the product listings, not spread as a bare top-level OR.
+        // This WHERE already branches on includeUnavailable, so it is the site most
+        // likely to grow an OR filter (a product name/description search), which would
+        // silently overwrite a top-level OR key.
+        ...(keyset && {
+          AND: [
+            {
+              OR: [
+                { createdAt: { lt: keyset.timestamp } },
+                { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+              ],
+            },
+          ],
+        }),
       },
       include: { product: true },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
 
     return rows.map((row) => this.toReadModel(row));

@@ -1,5 +1,5 @@
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
-import type { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 import { Inventory } from '../entities/inventory.entity';
 import type { ManualMovementType } from '../value-objects/inventory-transaction-type';
 
@@ -18,7 +18,8 @@ export interface ApplyMovementInput {
 
 export interface FindInventoryByUnitInput {
   businessUnitId: string;
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
 }
 
 export interface InitializeInventoryInput {

@@ -35,8 +35,8 @@ export class PrismaAiMembershipRepository implements AiMembershipRepository {
       ...(keyset && {
         where: {
           OR: [
-            { createdAt: { lt: keyset.createdAt } },
-            { createdAt: keyset.createdAt, id: { lt: keyset.id } },
+            { createdAt: { lt: keyset.timestamp } },
+            { createdAt: keyset.timestamp, id: { lt: keyset.id } },
           ],
         },
       }),

@@ -20,19 +20,29 @@ export class PrismaCategoryRepository implements CategoryRepository {
   }
 
   async findAllActive(input: FindCategoriesInput): Promise<Category[]> {
-    const { pagination, filters } = input;
+    const { take, keyset, filters } = input;
 
+    // Keyset, not `cursor`/`skip`: isActive is toggleable, so the cursor row can leave
+    // the filtered set between two requests and shift the position. Mirrors the orderBy.
     const raws = await this.prisma.category.findMany({
       where: {
         isActive: true,
         ...this.buildCategoryWhere(filters),
+        // AND-wrapped, not a bare OR: buildCategoryWhere owns `search` and could grow
+        // into a multi-field OR, which would silently overwrite the keyset key.
+        ...(keyset && {
+          AND: [
+            {
+              OR: [
+                { createdAt: { lt: keyset.timestamp } },
+                { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+              ],
+            },
+          ],
+        }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
 
     return raws.map((raw) => this.toEntity(raw));

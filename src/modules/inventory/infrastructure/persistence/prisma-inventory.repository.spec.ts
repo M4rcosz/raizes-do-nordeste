@@ -65,7 +65,7 @@ describe('PrismaInventoryRepository', () => {
 
     const result = await repo.findManyByUnit({
       businessUnitId: 'bu-1',
-      pagination: { take: 21 },
+      take: 21,
     });
 
     expect(prisma.inventory.findMany).toHaveBeenCalledWith({
@@ -78,20 +78,25 @@ describe('PrismaInventoryRepository', () => {
     expect(result[0].quantity).toBe(8);
   });
 
-  it('applies the cursor with skip:1 to start after the previous page', async () => {
+  it('pages by comparing the sort key, never by a positional cursor', async () => {
     prisma.inventory.findMany.mockResolvedValue([rawInventory]);
+    const keysetAt = new Date('2026-01-01T00:00:00Z');
 
     await repo.findManyByUnit({
       businessUnitId: 'bu-1',
-      pagination: { take: 3, cursor: 'inv-0' },
+      take: 3,
+      keyset: { timestamp: keysetAt, id: 'inv-0' },
     });
 
+    // Ascending listing, so the predicate seeks GREATER values - the mirror of the
+    // descending ones. No cursor/skip: the keyset row need not still exist.
     expect(prisma.inventory.findMany).toHaveBeenCalledWith({
-      where: { businessUnitId: 'bu-1' },
+      where: {
+        businessUnitId: 'bu-1',
+        OR: [{ createdAt: { gt: keysetAt } }, { createdAt: keysetAt, id: { gt: 'inv-0' } }],
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: 3,
-      cursor: { id: 'inv-0' },
-      skip: 1,
     });
   });
 

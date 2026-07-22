@@ -1,5 +1,5 @@
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
-import type { CursorPaginationParams } from '@shared/pagination/pagination';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 import { Promotion } from '../entities/promotion.entity';
 import type { DiscountType } from '../value-objects/discount-type';
 
@@ -26,27 +26,28 @@ export interface UpdatePromotionInput {
   isActive?: boolean;
 }
 
+/**
+ * Deliberately NOT CursorPaginationParams: same keyset contract as the public listing,
+ * so both promotion listings mint and read the same token shape. Here the keyset
+ * timestamp is createdAt.
+ */
 export interface FindPromotionsByBusinessUnitInput {
   businessUnitId: string;
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: TimestampKeyset;
 }
 
 /**
- * Keyset position for the public listing: the sort key of the last row of the previous
- * page, not a row id to seek to. Deliberately NOT CursorPaginationParams - this listing
- * cannot use a positional cursor (see findManyActive).
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to - this listing cannot use a positional
+ * cursor (see findManyActive). Here the keyset timestamp is createdAt.
  */
-export interface ActivePromotionKeyset {
-  createdAt: Date;
-  id: string;
-}
-
 export interface FindActivePromotionsInput {
   businessUnitId: string;
   /** Reference instant for the [startDate, endDate) window check. */
   now: Date;
   take: number;
-  keyset?: ActivePromotionKeyset;
+  keyset?: TimestampKeyset;
 }
 
 export interface RecordOrderPromotionInput {

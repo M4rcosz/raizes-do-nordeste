@@ -170,7 +170,7 @@ describe('PrismaAiConversationRepository', () => {
     const updatedAt = new Date('2026-01-05T00:00:00.000Z');
     prisma.aiConversation.findMany.mockResolvedValue([]);
 
-    await repo.listForUser('user-1', { take: 21, keyset: { updatedAt, id: 'conv-9' } });
+    await repo.listForUser('user-1', { take: 21, keyset: { timestamp: updatedAt, id: 'conv-9' } });
 
     const args = prisma.aiConversation.findMany.mock.calls[0]?.[0] as {
       where: Record<string, unknown>;

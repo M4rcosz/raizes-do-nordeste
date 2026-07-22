@@ -273,7 +273,7 @@ describe('PrismaProductRepository', () => {
 
     // The active gate is not a caller-supplied filter: it is always applied.
     it('always constrains to active products', async () => {
-      await repo.findAllActive({ pagination: { take: 20 } });
+      await repo.findAllActive({ take: 20 });
 
       expect(argsOf().where).toStrictEqual({ isActive: true });
     });
@@ -281,7 +281,7 @@ describe('PrismaProductRepository', () => {
     it('AND-combines the search and category filters with the active gate', async () => {
       await repo.findAllActive({
         filters: { search: 'acara', categoryId: 'category-1' },
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(argsOf().where).toStrictEqual({
@@ -292,7 +292,7 @@ describe('PrismaProductRepository', () => {
     });
 
     it('applies the search filter alone, leaving categoryId unconstrained', async () => {
-      await repo.findAllActive({ filters: { search: 'acara' }, pagination: { take: 20 } });
+      await repo.findAllActive({ filters: { search: 'acara' }, take: 20 });
 
       expect(argsOf().where).toStrictEqual({
         isActive: true,
@@ -301,19 +301,19 @@ describe('PrismaProductRepository', () => {
     });
 
     it('applies the category filter alone, leaving the name unconstrained', async () => {
-      await repo.findAllActive({ filters: { categoryId: 'category-1' }, pagination: { take: 20 } });
+      await repo.findAllActive({ filters: { categoryId: 'category-1' }, take: 20 });
 
       expect(argsOf().where).toStrictEqual({ isActive: true, categoryId: 'category-1' });
     });
 
     it('ignores an empty filter object', async () => {
-      await repo.findAllActive({ filters: {}, pagination: { take: 20 } });
+      await repo.findAllActive({ filters: {}, take: 20 });
 
       expect(argsOf().where).toStrictEqual({ isActive: true });
     });
 
     it('maps rows to domain Products', async () => {
-      const products = await repo.findAllActive({ pagination: { take: 20 } });
+      const products = await repo.findAllActive({ take: 20 });
 
       expect(products).toHaveLength(1);
       expect(products[0]).toBeInstanceOf(Product);
@@ -321,20 +321,36 @@ describe('PrismaProductRepository', () => {
     });
 
     it('orders by a stable (createdAt, id) key so the cursor cannot skip rows', async () => {
-      await repo.findAllActive({ pagination: { take: 20 } });
+      await repo.findAllActive({ take: 20 });
 
       expect(argsOf().orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     });
 
-    it('skips the cursor row itself when paging forward', async () => {
-      await repo.findAllActive({ pagination: { take: 20, cursor: 'uuid-0' } });
+    it('pages by comparing the sort key, never by a positional cursor', async () => {
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
-      expect(argsOf()).toMatchObject({ take: 20, cursor: { id: 'uuid-0' }, skip: 1 });
+      await repo.findAllActive({ take: 20, keyset: { timestamp: keysetAt, id: 'uuid-0' } });
+
+      // Value comparison, so the keyset row need not still be active. A positional
+      // cursor resolves a position inside the isActive-filtered set, so deactivating
+      // that product mid-pagination would shift it and `skip: 1` would eat the next
+      // row. Mirrors the orderBy: (createdAt desc, id desc).
+      expect(argsOf().where).toMatchObject({
+        AND: [
+          {
+            OR: [{ createdAt: { lt: keysetAt } }, { createdAt: keysetAt, id: { lt: 'uuid-0' } }],
+          },
+        ],
+      });
+      expect(argsOf()).toMatchObject({ take: 20 });
+      expect(argsOf()).not.toHaveProperty('cursor');
+      expect(argsOf()).not.toHaveProperty('skip');
     });
 
-    it('omits cursor and skip on the first page', async () => {
-      await repo.findAllActive({ pagination: { take: 20 } });
+    it('omits the keyset predicate on the first page', async () => {
+      await repo.findAllActive({ take: 20 });
 
+      expect(argsOf().where).not.toHaveProperty('AND');
       expect(argsOf()).not.toHaveProperty('cursor');
       expect(argsOf()).not.toHaveProperty('skip');
     });
@@ -352,7 +368,7 @@ describe('PrismaProductRepository', () => {
     it('constrains to the unit and to available items only', async () => {
       menuItemFindMany.mockResolvedValue([menuItem(null)]);
 
-      await repo.findAllByBusinessUnit({ businessUnitId: 'bu-1', pagination: { take: 20 } });
+      await repo.findAllByBusinessUnit({ businessUnitId: 'bu-1', take: 20 });
 
       expect(argsOf().where).toStrictEqual({
         businessUnitId: 'bu-1',
@@ -367,7 +383,7 @@ describe('PrismaProductRepository', () => {
       await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
         filters: { search: 'acara', categoryId: 'category-1' },
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(argsOf().where).toStrictEqual({
@@ -386,7 +402,7 @@ describe('PrismaProductRepository', () => {
 
       const [product] = await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(product.price.equals(Money.fromDecimalString('9.90'))).toBe(true);
@@ -397,7 +413,7 @@ describe('PrismaProductRepository', () => {
 
       const [product] = await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(product.price.equals(Money.fromDecimalString('12.50'))).toBe(true);
@@ -411,32 +427,45 @@ describe('PrismaProductRepository', () => {
 
       const [product] = await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
-        pagination: { take: 20 },
+        take: 20,
       });
 
       expect(product.price.equals(Money.zero())).toBe(true);
     });
 
-    it('pages on the composite (businessUnitId, productId) cursor', async () => {
+    it('pages by comparing the relation sort key, never by a positional cursor', async () => {
       menuItemFindMany.mockResolvedValue([menuItem(null)]);
+      const keysetAt = new Date('2026-01-01T00:00:00Z');
 
       await repo.findAllByBusinessUnit({
         businessUnitId: 'bu-1',
-        pagination: { take: 20, cursor: 'uuid-0' },
+        take: 20,
+        keyset: { timestamp: keysetAt, id: 'uuid-0' },
       });
 
-      expect(argsOf()).toMatchObject({
-        take: 20,
-        cursor: { businessUnitId_productId: { businessUnitId: 'bu-1', productId: 'uuid-0' } },
-        skip: 1,
+      // The orderBy sorts on the RELATION's createdAt, so the keyset compares the same
+      // column. isAvailable is toggleable: pulling the cursor's item off the menu
+      // between two pages would shift a positional cursor and drop the next product.
+      expect(argsOf().where).toMatchObject({
+        AND: [
+          {
+            OR: [
+              { product: { createdAt: { lt: keysetAt } } },
+              { product: { createdAt: keysetAt }, productId: { lt: 'uuid-0' } },
+            ],
+          },
+        ],
       });
+      expect(argsOf()).not.toHaveProperty('cursor');
+      expect(argsOf()).not.toHaveProperty('skip');
     });
 
-    it('omits cursor and skip on the first page', async () => {
+    it('omits the keyset predicate on the first page', async () => {
       menuItemFindMany.mockResolvedValue([menuItem(null)]);
 
-      await repo.findAllByBusinessUnit({ businessUnitId: 'bu-1', pagination: { take: 20 } });
+      await repo.findAllByBusinessUnit({ businessUnitId: 'bu-1', take: 20 });
 
+      expect(argsOf().where).not.toHaveProperty('AND');
       expect(argsOf()).not.toHaveProperty('cursor');
       expect(argsOf()).not.toHaveProperty('skip');
     });

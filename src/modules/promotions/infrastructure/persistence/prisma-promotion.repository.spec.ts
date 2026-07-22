@@ -163,7 +163,7 @@ describe('PrismaPromotionRepository', () => {
         businessUnitId: 'bu-1',
         now,
         take: 21,
-        keyset: { createdAt: keysetAt, id: 'promo-7' },
+        keyset: { timestamp: keysetAt, id: 'promo-7' },
       });
 
       const call = promotionFindMany.mock.calls[0][0] as {

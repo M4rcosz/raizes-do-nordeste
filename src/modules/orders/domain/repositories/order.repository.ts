@@ -1,5 +1,4 @@
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
-import type { CursorPaginationParams } from '@shared/pagination/pagination';
 import { Order } from '../entities/order.entity';
 import type { OrderChannel } from '../value-objects/order-channel';
 import type { OrderStatus } from '../value-objects/order-status';
@@ -46,9 +45,24 @@ export interface OrderFilters {
   maxTotal?: string;
 }
 
+/**
+ * Keyset position: the sort key of the previous page's last row, not a row to seek to.
+ * `sortValue` is typed per sort field (ISO instant for createdAt, 2dp decimal string for
+ * totalAmount) and the repository converts it to the column's comparand.
+ *
+ * Deliberately NOT a row cursor: orders mutate (status transitions), so a row named by a
+ * positional cursor can stop matching the WHERE between two pages, shifting the position
+ * and dropping a row from the listing.
+ */
+export interface OrderKeyset {
+  sortValue: string;
+  id: string;
+}
+
 export interface FindOrdersInput {
   filters?: OrderFilters;
-  pagination: CursorPaginationParams;
+  take: number;
+  keyset?: OrderKeyset;
   /** Absent keeps the repository default (createdAt desc). */
   sort?: OrderSort;
 }

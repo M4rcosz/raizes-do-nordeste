@@ -1,4 +1,5 @@
 import type { TransactionContext } from '@shared/transaction/transaction-runner.port';
+import type { TimestampKeyset } from '@shared/pagination/keyset-cursor';
 import { AiMembership } from '../entities/ai-membership.entity';
 
 /**
@@ -12,18 +13,13 @@ export interface AiMembershipTransition {
 }
 
 /**
- * Keyset position for the membership listing: the sort key of the last row of the
- * previous page, not a row id to seek to. Same reasoning as the thread listing - the
- * predicate compares values, so the cursor row need not still exist.
+ * Deliberately NOT CursorPaginationParams: `keyset` is the sort key of the previous
+ * page's last row, not a row id to seek to - the predicate compares values, so the
+ * cursor row need not still exist. Here the keyset timestamp is createdAt.
  */
-export interface AiMembershipKeyset {
-  createdAt: Date;
-  id: string;
-}
-
 export interface ListAiMembershipsInput {
   take: number;
-  keyset?: AiMembershipKeyset;
+  keyset?: TimestampKeyset;
 }
 
 export interface AiMembershipRepository {

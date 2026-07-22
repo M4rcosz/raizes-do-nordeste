@@ -3,7 +3,17 @@ import { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
 import { OrderSortField, SortDirection } from '@modules/orders/domain/value-objects/order-sort';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+} from 'class-validator';
+import { MAX_CURSOR_LENGTH } from '@shared/pagination/pagination';
 
 /** Money on the wire. Decimal(10,2) is 10 digits total, so 8 of them may precede the point. */
 const DECIMAL_AMOUNT_PATTERN = /^\d{1,8}(\.\d{1,2})?$/;
@@ -27,6 +37,7 @@ export class OrdersQueryDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_CURSOR_LENGTH)
   cursor?: string;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Filter by business unit' })

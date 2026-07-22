@@ -7,6 +7,12 @@ import {
 import { ListBusinessUnitsUseCase } from './list-business-units.use-case';
 import { BusinessUnitsFetchError } from '../errors/business-units-fetch.error';
 import { BusinessUnit } from '../../domain/entities/business-unit.entity';
+import { encodeCatalogCursor } from '../catalog-keyset-cursor';
+
+// Fixed so the expected page token is computable: the token is derived from the
+// row's createdAt, not from its id.
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
+const CURSOR = encodeCatalogCursor(CREATED_AT, 'last-id');
 
 describe('ListBusinessUnitsUseCase', () => {
   let useCase: ListBusinessUnitsUseCase;
@@ -21,8 +27,8 @@ describe('ListBusinessUnitsUseCase', () => {
       'Salvador',
       `713222334${id}`,
       true,
-      new Date(),
-      new Date(),
+      CREATED_AT,
+      CREATED_AT,
     );
 
   beforeAll(async () => {
@@ -55,7 +61,8 @@ describe('ListBusinessUnitsUseCase', () => {
       await useCase.execute({ limit: 20 });
 
       expect(findMany).toHaveBeenCalledWith({
-        pagination: { cursor: undefined, take: 21 },
+        take: 21,
+        keyset: undefined,
         filters: undefined,
       });
     });
@@ -65,12 +72,13 @@ describe('ListBusinessUnitsUseCase', () => {
 
       await useCase.execute({
         limit: 10,
-        cursor: 'last-id',
+        cursor: CURSOR,
         filters: { search: 'pelourinho', city: 'Salvador', isActive: true },
       });
 
       expect(findMany).toHaveBeenCalledWith({
-        pagination: { cursor: 'last-id', take: 11 },
+        take: 11,
+        keyset: { timestamp: CREATED_AT, id: 'last-id' },
         filters: { search: 'pelourinho', city: 'Salvador', isActive: true },
       });
     });
@@ -95,7 +103,11 @@ describe('ListBusinessUnitsUseCase', () => {
 
       expect(result.data).toHaveLength(2);
       expect(result.data.map((u) => u.id)).toEqual(['a', 'b']);
-      expect(result.meta).toEqual({ limit: 2, hasMore: true, nextCursor: 'b' });
+      expect(result.meta).toEqual({
+        limit: 2,
+        hasMore: true,
+        nextCursor: encodeCatalogCursor(CREATED_AT, 'b'),
+      });
     });
 
     it('should return an empty page when the repository returns no items', async () => {

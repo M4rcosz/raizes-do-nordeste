@@ -25,45 +25,61 @@ export class PrismaProductRepository implements ProductRepository {
   }
 
   async findAllActive(input: FindProductsInput): Promise<Product[]> {
-    const { pagination, filters } = input;
+    const { take, keyset, filters } = input;
 
+    // Keyset, not `cursor`/`skip`: isActive is toggleable, so the row a positional
+    // cursor names can leave the filtered set between two requests, shifting the
+    // position so `skip: 1` drops the next product. Mirrors the orderBy exactly.
     const raws = await this.prisma.product.findMany({
       where: {
         isActive: true,
         ...this.buildProductWhere(filters),
+        // AND-wrapped rather than spread as a bare OR: buildProductWhere owns `search`,
+        // and the day that grows into "name OR description" a top-level OR key here
+        // would be silently overwritten by it.
+        ...(keyset && {
+          AND: [
+            {
+              OR: [
+                { createdAt: { lt: keyset.timestamp } },
+                { createdAt: keyset.timestamp, id: { lt: keyset.id } },
+              ],
+            },
+          ],
+        }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: { id: pagination.cursor },
-        skip: 1,
-      }),
+      take,
     });
 
     return raws.map((raw) => this.toEntity(raw));
   }
 
   async findAllByBusinessUnit(input: FindProductsByBusinessUnitInput): Promise<Product[]> {
-    const { businessUnitId, pagination, filters } = input;
+    const { businessUnitId, take, keyset, filters } = input;
 
+    // Keyset on the RELATION's createdAt, because that is what the orderBy sorts on.
+    // isAvailable is toggleable, so a positional cursor would shift and drop a row
+    // whenever the item it names is pulled from the menu mid-pagination.
     const items = await this.prisma.businessUnitMenuItem.findMany({
       where: {
         businessUnitId,
         isAvailable: true,
         product: this.buildProductWhere(filters),
+        ...(keyset && {
+          AND: [
+            {
+              OR: [
+                { product: { createdAt: { lt: keyset.timestamp } } },
+                { product: { createdAt: keyset.timestamp }, productId: { lt: keyset.id } },
+              ],
+            },
+          ],
+        }),
       },
       include: { product: true },
       orderBy: [{ product: { createdAt: 'desc' } }, { productId: 'desc' }],
-      take: pagination.take,
-      ...(pagination.cursor && {
-        cursor: {
-          businessUnitId_productId: {
-            businessUnitId,
-            productId: pagination.cursor,
-          },
-        },
-        skip: 1,
-      }),
+      take,
     });
 
     return items.map((item) => {

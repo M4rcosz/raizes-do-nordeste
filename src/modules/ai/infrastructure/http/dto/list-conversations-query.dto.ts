@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { MAX_CURSOR_LENGTH } from '@shared/pagination/pagination';
 
 export class ListConversationsQueryDto {
   @ApiPropertyOptional({
@@ -21,5 +22,6 @@ export class ListConversationsQueryDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_CURSOR_LENGTH)
   cursor?: string;
 }

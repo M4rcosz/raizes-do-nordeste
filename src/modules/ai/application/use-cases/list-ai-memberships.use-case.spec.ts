@@ -156,7 +156,7 @@ describe('ListAiMembershipsUseCase', () => {
       expect(result.page.data.map((i) => i.membership.userId)).toEqual(['user-3', 'user-2']);
       expect(result.page.meta.hasMore).toBe(true);
       expect(decodeAiKeysetCursor(result.page.meta.nextCursor!)).toEqual({
-        timestamp: CREATED(2).toISOString(),
+        timestamp: CREATED(2),
         id: 'ai-user-2',
       });
     });

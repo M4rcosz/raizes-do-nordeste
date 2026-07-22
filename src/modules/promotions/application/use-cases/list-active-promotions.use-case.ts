@@ -2,15 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { buildCursorPage, type CursorPaginatedResult } from '@shared/pagination/pagination';
 import { Promotion } from '../../domain/entities/promotion.entity';
 import {
-  type ActivePromotionKeyset,
   PROMOTION_REPOSITORY,
   type PromotionRepository,
 } from '../../domain/repositories/promotion.repository';
 import { PromotionsFetchError } from '../errors/promotions-fetch.error';
-import {
-  decodeActivePromotionCursor,
-  encodeActivePromotionCursor,
-} from '../list-active-promotions-cursor';
+import { decodePromotionCursor, encodePromotionCursor } from '../promotion-keyset-cursor';
 
 export interface ListActivePromotionsInput {
   businessUnitId: string;
@@ -39,7 +35,7 @@ export class ListActivePromotionsUseCase {
 
     // Decode before the fetch: a malformed token is the caller's error (422), not a
     // repository failure, and must not surface as an outage.
-    const keyset = cursor === undefined ? undefined : this.toKeyset(cursor);
+    const keyset = cursor === undefined ? undefined : decodePromotionCursor(cursor);
 
     // Over-fetch by one to detect a next page, same as the back-office listing.
     let items: Promotion[];
@@ -60,12 +56,7 @@ export class ListActivePromotionsUseCase {
     // The next page's token carries the whole sort key, not just the id, so the keyset
     // predicate can be rebuilt without re-reading the row it points at.
     return buildCursorPage(items, limit, (promotion) =>
-      encodeActivePromotionCursor(promotion.createdAt, promotion.id),
+      encodePromotionCursor(promotion.createdAt, promotion.id),
     );
-  }
-
-  private toKeyset(cursor: string): ActivePromotionKeyset {
-    const decoded = decodeActivePromotionCursor(cursor);
-    return { createdAt: new Date(decoded.createdAt), id: decoded.id };
   }
 }

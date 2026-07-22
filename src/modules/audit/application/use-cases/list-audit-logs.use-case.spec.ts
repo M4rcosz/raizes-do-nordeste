@@ -4,6 +4,10 @@ import { ListAuditLogsUseCase } from './list-audit-logs.use-case';
 import { AuditLogsFetchError } from '../errors/audit-logs-fetch.error';
 import { InvalidAuditLogWindowError } from '../errors/invalid-audit-log-window.error';
 import { AuditLog } from '../../domain/entities/audit-log.entity';
+import { encodeAuditLogCursor } from '../audit-log-keyset-cursor';
+
+const LOG_AT = new Date('2026-01-01T00:00:00Z');
+
 import type {
   AuditLogRecord,
   AuditLogRepository,
@@ -11,7 +15,7 @@ import type {
 } from '../../domain/repositories/audit-log.repository';
 
 const makeLog = (id: string): AuditLog =>
-  new AuditLog(id, 'u-1', 'LOGIN_SUCCESS', 'User', 'u-1', null, new Date('2026-01-01T00:00:00Z'));
+  new AuditLog(id, 'u-1', 'LOGIN_SUCCESS', 'User', 'u-1', null, LOG_AT);
 
 // Fake repo: records the last findMany call and replays a configured result or failure.
 class FakeAuditLogRepository implements AuditLogRepository {
@@ -52,11 +56,16 @@ describe('ListAuditLogsUseCase', () => {
       entityId: 'u-1',
     };
 
-    await useCase.execute({ limit: 10, cursor: 'cursor-1', filters });
+    await useCase.execute({
+      limit: 10,
+      cursor: encodeAuditLogCursor(LOG_AT, 'cursor-1'),
+      filters,
+    });
 
     expect(repo.lastFindManyInput).toEqual({
       filters,
-      pagination: { cursor: 'cursor-1', take: 11 },
+      take: 11,
+      keyset: { timestamp: LOG_AT, id: 'cursor-1' },
     });
   });
 
@@ -67,7 +76,7 @@ describe('ListAuditLogsUseCase', () => {
 
     expect(result.data).toHaveLength(2);
     expect(result.meta.hasMore).toBe(true);
-    expect(result.meta.nextCursor).toBe('a-2');
+    expect(result.meta.nextCursor).toBe(encodeAuditLogCursor(LOG_AT, 'a-2'));
   });
 
   it('reports no more pages when fewer than limit+1 rows come back', async () => {
