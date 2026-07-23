@@ -253,7 +253,15 @@ describe('CreateOrderUseCase', () => {
     resolveLookup = jest.fn() as jest.MockedFunction<OrderProductLookup['resolve']>;
     resolveLookup.mockResolvedValue(
       new Map([
-        ['p-1', { price: Money.fromDecimalString('10.00'), isActive: true, isAvailable: true }],
+        [
+          'p-1',
+          {
+            name: 'Baiao de Dois',
+            price: Money.fromDecimalString('10.00'),
+            isActive: true,
+            isAvailable: true,
+          },
+        ],
       ]),
     );
 
@@ -322,6 +330,33 @@ describe('CreateOrderUseCase', () => {
       expect.objectContaining({
         totalAmount: '20.00',
         orderItems: [expect.objectContaining({ subtotal: '20.00' })],
+      }),
+      txContext,
+    );
+  });
+
+  it('snapshots the product name from the menu lookup onto each line', async () => {
+    resolveLookup.mockResolvedValue(
+      new Map([
+        [
+          'p-1',
+          {
+            name: 'Carne de Sol',
+            price: Money.fromDecimalString('10.00'),
+            isActive: true,
+            isAvailable: true,
+          },
+        ],
+      ]),
+    );
+
+    await useCase.execute(command(), { id: 'u-1', canAttend: false });
+
+    // The name is server-owned: the command carries no productName field at all,
+    // so the only possible source is the lookup that authorized the line.
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderItems: [expect.objectContaining({ productId: 'p-1', productName: 'Carne de Sol' })],
       }),
       txContext,
     );
@@ -630,7 +665,15 @@ describe('CreateOrderUseCase', () => {
     it('rejects with PriceMismatchError when unitPrice in body diverges from the authoritative price', async () => {
       resolveLookup.mockResolvedValue(
         new Map([
-          ['p-1', { price: Money.fromDecimalString('11.00'), isActive: true, isAvailable: true }],
+          [
+            'p-1',
+            {
+              name: 'Baiao de Dois',
+              price: Money.fromDecimalString('11.00'),
+              isActive: true,
+              isAvailable: true,
+            },
+          ],
         ]),
       );
 
@@ -642,6 +685,33 @@ describe('CreateOrderUseCase', () => {
       ).rejects.toBeInstanceOf(PriceMismatchError);
       expect(create).not.toHaveBeenCalled();
       expect(logAudit).not.toHaveBeenCalled();
+    });
+
+    // Pins the order of the two validation passes. Reordering them would turn this
+    // request's 422 into a 404, changing the contract for anyone already handling it.
+    it('reports the product error, not the customer error, when the request is wrong in both ways', async () => {
+      resolveLookup.mockResolvedValue(
+        new Map([
+          [
+            'p-1',
+            {
+              name: 'Baiao de Dois',
+              price: Money.fromDecimalString('10.00'),
+              isActive: false,
+              isAvailable: true,
+            },
+          ],
+        ]),
+      );
+      isBindableCustomer.mockResolvedValue(false);
+
+      await expect(
+        useCase.execute(command({ orderChannel: OrderChannel.COUNTER, customerId: 'ghost-id' }), {
+          id: 'att-1',
+          canAttend: true,
+        }),
+      ).rejects.toBeInstanceOf(ProductInactiveError);
+      expect(create).not.toHaveBeenCalled();
     });
 
     it('rejects with OrderReferenceNotFoundError when the product is not on this unit menu', async () => {
@@ -659,7 +729,15 @@ describe('CreateOrderUseCase', () => {
     it('rejects with ProductInactiveError when the product is on the menu but flagged inactive', async () => {
       resolveLookup.mockResolvedValue(
         new Map([
-          ['p-1', { price: Money.fromDecimalString('10.00'), isActive: false, isAvailable: true }],
+          [
+            'p-1',
+            {
+              name: 'Baiao de Dois',
+              price: Money.fromDecimalString('10.00'),
+              isActive: false,
+              isAvailable: true,
+            },
+          ],
         ]),
       );
 
@@ -675,7 +753,15 @@ describe('CreateOrderUseCase', () => {
     it('rejects with ProductUnavailableError when the menu item is currently unavailable', async () => {
       resolveLookup.mockResolvedValue(
         new Map([
-          ['p-1', { price: Money.fromDecimalString('10.00'), isActive: true, isAvailable: false }],
+          [
+            'p-1',
+            {
+              name: 'Baiao de Dois',
+              price: Money.fromDecimalString('10.00'),
+              isActive: true,
+              isAvailable: false,
+            },
+          ],
         ]),
       );
 
@@ -691,7 +777,15 @@ describe('CreateOrderUseCase', () => {
     it('accepts when unitPrice matches even when the authoritative value is written with extra decimal precision', async () => {
       resolveLookup.mockResolvedValue(
         new Map([
-          ['p-1', { price: Money.fromDecimalString('10.00'), isActive: true, isAvailable: true }],
+          [
+            'p-1',
+            {
+              name: 'Baiao de Dois',
+              price: Money.fromDecimalString('10.00'),
+              isActive: true,
+              isAvailable: true,
+            },
+          ],
         ]),
       );
 

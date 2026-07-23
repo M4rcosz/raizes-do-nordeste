@@ -10,6 +10,12 @@ class OrderItemResponseDto {
   @ApiProperty({ format: 'uuid' })
   readonly productId!: string;
 
+  @ApiProperty({
+    example: 'Baiao de Dois',
+    description: "Product name as of the order date, not the product's current name.",
+  })
+  readonly productName!: string;
+
   @ApiProperty({ example: 2 })
   readonly quantity!: number;
 
@@ -94,6 +100,7 @@ export class OrderResponseDto {
         Object.assign(new OrderItemResponseDto(), {
           id: item.id,
           productId: item.productId,
+          productName: item.productName,
           quantity: item.quantity,
           unitPrice: item.unitPrice.toDecimalString(),
           subtotal: item.subtotal.toDecimalString(),

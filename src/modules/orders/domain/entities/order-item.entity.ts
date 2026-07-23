@@ -8,6 +8,8 @@ export class OrderItem {
     public readonly id: string,
     public readonly orderId: string,
     public readonly productId: string,
+    /** Product name as it was when the order was placed, not the product's current name. */
+    public readonly productName: string,
     public readonly quantity: number,
     public readonly unitPrice: Money,
     public readonly notes: string | null,

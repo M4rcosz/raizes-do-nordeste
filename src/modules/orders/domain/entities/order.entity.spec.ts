@@ -9,8 +9,8 @@ import { InvalidOrderTotalError } from '../errors/invalid-order-total.error';
 
 // Two lines summing to a gross subtotal of 25.50.
 const sampleItems = (): OrderItem[] => [
-  new OrderItem('i-1', 'o-1', 'p-1', 2, Money.fromDecimalString('10'), null),
-  new OrderItem('i-2', 'o-1', 'p-2', 1, Money.fromDecimalString('5.50'), null),
+  new OrderItem('i-1', 'o-1', 'p-1', 'Baiao de Dois', 2, Money.fromDecimalString('10'), null),
+  new OrderItem('i-2', 'o-1', 'p-2', 'Carne de Sol', 1, Money.fromDecimalString('5.50'), null),
 ];
 
 const makeOrder = (totalAmount: Money, orderItems: OrderItem[] = sampleItems()): Order =>

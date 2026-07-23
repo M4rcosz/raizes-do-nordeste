@@ -36,6 +36,7 @@ interface PersistedOrderRow {
     id: string;
     orderId: string;
     productId: string;
+    productName: string;
     quantity: number;
     unitPrice: Prisma.Decimal;
     subtotal: Prisma.Decimal;
@@ -63,8 +64,20 @@ describe('PrismaOrderRepository', () => {
     notes: null,
     orderChannel: OrderChannel.APP,
     orderItems: [
-      { productId: 'p-1', quantity: 2, unitPrice: '10.00', subtotal: '20.00' },
-      { productId: 'p-2', quantity: 1, unitPrice: '5.00', subtotal: '5.00' },
+      {
+        productId: 'p-1',
+        productName: 'Baiao de Dois',
+        quantity: 2,
+        unitPrice: '10.00',
+        subtotal: '20.00',
+      },
+      {
+        productId: 'p-2',
+        productName: 'Carne de Sol',
+        quantity: 1,
+        unitPrice: '5.00',
+        subtotal: '5.00',
+      },
     ],
   };
 
@@ -89,6 +102,7 @@ describe('PrismaOrderRepository', () => {
         id: 'item-1',
         orderId: 'order-1',
         productId: 'p-1',
+        productName: 'Baiao de Dois',
         quantity: 2,
         unitPrice: new Prisma.Decimal('10.00'),
         subtotal: new Prisma.Decimal('20.00'),
@@ -98,6 +112,7 @@ describe('PrismaOrderRepository', () => {
         id: 'item-2',
         orderId: 'order-1',
         productId: 'p-2',
+        productName: 'Carne de Sol',
         quantity: 1,
         unitPrice: new Prisma.Decimal('5.00'),
         subtotal: new Prisma.Decimal('5.00'),

@@ -323,6 +323,11 @@ model OrderItem {
   orderId   String @map("order_id")
   productId String @map("product_id")
 
+  // Snapshot of Product.name at order time, same reason unitPrice is copied here:
+  // an order is a historical record. Renaming or retiring a product must not
+  // rewrite what the customer sees they bought.
+  productName String @map("product_name")
+
   quantity  Int
   unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
   subtotal  Decimal @db.Decimal(10, 2)

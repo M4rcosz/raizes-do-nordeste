@@ -8,7 +8,7 @@ type MenuItemRow = {
   productId: string;
   customPrice: Prisma.Decimal;
   isAvailable: boolean;
-  product: { isActive: boolean };
+  product: { isActive: boolean; name: string };
 };
 type FindMany = (args: unknown) => Promise<MenuItemRow[]>;
 
@@ -37,18 +37,19 @@ describe('PrismaOrderProductLookup', () => {
     expect(menuItemFindMany).not.toHaveBeenCalled();
   });
 
-  it('resolves price from customPrice, active from the product, and availability from the menu item', async () => {
+  it('resolves name and price from the product, active from the product, and availability from the menu item', async () => {
     menuItemFindMany.mockResolvedValue([
       {
         productId: 'p-1',
         customPrice: new Prisma.Decimal('9.99'),
         isAvailable: true,
-        product: { isActive: true },
+        product: { isActive: true, name: 'Baiao de Dois' },
       },
     ]);
 
     const result = await lookup.resolve('bu-1', ['p-1']);
 
+    expect(result.get('p-1')?.name).toBe('Baiao de Dois');
     expect(result.get('p-1')?.price.equals(Money.fromDecimalString('9.99'))).toBe(true);
     expect(result.get('p-1')?.isActive).toBe(true);
     expect(result.get('p-1')?.isAvailable).toBe(true);
@@ -60,7 +61,7 @@ describe('PrismaOrderProductLookup', () => {
         productId: 'p-1',
         customPrice: new Prisma.Decimal('9.99'),
         isAvailable: true,
-        product: { isActive: false },
+        product: { isActive: false, name: 'Baiao de Dois' },
       },
     ]);
 
@@ -75,7 +76,7 @@ describe('PrismaOrderProductLookup', () => {
         productId: 'p-1',
         customPrice: new Prisma.Decimal('9.99'),
         isAvailable: false,
-        product: { isActive: true },
+        product: { isActive: true, name: 'Baiao de Dois' },
       },
     ]);
 
@@ -90,7 +91,7 @@ describe('PrismaOrderProductLookup', () => {
         productId: 'p-1',
         customPrice: new Prisma.Decimal('9.99'),
         isAvailable: true,
-        product: { isActive: true },
+        product: { isActive: true, name: 'Baiao de Dois' },
       },
     ]);
 
@@ -111,7 +112,7 @@ describe('PrismaOrderProductLookup', () => {
         productId: true,
         customPrice: true,
         isAvailable: true,
-        product: { select: { isActive: true } },
+        product: { select: { isActive: true, name: true } },
       },
     });
   });

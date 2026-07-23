@@ -11,6 +11,7 @@ import { Argon2PasswordHasher } from '@modules/identity/infrastructure/security/
 interface OrderItemBody {
   id: string;
   productId: string;
+  productName: string;
   quantity: number;
   unitPrice: string;
   subtotal: string;
@@ -41,6 +42,7 @@ describe('Orders (e2e)', () => {
   let unitId: string;
   let categoryId: string;
   let productId: string;
+  let productName: string;
   let customerId: string;
   let token: string;
   let staffId: string;
@@ -89,6 +91,7 @@ describe('Orders (e2e)', () => {
       },
     });
     productId = product.id;
+    productName = product.name;
 
     // The product is only orderable once it is on this unit's menu.
     await prisma.businessUnitMenuItem.create({
@@ -368,6 +371,36 @@ describe('Orders (e2e)', () => {
     expect(dbOrder).not.toBeNull();
     expect(dbOrder?.totalAmount.toString()).toBe('62.5');
     expect(dbOrder?.orderItems).toHaveLength(2);
+  });
+
+  it('snapshots the product name so a later rename does not rewrite order history', async () => {
+    const response = await request(server)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        businessUnitId: unitId,
+        orderChannel: 'APP',
+        orderItems: [{ productId, quantity: 1, unitPrice: '12.50' }],
+      })
+      .expect(201);
+
+    const orderId = (response.body as OrderResponseBody).id;
+    expect((response.body as OrderResponseBody).orderItems[0].productName).toBe(productName);
+
+    const renamed = `${productName} Renamed`;
+    await prisma.product.update({ where: { id: productId }, data: { name: renamed } });
+
+    try {
+      const reread = await request(server)
+        .get(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      // Still the old name: the line holds a copy, not a join to the live product.
+      expect((reread.body as OrderResponseBody).orderItems[0].productName).toBe(productName);
+    } finally {
+      await prisma.product.update({ where: { id: productId }, data: { name: productName } });
+    }
   });
 
   describe('guest customer name', () => {

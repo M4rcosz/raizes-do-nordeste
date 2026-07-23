@@ -4,6 +4,8 @@ import type { TransactionContext } from '@shared/transaction/transaction-runner.
 export const ORDER_PRODUCT_LOOKUP = Symbol('OrderProductLookup');
 
 export interface ResolvedProduct {
+  /** Authoritative Product.name, snapshotted onto the order line at creation. */
+  name: string;
   /** Authoritative price for the product at the business unit: BusinessUnitMenuItem.customPrice. */
   price: Money;
   /** Product.isActive - whether the product is enabled brand-wide. */
