@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [4.1.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v4.0.0...v4.1.0) (2026-07-23)
+
+
+### Features
+
+* **orders:** snapshot product name on order items ([3ca755a](https://github.com/M4rcosz/raizes-do-nordeste/commit/3ca755a5874f71a100aa60dfb9a3e32ec97d3239))
+
 ## [4.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v3.3.0...v4.0.0) (2026-07-22)
 
 
