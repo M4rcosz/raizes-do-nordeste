@@ -19,7 +19,15 @@ describe('OrderItem', () => {
 
   describe('constructor enforces the subtotal invariant', () => {
     it('computes subtotal from quantity and unitPrice - caller cannot pass an inconsistent value', () => {
-      const item = new OrderItem('i-1', 'o-1', 'p-1', 4, Money.fromDecimalString('7.25'), null);
+      const item = new OrderItem(
+        'i-1',
+        'o-1',
+        'p-1',
+        'Baiao de Dois',
+        4,
+        Money.fromDecimalString('7.25'),
+        null,
+      );
 
       expect(item.subtotal.equals(Money.fromDecimalString('29'))).toBe(true);
     });

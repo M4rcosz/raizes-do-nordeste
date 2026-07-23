@@ -31,13 +31,14 @@ export class PrismaOrderProductLookup implements OrderProductLookup {
         productId: true,
         customPrice: true,
         isAvailable: true,
-        product: { select: { isActive: true } },
+        product: { select: { isActive: true, name: true } },
       },
     });
 
     const resolved = new Map<string, ResolvedProduct>();
     for (const menuItem of menuItems) {
       resolved.set(menuItem.productId, {
+        name: menuItem.product.name,
         price: this.toMoney(menuItem.customPrice),
         isActive: menuItem.product.isActive,
         isAvailable: menuItem.isAvailable,

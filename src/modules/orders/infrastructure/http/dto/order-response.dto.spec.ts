@@ -6,7 +6,15 @@ import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 
 describe('OrderResponseDto.fromEntity', () => {
-  const item = new OrderItem('i-1', 'o-1', 'p-1', 2, Money.fromDecimalString('10'), null);
+  const item = new OrderItem(
+    'i-1',
+    'o-1',
+    'p-1',
+    'Baiao de Dois',
+    2,
+    Money.fromDecimalString('10'),
+    null,
+  );
   const order = new Order(
     'o-1',
     'bu-1',
@@ -40,6 +48,7 @@ describe('OrderResponseDto.fromEntity', () => {
     expect(dto.attendantId).toBeNull();
     expect(dto.pointsEarned).toBe(5);
     expect(dto.orderItems).toHaveLength(1);
+    expect(dto.orderItems[0].productName).toBe('Baiao de Dois');
   });
 
   describe('customerName', () => {

@@ -24,6 +24,12 @@ export interface OrderForAiView {
   createdAt: string;
   items: {
     productId: string;
+    /**
+     * Name as of the order date. Present so the assistant can name what was bought
+     * without a catalog call, which would return the product's CURRENT name and
+     * reintroduce exactly the drift the snapshot exists to remove.
+     */
+    productName: string;
     quantity: number;
     unitPrice: string;
     subtotal: string;

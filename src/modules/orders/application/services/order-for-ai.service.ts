@@ -130,6 +130,7 @@ export class OrderForAiService implements OrderForAi {
       createdAt: order.createdAt.toISOString(),
       items: order.orderItems.map((item) => ({
         productId: item.productId,
+        productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice.toDecimalString(),
         subtotal: item.subtotal.toDecimalString(),

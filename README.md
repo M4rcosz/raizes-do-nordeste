@@ -1052,6 +1052,7 @@ Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
     {
       "id": "2f9b...",
       "productId": "b2d8...",
+      "productName": "Baiao de Dois",
       "quantity": 2,
       "unitPrice": "12.50",
       "subtotal": "25.00",
@@ -1060,6 +1061,20 @@ Money fields (`totalAmount`, `unitPrice`, `subtotal`) are serialized as a
   ]
 }
 ```
+
+`productName` is a snapshot, not a join: it stores `Product.name` as it was when
+the order was placed, taken from the same authoritative menu read that validated
+the line. Renaming or retiring a product therefore never rewrites order history.
+It is the same reasoning that makes `unitPrice` a copy rather than a lookup - a
+receipt line's name and price have to stay mutually consistent forever.
+
+`customerName` deliberately goes the other way: when the order belongs to an
+account it is joined live from the `User` relation and never stored. A person's
+current name is owned by their account, and copying it would create a second,
+silently diverging record of personal data that an LGPD rectification or erasure
+request would have to chase separately. The guest name is stored only because
+there is no account to join to. Short rule: **the commercial record is copied, a
+living person's identity is joined.**
 
 A foreign key pointing to a missing business unit, customer, attendant or
 product surfaces as `404 OrderReferenceNotFoundError` - `PrismaOrderRepository`

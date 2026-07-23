@@ -19,7 +19,15 @@ import type { TransactionRunner } from '@shared/transaction/transaction-runner.p
 import type { OrderActor } from '../order-actor';
 
 const item = (productId: string, quantity: number): OrderItem =>
-  new OrderItem('oi-1', 'o-1', productId, quantity, Money.fromDecimalString('10.00'), null);
+  new OrderItem(
+    'oi-1',
+    'o-1',
+    productId,
+    'Baiao de Dois',
+    quantity,
+    Money.fromDecimalString('10.00'),
+    null,
+  );
 
 const makeOrder = (
   status: OrderStatus,

@@ -6,6 +6,8 @@ import type { OrderSort } from '../value-objects/order-sort';
 
 export interface CreateOrderItem {
   productId: string;
+  /** Resolved server-side from the menu lookup, never taken from the request body. */
+  productName: string;
   quantity: number;
   unitPrice: string;
   subtotal: string;

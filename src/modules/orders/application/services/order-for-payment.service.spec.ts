@@ -27,7 +27,7 @@ const makeOrder = (status: OrderStatus, customerId: string | null = 'c-1'): Orde
     new Date(),
     new Date(),
     null,
-    [new OrderItem('i-1', 'o-1', 'p-1', 1, Money.fromDecimalString('25'), null)],
+    [new OrderItem('i-1', 'o-1', 'p-1', 'Baiao de Dois', 1, Money.fromDecimalString('25'), null)],
   );
 
 describe('OrderForPaymentService', () => {

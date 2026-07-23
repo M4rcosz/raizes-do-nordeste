@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from '@jest/globals';
 import { UserRole } from '@modules/identity/domain/value-objects/user-role';
 import { Money } from '@shared/domain/value-objects/money';
 import { Order } from '@modules/orders/domain/entities/order.entity';
+import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { OrderChannel } from '@modules/orders/domain/value-objects/order-channel';
 import { OrderStatus } from '@modules/orders/domain/value-objects/order-status';
 import type {
@@ -152,5 +153,33 @@ describe('OrderForAiService.listForActor', () => {
     const result = await service.listForActor({}, manager);
 
     expect(result.orders[0]?.total).toBe('50.00');
+  });
+
+  // Without the snapshotted name the assistant can only emit a UUID, and the obvious
+  // workaround - calling a catalog tool - returns the product's CURRENT name, which is
+  // the drift the snapshot exists to remove.
+  it('exposes the snapshotted product name so the model can name what was ordered', async () => {
+    repo.rows = [
+      order('order-1', {
+        orderItems: [
+          new OrderItem(
+            'i-1',
+            'order-1',
+            'p-1',
+            'Baiao de Dois',
+            2,
+            Money.fromDecimalString('25'),
+            null,
+          ),
+        ],
+      }),
+    ];
+
+    const result = await service.listForActor({}, manager);
+
+    expect(result.orders[0]?.items[0]).toMatchObject({
+      productId: 'p-1',
+      productName: 'Baiao de Dois',
+    });
   });
 });

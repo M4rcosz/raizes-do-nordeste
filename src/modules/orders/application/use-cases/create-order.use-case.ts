@@ -2,6 +2,7 @@ import { OrderItem } from '@modules/orders/domain/entities/order-item.entity';
 import { Order } from '@modules/orders/domain/entities/order.entity';
 import {
   ORDER_REPOSITORY,
+  type CreateOrderItem,
   type OrderRepository,
 } from '@modules/orders/domain/repositories/order.repository';
 import {
@@ -163,13 +164,8 @@ export class CreateOrderUseCase {
     let committed: { order: Order; deduction: StockDeductionResult };
     try {
       committed = await this.transactions.run(async (tx) => {
-        await this.assertOrderableProducts(command, tx);
+        const orderItems = await this.resolveOrderLines(command, tx);
         await this.assertBindableCustomer(command, customerId, tx);
-
-        const orderItems = rawOrderItems.map((item) => ({
-          ...item,
-          subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toDecimalString(),
-        }));
 
         const itemsSubtotal = Order.calculateItemsSubtotal(orderItems.map((item) => item.subtotal));
 
@@ -390,19 +386,22 @@ export class CreateOrderUseCase {
   }
 
   /**
-   * Rejects orders that reference a product not on this unit's menu (404), a product
-   * that is inactive brand-wide (422), a menu item currently unavailable (422), or a
-   * unitPrice that diverges from the authoritative price (422). Authoritative price is
-   * BusinessUnitMenuItem.customPrice - only menu items are orderable.
+   * Validates every requested line and returns it as it will be persisted, with the
+   * server-owned fields (productName, subtotal) filled in.
+   *
+   * Rejects a product not on this unit's menu (404), a product inactive brand-wide
+   * (422), a menu item currently unavailable (422), or a unitPrice that diverges from
+   * the authoritative price (422). Authoritative price is BusinessUnitMenuItem.customPrice
+   * - only menu items are orderable.
    */
-  private async assertOrderableProducts(
+  private async resolveOrderLines(
     command: CreateOrderCommand,
     tx: TransactionContext,
-  ): Promise<void> {
+  ): Promise<CreateOrderItem[]> {
     const productIds = command.orderItems.map((item) => item.productId);
     const authoritative = await this.productLookup.resolve(command.businessUnitId, productIds, tx);
 
-    for (const item of command.orderItems) {
+    return command.orderItems.map((item) => {
       const resolved = authoritative.get(item.productId);
       if (!resolved) {
         throw new OrderReferenceNotFoundError(
@@ -424,7 +423,16 @@ export class CreateOrderUseCase {
           `Unit price ${item.unitPrice} does not match the authoritative price ${resolved.price.toDecimalString()} for product ${item.productId} at this business unit.`,
         );
       }
-    }
+
+      return {
+        ...item,
+        // Snapshot taken from the same read that authorized the line, so the stored
+        // name can never disagree with the product actually validated. The client
+        // never supplies it.
+        productName: resolved.name,
+        subtotal: OrderItem.calculateSubtotal(item.quantity, item.unitPrice).toDecimalString(),
+      };
+    });
   }
 
   /**
@@ -439,7 +447,7 @@ export class CreateOrderUseCase {
    * never reaches the DB. Comparing the two covers both cases without assuming the
    * channel policy table keeps its current shape.
    *
-   * Runs inside the caller's tx, next to assertOrderableProducts, which NARROWS the
+   * Runs inside the caller's tx, next to resolveOrderLines, which NARROWS the
    * window for a concurrent deactivation but does not close it: the runner uses the
    * Postgres default READ COMMITTED and this read takes no row lock, so a deactivation
    * committing mid-tx still yields an order bound to an inactive customer. Harmless

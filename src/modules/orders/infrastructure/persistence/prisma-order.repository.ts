@@ -44,7 +44,17 @@ export class PrismaOrderRepository implements OrderRepository {
 
           orderItems: {
             createMany: {
-              data: input.orderItems,
+              // Enumerated rather than spread: OrderItemCreateManyOrderInput also
+              // accepts `id`, so a spread makes the global DTO whitelist the only
+              // thing standing between a request body and client-chosen primary keys.
+              data: input.orderItems.map((item) => ({
+                productId: item.productId,
+                productName: item.productName,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal,
+                notes: item.notes,
+              })),
             },
           },
         },
@@ -271,6 +281,7 @@ export class PrismaOrderRepository implements OrderRepository {
             item.id,
             item.orderId,
             item.productId,
+            item.productName,
             item.quantity,
             this.toMoney(item.unitPrice),
             item.notes,
