@@ -25,9 +25,9 @@ export class FakeAiConversationRepository implements AiConversationRepository {
     return [...this.store.values()];
   }
 
-  create(userId: string): Promise<AiConversation> {
+  create(userId: string, title: string): Promise<AiConversation> {
     const now = new Date();
-    const conversation = new AiConversation(`conv-${++this.seq}`, userId, now, now);
+    const conversation = new AiConversation(`conv-${++this.seq}`, userId, title, now, now);
     this.store.set(conversation.id, conversation);
     return Promise.resolve(conversation);
   }
@@ -52,6 +52,7 @@ export class FakeAiConversationRepository implements AiConversationRepository {
       new AiConversation(
         current.id,
         current.userId,
+        current.title,
         current.createdAt,
         new Date(),
         current.deletedAt,
@@ -81,6 +82,7 @@ export class FakeAiConversationRepository implements AiConversationRepository {
       new AiConversation(
         current.id,
         current.userId,
+        current.title,
         current.createdAt,
         current.updatedAt,
         current.deletedAt,
@@ -90,9 +92,11 @@ export class FakeAiConversationRepository implements AiConversationRepository {
   }
 
   listForUser(userId: string, input: ListConversationsInput): Promise<AiConversation[]> {
-    const { take, keyset } = input;
+    const { take, keyset, title } = input;
     const rows = [...this.store.values()]
       .filter((c) => c.isOwnedBy(userId) && !c.isDeleted)
+      // Mirrors `contains` + `mode: 'insensitive'`: substring, case-folded.
+      .filter((c) => title === undefined || c.title.toLowerCase().includes(title.toLowerCase()))
       // (updatedAt desc, id desc), same as the real ordering.
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || (a.id < b.id ? 1 : -1))
       // Keyset predicate: strictly after the given sort key, never a position.
@@ -104,6 +108,21 @@ export class FakeAiConversationRepository implements AiConversationRepository {
       )
       .slice(0, take);
     return Promise.resolve(rows);
+  }
+
+  updateTitle(id: string, userId: string, title: string): Promise<AiConversation | null> {
+    const current = this.store.get(id);
+    // Mirrors the guarded write: a deleted thread is not renamable and reads as
+    // not-found, unlike softDelete which stays idempotent over one.
+    if (!current || !current.isOwnedBy(userId) || current.isDeleted) {
+      return Promise.resolve(null);
+    }
+    // rename() preserves updatedAt, which is what the real repository does too (it
+    // passes the current value explicitly to override Prisma's @updatedAt). Keep the
+    // two in step: a fake that bumped it here would hide a reordering bug.
+    const renamed = current.rename(title);
+    this.store.set(id, renamed);
+    return Promise.resolve(renamed);
   }
 
   softDelete(id: string, userId: string): Promise<AiConversation | null> {

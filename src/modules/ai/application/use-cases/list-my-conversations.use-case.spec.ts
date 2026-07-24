@@ -8,8 +8,13 @@ import { FakeAiConversationRepository } from './__fakes__/ai-conversation-reposi
 // Distinct instants so the ordering is unambiguous; the higher the day, the newer.
 const AT = (day: number): Date => new Date(`2026-01-0${day}T00:00:00.000Z`);
 
-function conversation(id: string, userId: string, updatedAt: Date): AiConversation {
-  return new AiConversation(id, userId, AT(1), updatedAt);
+function conversation(
+  id: string,
+  userId: string,
+  updatedAt: Date,
+  title = 'Untitled thread',
+): AiConversation {
+  return new AiConversation(id, userId, title, AT(1), updatedAt);
 }
 
 describe('ListMyConversationsUseCase', () => {
@@ -106,6 +111,106 @@ describe('ListMyConversationsUseCase', () => {
 
     // conv-1 is still delivered: it never depended on conv-2 holding its place.
     expect(second.data.map((c) => c.id)).toEqual(['conv-1']);
+  });
+
+  describe('title filter', () => {
+    beforeEach(() => {
+      conversations.seed(conversation('conv-1', 'user-1', AT(1), 'Estoque de tapioca'));
+      conversations.seed(conversation('conv-2', 'user-1', AT(2), 'Pedidos de ontem'));
+      conversations.seed(conversation('conv-3', 'user-1', AT(3), 'ESTOQUE do Centro'));
+    });
+
+    it('narrows the page to titles containing the term', async () => {
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: 'estoque' });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-3', 'conv-1']);
+    });
+
+    it('matches case-insensitively, so the caller does not have to know the casing', async () => {
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: 'ESTOQUE' });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-3', 'conv-1']);
+    });
+
+    it('matches a substring, not just a prefix', async () => {
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: 'tapioca' });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-1']);
+    });
+
+    it('returns an empty page rather than an error when nothing matches', async () => {
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: 'inexistente' });
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.hasMore).toBe(false);
+    });
+
+    // The reason this is a listing filter and not a "get by title" route.
+    it('returns every thread sharing a title, never just one', async () => {
+      conversations.seed(conversation('conv-4', 'user-1', AT(4), 'Estoque de tapioca'));
+
+      const result = await useCase.execute({
+        userId: 'user-1',
+        limit: 20,
+        title: 'Estoque de tapioca',
+      });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-4', 'conv-1']);
+    });
+
+    it('never reaches another user threads through the filter', async () => {
+      conversations.seed(conversation('conv-9', 'someone-else', AT(9), 'Estoque secreto'));
+
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: 'estoque' });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-3', 'conv-1']);
+    });
+
+    it('hides soft-deleted threads from the filter too', async () => {
+      await conversations.softDelete('conv-3', 'user-1');
+
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: 'estoque' });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-1']);
+    });
+
+    // A blank term must collapse to "no filter", not to `contains: ''`. Both match
+    // everything, but only the explicit undefined keeps the ILIKE out of the query.
+    it.each([
+      ['an empty string', ''],
+      ['whitespace only', '   '],
+    ])('treats %s as no filter at all', async (_label, title) => {
+      const listForUser = jest.spyOn(conversations, 'listForUser');
+
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title });
+
+      expect(result.data).toHaveLength(3);
+      expect(listForUser.mock.calls[0]?.[1].title).toBeUndefined();
+    });
+
+    it('normalizes the term before matching, so a padded search still hits', async () => {
+      const result = await useCase.execute({ userId: 'user-1', limit: 20, title: '  estoque  ' });
+
+      expect(result.data.map((c) => c.id)).toEqual(['conv-3', 'conv-1']);
+    });
+
+    // The filter narrows the set the keyset pages over; it does not replace it.
+    it('pages a filtered result with the same cursor', async () => {
+      const first = await useCase.execute({ userId: 'user-1', limit: 1, title: 'estoque' });
+
+      expect(first.data.map((c) => c.id)).toEqual(['conv-3']);
+      expect(first.meta.hasMore).toBe(true);
+
+      const second = await useCase.execute({
+        userId: 'user-1',
+        limit: 1,
+        title: 'estoque',
+        cursor: first.meta.nextCursor!,
+      });
+
+      expect(second.data.map((c) => c.id)).toEqual(['conv-1']);
+      expect(second.meta.hasMore).toBe(false);
+    });
   });
 
   it('rejects a malformed cursor as invalid input, not as an outage', async () => {

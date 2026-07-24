@@ -14,7 +14,7 @@ describe('GetConversationUseCase', () => {
   });
 
   it('returns the thread with its turns in order', async () => {
-    const created = await conversations.create('user-1');
+    const created = await conversations.create('user-1', 'Existing thread');
     await conversations.appendMessages(created.id, [
       { role: AiMessageRole.USER, content: 'hi' },
       { role: AiMessageRole.MODEL, content: 'hello' },
@@ -30,7 +30,7 @@ describe('GetConversationUseCase', () => {
 
   it('reports a thread owned by someone else as not found', async () => {
     // Not-found rather than forbidden: a foreign id must not be probeable.
-    const created = await conversations.create('someone-else');
+    const created = await conversations.create('someone-else', 'Their thread');
 
     await expect(
       useCase.execute({ conversationId: created.id, userId: 'user-1' }),
@@ -38,7 +38,7 @@ describe('GetConversationUseCase', () => {
   });
 
   it('reports a soft-deleted thread as not found', async () => {
-    const created = await conversations.create('user-1');
+    const created = await conversations.create('user-1', 'Existing thread');
     await conversations.softDelete(created.id, 'user-1');
 
     await expect(

@@ -6,7 +6,14 @@ import { AiMessageRole } from '../value-objects/ai-message-role';
 const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
 
 function conversation(deletedAt: Date | null = null): AiConversation {
-  return new AiConversation('conv-1', 'user-1', CREATED_AT, CREATED_AT, deletedAt);
+  return new AiConversation(
+    'conv-1',
+    'user-1',
+    'Estoque Centro',
+    CREATED_AT,
+    CREATED_AT,
+    deletedAt,
+  );
 }
 
 describe('AiConversation', () => {
@@ -46,11 +53,41 @@ describe('AiConversation', () => {
       'hi',
       CREATED_AT,
     );
-    const withMessages = new AiConversation('conv-1', 'user-1', CREATED_AT, CREATED_AT, null, [
-      message,
-    ]);
+    const withMessages = new AiConversation(
+      'conv-1',
+      'user-1',
+      'Estoque Centro',
+      CREATED_AT,
+      CREATED_AT,
+      null,
+      [message],
+    );
 
     expect(withMessages.softDelete().messages).toEqual([message]);
+  });
+
+  it('carries the new title through a rename and leaves everything else alone', () => {
+    const original = conversation();
+
+    const renamed = original.rename('Tapioca Boa Viagem');
+
+    expect(renamed.title).toBe('Tapioca Boa Viagem');
+    expect(renamed.id).toBe(original.id);
+    expect(renamed.userId).toBe(original.userId);
+    expect(renamed.createdAt).toEqual(original.createdAt);
+    expect(renamed.deletedAt).toBeNull();
+  });
+
+  it('leaves the original instance untouched on rename', () => {
+    const original = conversation();
+
+    original.rename('Tapioca Boa Viagem');
+
+    expect(original.title).toBe('Estoque Centro');
+  });
+
+  it('keeps its title through a soft delete', () => {
+    expect(conversation().softDelete().title).toBe('Estoque Centro');
   });
 
   it('recognises its owner and rejects anyone else', () => {

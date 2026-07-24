@@ -6,6 +6,13 @@ export class AiConversationResponseDto {
   @ApiProperty({ format: 'uuid' })
   readonly id!: string;
 
+  @ApiProperty({
+    example: 'Qual o estoque de tapioca na unidade Centro?',
+    description:
+      'Derived from the opening message, or whatever the owner renamed it to. Never null.',
+  })
+  readonly title!: string;
+
   @ApiProperty({ description: 'Whether the thread has been deleted by its owner.' })
   readonly isDeleted!: boolean;
 
@@ -18,6 +25,7 @@ export class AiConversationResponseDto {
   static fromEntity(conversation: AiConversation): AiConversationResponseDto {
     return Object.assign(new AiConversationResponseDto(), {
       id: conversation.id,
+      title: conversation.title,
       // The raw deletedAt stays internal; the wire contract is a plain flag.
       isDeleted: conversation.isDeleted,
       createdAt: conversation.createdAt,

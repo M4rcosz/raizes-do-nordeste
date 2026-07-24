@@ -16,11 +16,17 @@ export interface AppendMessageInput {
 export interface ListConversationsInput {
   take: number;
   keyset?: TimestampKeyset;
+  /**
+   * Case-insensitive substring match on the title. Absent means no title filter at
+   * all - an empty string is NOT the same thing and must never reach here, or it
+   * would read as "match everything" by accident rather than by decision.
+   */
+  title?: string;
 }
 
 export interface AiConversationRepository {
-  /** Opens an empty thread owned by `userId`. */
-  create(userId: string): Promise<AiConversation>;
+  /** Opens an empty thread owned by `userId`, already titled. */
+  create(userId: string, title: string): Promise<AiConversation>;
   /**
    * Appends turns in the given order. Also touches the thread's updatedAt so the
    * listing can order by "last activity" rather than by creation.
@@ -41,10 +47,22 @@ export interface AiConversationRepository {
     messageLimit?: number,
   ): Promise<AiConversation | null>;
   /**
-   * One page of the user's live threads, newest activity first. Messages are not
-   * loaded. Over-fetch by one (`take: limit + 1`) to detect a next page.
+   * One page of the user's live threads, newest activity first, optionally narrowed
+   * to those whose title contains `input.title`. Messages are not loaded. Over-fetch
+   * by one (`take: limit + 1`) to detect a next page.
    */
   listForUser(userId: string, input: ListConversationsInput): Promise<AiConversation[]>;
+  /**
+   * Retitles a live thread under the same conditional guard the delete uses, so the
+   * ownership check is inside the write rather than a read-then-write. Null means the
+   * user has no such LIVE thread - unlike softDelete, a deleted thread is not
+   * resurrectable by renaming it, so it reads as not-found.
+   *
+   * MUST leave updatedAt untouched. It is the listing's sort key and its documented
+   * meaning is "last activity"; a rename is not activity, and bumping it would jump
+   * the thread to the top of the list and re-serve it on a later page mid-pagination.
+   */
+  updateTitle(id: string, userId: string, title: string): Promise<AiConversation | null>;
   /**
    * Stamps deleted_at under a conditional guard (deleted_at IS NULL), then returns
    * the row as it now stands - including an already-deleted one, so a repeated

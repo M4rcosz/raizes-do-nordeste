@@ -26,6 +26,7 @@ import { ListAiMembershipsUseCase } from './application/use-cases/list-ai-member
 import { SendChatMessageUseCase } from './application/use-cases/send-chat-message.use-case';
 import { ListMyConversationsUseCase } from './application/use-cases/list-my-conversations.use-case';
 import { GetConversationUseCase } from './application/use-cases/get-conversation.use-case';
+import { RenameConversationUseCase } from './application/use-cases/rename-conversation.use-case';
 import { DeleteConversationUseCase } from './application/use-cases/delete-conversation.use-case';
 import { ToolRegistry } from './application/tools/tool-registry';
 import { CHAT_MODEL } from './application/ports/chat-model.port';
@@ -74,6 +75,7 @@ import { GeminiChatModelAdapter } from './infrastructure/ai/gemini-chat-model.ad
     SendChatMessageUseCase,
     ListMyConversationsUseCase,
     GetConversationUseCase,
+    RenameConversationUseCase,
     DeleteConversationUseCase,
   ],
 })

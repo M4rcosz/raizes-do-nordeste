@@ -4,11 +4,13 @@ Backend v3.3.0 (`feat(ai)`, commit `e40979f`). This covers what changed and how 
 consume it. The membership basics (enroll, balance, revoke) are in
 `ai-membership.md`; this file only covers what is new.
 
-Three things shipped:
+Four things shipped:
 
 1. `POST /api/ai/chat` now stores conversations server-side and returns a `conversationId`.
-2. Three self-scoped routes to list / read / soft-delete those conversations.
-3. `GET /api/ai/memberships` - an ADMIN report of who holds a membership and how many
+2. Four self-scoped routes to list / read / rename / soft-delete those conversations.
+3. Every conversation has a `title`, derived from its opening message, renamable, and
+   searchable via `?title=` on the list route.
+4. `GET /api/ai/memberships` - an ADMIN report of who holds a membership and how many
    tokens they burned in a window.
 
 Everything is additive. **Nothing you have today breaks.** But see "The one thing you
@@ -46,11 +48,16 @@ POST /api/ai/chat
 200 OK
 {
   "conversationId": "c9e1...",   // NEW - persist this
+  "conversationTitle": "Onde esta meu pedido 4821?",  // NEW - see below
   "reply": "Seu pedido #4821 esta em preparo.",
   "tokensSpent": 42,
   "balanceRemaining": 9638
 }
 ```
+
+`conversationTitle` comes back on **every** exchange, not just the first, so a client
+that reopened an old thread never has to fetch it separately. Render it as the chat
+header. It is user-authored text - insert it as text content, never as `innerHTML`.
 
 ### How `conversationId` and `history` interact
 
@@ -69,6 +76,7 @@ on a call that also has a `conversationId` - it will be silently discarded.
 ```ts
 type ChatResponse = {
   conversationId: string;
+  conversationTitle: string;
   reply: string;
   tokensSpent: number;
   balanceRemaining: number;
@@ -131,6 +139,7 @@ GET /api/ai/conversations?limit=20&cursor=eyJ0...
   "data": [
     {
       "id": "c9e1...",
+      "title": "Onde esta meu pedido 4821?",
       "isDeleted": false,
       "createdAt": "2026-07-20T21:00:00.000Z",
       "updatedAt": "2026-07-21T09:12:00.000Z"
@@ -146,6 +155,24 @@ get the next page, and stop when `meta.hasMore` is `false`.
 
 A malformed `cursor` returns `422`, not `400`.
 
+#### Searching by title
+
+Add `?title=` to filter. It is a **case-insensitive substring** match, not a lookup:
+
+```http
+GET /api/ai/conversations?title=pedido&limit=20
+```
+
+Titles are not unique, so this always returns a page - never assume one result. It
+composes with the cursor, so paginate a filtered list exactly like an unfiltered one
+(keep sending the same `title` on each page). A blank or whitespace-only value is
+ignored rather than matching nothing. `%` and `_` in the term are escaped and match
+literally, so a user searching `100%` gets what they typed.
+
+Build search as a filter over this endpoint. There is deliberately no
+`/conversations/by-title/:title` route - it could not answer honestly when two threads
+share a title.
+
 > Ordering is by last activity, which **changes as the user chats**. A thread can move
 > to the top of the list mid-pagination. The backend uses a keyset cursor specifically
 > so this does not drop or duplicate rows, but the UX consequence remains: a list the
@@ -160,6 +187,7 @@ Full transcript, oldest turn first. Not capped - returns every stored turn.
 200 OK
 {
   "id": "c9e1...",
+  "title": "Onde esta meu pedido 4821?",
   "isDeleted": false,
   "createdAt": "...",
   "updatedAt": "...",
@@ -176,6 +204,31 @@ Full transcript, oldest turn first. Not capped - returns every stored turn.
 > lowercase it first - though per section 1 you should be sending `conversationId`
 > instead and not building `history` at all.
 
+### `PATCH /api/ai/conversations/:conversationId`
+
+Renames a thread. Reply shape is the same as a list item.
+
+```jsonc
+PATCH /api/ai/conversations/c9e1...
+{ "title": "Pedido 4821" }
+
+200 OK
+{ "id": "c9e1...", "title": "Pedido 4821", "isDeleted": false, "createdAt": "...", "updatedAt": "..." }
+```
+
+Rules worth encoding in the form:
+
+- Max **80 characters**, counted in code points (an 80-emoji title is fine). Over that
+  is `422` - the server rejects rather than truncating, so validate client-side and
+  show a counter instead of letting the user hit the error.
+- Blank, or only whitespace, is `422`. Leading/trailing whitespace is trimmed and
+  internal runs are collapsed to single spaces, so the stored value may differ slightly
+  from what was typed - read the response back rather than assuming.
+- A rename is **not** activity: `updatedAt` is preserved, so renaming does not move the
+  thread in the list. Safe to do in place without re-fetching page one.
+- A thread that is not the caller's, or already deleted, is `404` - same as everywhere
+  else here.
+
 ### `DELETE /api/ai/conversations/:conversationId`
 
 Soft delete. The row is retained with a deletion timestamp; the API exposes that only as
@@ -183,7 +236,7 @@ the `isDeleted` boolean.
 
 ```jsonc
 200 OK
-{ "id": "c9e1...", "isDeleted": true, "createdAt": "...", "updatedAt": "..." }
+{ "id": "c9e1...", "title": "Pedido 4821", "isDeleted": true, "createdAt": "...", "updatedAt": "..." }
 ```
 
 Notes that matter:

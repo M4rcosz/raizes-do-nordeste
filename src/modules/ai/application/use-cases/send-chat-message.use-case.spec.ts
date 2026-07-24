@@ -469,9 +469,59 @@ describe('SendChatMessageUseCase', () => {
       expect(stored?.messages.map((m) => m.role)).toEqual([AiMessageRole.USER]);
     });
 
+    it('titles a new thread from the message that opened it', async () => {
+      seedMembership(1000);
+      chatModel.enqueue({ text: 'ok', tokensUsed: 1 });
+
+      const result = await useCase.execute({
+        actor,
+        message: 'Qual o estoque de tapioca na unidade Centro?',
+      });
+
+      expect(result.conversationTitle).toBe('Qual o estoque de tapioca na unidade Centro?');
+      expect(conversations.all()[0]?.title).toBe('Qual o estoque de tapioca na unidade Centro?');
+    });
+
+    it('truncates a long opening message into a titleable thread name', async () => {
+      seedMembership(1000);
+      chatModel.enqueue({ text: 'ok', tokensUsed: 1 });
+
+      const result = await useCase.execute({ actor, message: 'a'.repeat(200) });
+
+      expect(result.conversationTitle).toHaveLength(80);
+      expect(result.conversationTitle.endsWith('...')).toBe(true);
+    });
+
+    // The title must cost nothing. A model-generated one would be a second metered
+    // call, and every model call in this use case is debited and ledgered.
+    it('derives the title without an extra model call', async () => {
+      seedMembership(1000);
+      chatModel.enqueue({ text: 'ok', tokensUsed: 1 });
+
+      await useCase.execute({ actor, message: 'Qual o estoque?' });
+
+      expect(chatModel.requests).toHaveLength(1);
+    });
+
+    it('keeps the existing title when a later message continues the thread', async () => {
+      // A follow-up must never silently retitle a thread the owner already renamed.
+      seedMembership(1000);
+      const existing = await conversations.create('user-1', 'Estoque Centro');
+      chatModel.enqueue({ text: 'ok', tokensUsed: 1 });
+
+      const result = await useCase.execute({
+        actor,
+        conversationId: existing.id,
+        message: 'uma pergunta completamente diferente',
+      });
+
+      expect(result.conversationTitle).toBe('Estoque Centro');
+      expect(conversations.all()[0]?.title).toBe('Estoque Centro');
+    });
+
     it('continues an existing thread, replaying its stored turns', async () => {
       seedMembership(1000);
-      const existing = await conversations.create('user-1');
+      const existing = await conversations.create('user-1', 'Existing thread');
       await conversations.appendMessages(existing.id, [
         { role: AiMessageRole.USER, content: 'earlier question' },
         { role: AiMessageRole.MODEL, content: 'earlier answer' },
@@ -496,7 +546,7 @@ describe('SendChatMessageUseCase', () => {
       // The stored thread is the trusted record; a client that also sends history
       // must not be able to rewrite what was said.
       seedMembership(1000);
-      const existing = await conversations.create('user-1');
+      const existing = await conversations.create('user-1', 'Existing thread');
       await conversations.appendMessages(existing.id, [
         { role: AiMessageRole.USER, content: 'stored question' },
       ]);
@@ -521,7 +571,7 @@ describe('SendChatMessageUseCase', () => {
       // The ledger would then under-report the spend it exists to measure. The cap
       // also keeps an old thread from permanently 503ing on the context window.
       seedMembership(1000);
-      const existing = await conversations.create('user-1');
+      const existing = await conversations.create('user-1', 'Existing thread');
       // 50 stored turns, i.e. 10 past the cap of 40.
       await conversations.appendMessages(
         existing.id,
@@ -546,7 +596,7 @@ describe('SendChatMessageUseCase', () => {
     it('leaves the human read path uncapped', async () => {
       // Only the model-replay path pays per token, so only it is capped: a user must
       // still be able to read their whole thread back.
-      const existing = await conversations.create('user-1');
+      const existing = await conversations.create('user-1', 'Existing thread');
       await conversations.appendMessages(
         existing.id,
         Array.from({ length: 50 }, (_, i) => ({
@@ -562,7 +612,7 @@ describe('SendChatMessageUseCase', () => {
 
     it('refuses a thread that belongs to someone else', async () => {
       seedMembership(1000);
-      const foreign = await conversations.create('someone-else');
+      const foreign = await conversations.create('someone-else', 'Their thread');
       chatModel.enqueue({ text: 'never reached', tokensUsed: 1 });
 
       await expect(
@@ -573,7 +623,7 @@ describe('SendChatMessageUseCase', () => {
 
     it('refuses a soft-deleted thread', async () => {
       seedMembership(1000);
-      const existing = await conversations.create('user-1');
+      const existing = await conversations.create('user-1', 'Existing thread');
       await conversations.softDelete(existing.id, 'user-1');
       chatModel.enqueue({ text: 'never reached', tokensUsed: 1 });
 

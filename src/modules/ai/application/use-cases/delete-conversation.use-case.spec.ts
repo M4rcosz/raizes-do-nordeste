@@ -13,7 +13,7 @@ describe('DeleteConversationUseCase', () => {
   });
 
   it('soft-deletes the caller own thread', async () => {
-    const created = await conversations.create('user-1');
+    const created = await conversations.create('user-1', 'Existing thread');
 
     const deleted = await useCase.execute({ conversationId: created.id, userId: 'user-1' });
 
@@ -25,7 +25,7 @@ describe('DeleteConversationUseCase', () => {
   });
 
   it('is idempotent and keeps the original timestamp', async () => {
-    const created = await conversations.create('user-1');
+    const created = await conversations.create('user-1', 'Existing thread');
     const first = await useCase.execute({ conversationId: created.id, userId: 'user-1' });
 
     const second = await useCase.execute({ conversationId: created.id, userId: 'user-1' });
@@ -34,7 +34,7 @@ describe('DeleteConversationUseCase', () => {
   });
 
   it('refuses to delete a thread owned by someone else', async () => {
-    const foreign = await conversations.create('someone-else');
+    const foreign = await conversations.create('someone-else', 'Their thread');
 
     await expect(
       useCase.execute({ conversationId: foreign.id, userId: 'user-1' }),
