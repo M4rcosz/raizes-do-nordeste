@@ -16,6 +16,7 @@ import {
   type AiTokenUsageRepository,
 } from '../../domain/repositories/ai-token-usage.repository';
 import { AiMessageRole } from '../../domain/value-objects/ai-message-role';
+import { deriveConversationTitle } from '../../domain/value-objects/conversation-title';
 import type { AiConversation } from '../../domain/entities/ai-conversation.entity';
 import type { ActorContext } from '../actor-context';
 import {
@@ -47,6 +48,11 @@ export interface SendChatMessageInput {
 export interface SendChatMessageResult {
   /** The thread this exchange belongs to; pass it back to continue. */
   conversationId: string;
+  /**
+   * The thread's title. Returned on every exchange, not just the first, so a client
+   * that opened the thread in an earlier session never has to fetch it separately.
+   */
+  conversationTitle: string;
   reply: string;
   tokensSpent: number;
   balanceRemaining: number;
@@ -122,6 +128,7 @@ export class SendChatMessageUseCase {
     // it: spend has to be attributable even when the exchange dies halfway.
     const conversation = await this.resolveConversation(input);
     const conversationId = conversation.id;
+    const conversationTitle = conversation.title;
 
     // A named thread replays what WE stored; the client's history is only the
     // fallback for a brand-new thread, and stays untrusted (filtered) there.
@@ -184,7 +191,13 @@ export class SendChatMessageUseCase {
           { role: AiMessageRole.MODEL, content: lastText },
         ]);
       }
-      return { conversationId, reply, tokensSpent: spent, balanceRemaining: remaining };
+      return {
+        conversationId,
+        conversationTitle,
+        reply,
+        tokensSpent: spent,
+        balanceRemaining: remaining,
+      };
     };
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -252,7 +265,11 @@ export class SendChatMessageUseCase {
    */
   private async resolveConversation(input: SendChatMessageInput): Promise<AiConversation> {
     if (input.conversationId === undefined) {
-      return this.conversations.create(input.actor.userId);
+      // A new thread is titled from the message that opens it. Derived here rather
+      // than asked of the model: it costs nothing, cannot fail, and keeps the title
+      // out of the metered path. An existing thread keeps whatever title it has -
+      // a later message must never silently retitle a thread the owner renamed.
+      return this.conversations.create(input.actor.userId, deriveConversationTitle(input.message));
     }
     // Only the replay path caps the turns; the human read path loads the thread whole.
     const existing = await this.conversations.findByIdForUser(

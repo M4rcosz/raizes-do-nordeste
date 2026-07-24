@@ -4,6 +4,7 @@ import type {
   AiConversationMessage as AiConversationMessageModel,
 } from '@prisma/client';
 import { PrismaService } from '@shared/infrastructure/prisma/prisma.service';
+import { escapeLikeTerm } from '@shared/infrastructure/prisma/like-term';
 import { AiConversation } from '@modules/ai/domain/entities/ai-conversation.entity';
 import { AiConversationMessage } from '@modules/ai/domain/entities/ai-conversation-message.entity';
 import {
@@ -22,8 +23,8 @@ type AiConversationWithMessages = AiConversationModel & {
 export class PrismaAiConversationRepository implements AiConversationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(userId: string): Promise<AiConversation> {
-    const raw = await this.prisma.aiConversation.create({ data: { userId } });
+  async create(userId: string, title: string): Promise<AiConversation> {
+    const raw = await this.prisma.aiConversation.create({ data: { userId, title } });
     return this.toEntity(raw);
   }
 
@@ -79,7 +80,7 @@ export class PrismaAiConversationRepository implements AiConversationRepository 
   }
 
   async listForUser(userId: string, input: ListConversationsInput): Promise<AiConversation[]> {
-    const { take, keyset } = input;
+    const { take, keyset, title } = input;
 
     // Keyset, not `cursor`/`skip`: updatedAt moves every time a turn is appended, so
     // the row a positional cursor names routinely leaves the position it had and the
@@ -89,6 +90,18 @@ export class PrismaAiConversationRepository implements AiConversationRepository 
       where: {
         userId,
         deletedAt: null,
+        // Substring, case-insensitive: the caller is searching, not naming a row.
+        // Titles are not unique, so this narrows a page - it never resolves to one
+        // thread. Combines with the keyset above rather than replacing it, which is
+        // exactly why the search had to live on the listing: a filtered read still
+        // needs to page, and it pages on the same mutable sort column.
+        //
+        // escapeLikeTerm because Prisma passes % and _ through into the LIKE pattern
+        // verbatim: without it, searching "100%" over-matches and a term dense in
+        // wildcards costs far more to evaluate than its length suggests.
+        ...(title !== undefined && {
+          title: { contains: escapeLikeTerm(title), mode: 'insensitive' },
+        }),
         ...(keyset && {
           OR: [
             { updatedAt: { lt: keyset.timestamp } },
@@ -102,6 +115,47 @@ export class PrismaAiConversationRepository implements AiConversationRepository 
       take,
     });
     return rows.map((raw) => this.toEntity(raw));
+  }
+
+  async updateTitle(id: string, userId: string, title: string): Promise<AiConversation | null> {
+    // One transaction, because the guarded write and the row it reports have to agree:
+    // as two loose statements, a softDelete landing in between made a rename that HAD
+    // succeeded answer 404. Inside the tx the updateMany holds the row lock until
+    // commit, so a concurrent delete queues behind it instead of racing it.
+    return this.prisma.$transaction(async (tx) => {
+      // Read first only to learn the current updatedAt. The authoritative check is
+      // still the guard on the write below, so this is not a read-then-write.
+      const current = await tx.aiConversation.findFirst({
+        where: { id, userId, deletedAt: null },
+      });
+      if (!current) {
+        return null;
+      }
+
+      // Ownership and liveness are in the WHERE, exactly as softDelete does it.
+      // deletedAt is in the guard here too (unlike softDelete, which re-reads
+      // unfiltered to stay idempotent) - renaming must not resurrect or acknowledge
+      // a deleted thread.
+      const { count } = await tx.aiConversation.updateMany({
+        where: { id, userId, deletedAt: null },
+        data: {
+          title,
+          // Explicitly carried over, which overrides the @updatedAt auto-stamp.
+          // updatedAt is the keyset sort column AND the listing's "last activity"
+          // contract; a rename is not activity, and letting it bump the column would
+          // jump the thread to the top of the list and re-serve it on a later page
+          // mid-pagination. appendMessages is the writer that DOES mean activity.
+          updatedAt: current.updatedAt,
+        },
+      });
+      if (count === 0) {
+        return null;
+      }
+
+      // Built from the row we just read plus the field we just wrote - no third
+      // query, and nothing else about the row changed inside this transaction.
+      return this.toEntity({ ...current, title });
+    });
   }
 
   async softDelete(id: string, userId: string): Promise<AiConversation | null> {
@@ -122,6 +176,7 @@ export class PrismaAiConversationRepository implements AiConversationRepository 
     return new AiConversation(
       raw.id,
       raw.userId,
+      raw.title,
       raw.createdAt,
       raw.updatedAt,
       raw.deletedAt,

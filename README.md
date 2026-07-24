@@ -1375,13 +1375,81 @@ The standard `data`/`meta` page envelope plus the window the totals cover.
 }
 ```
 
+### AI Chat
+
+| Method | Path           | Auth | Description                                                     |
+| ------ | -------------- | ---- | --------------------------------------------------------------- |
+| `POST` | `/api/ai/chat` | Any  | Ask the assistant. Metered against the caller's AI tokens.      |
+
+`message` is required (max 4000 chars). `conversationId` is optional - omit it to open
+a new thread, pass it to continue one. `history` (max 50 items) is a legacy fallback
+used **only** when no `conversationId` is given; with one, the stored thread is the
+trusted record and any supplied `history` is ignored.
+
+Throttled tighter than the global default (20/min), because every call spends real
+provider money and the entry balance check is a soft ceiling - concurrent requests can
+each reach the provider before a debit lands.
+
+```json
+{
+  "conversationId": "c9e1...",
+  "conversationTitle": "Qual o status do pedido 4821?",
+  "reply": "Seu pedido #4821 esta em preparo.",
+  "tokensSpent": 42,
+  "balanceRemaining": 9638
+}
+```
+
+`conversationTitle` comes back on every exchange, not just the first, so a client that
+reopened an old thread never has to fetch it separately.
+
+| Status | Meaning                                                            |
+| ------ | ------------------------------------------------------------------ |
+| `403`  | Not enrolled, membership revoked, or out of tokens.                |
+| `404`  | The given `conversationId` is not this caller's live thread.       |
+| `503`  | Provider unavailable.                                              |
+
+On `503` the turn is discarded but the user's message is already stored and any tokens
+debited on earlier iterations of the same exchange are **not** refunded - the work
+happened. Retry with the same `conversationId`.
+
 ### AI Conversations
 
-| Method   | Path                        | Auth | Description                                                        |
-| -------- | --------------------------- | ---- | ------------------------------------------------------------------ |
-| `GET`    | `/api/ai/conversations`     | Any  | List the caller's own threads, last activity first. Paginated.     |
-| `GET`    | `/api/ai/conversations/:id` | Any  | Read one of the caller's threads with its turns, oldest first.     |
-| `DELETE` | `/api/ai/conversations/:id` | Any  | Soft-delete one of the caller's threads.                           |
+| Method   | Path                        | Auth | Description                                                          |
+| -------- | --------------------------- | ---- | -------------------------------------------------------------------- |
+| `GET`    | `/api/ai/conversations`     | Any  | List the caller's own threads, last activity first. Paginated.       |
+| `GET`    | `/api/ai/conversations/:id` | Any  | Read one of the caller's threads with its turns, oldest first.       |
+| `PATCH`  | `/api/ai/conversations/:id` | Any  | Rename one of the caller's threads.                                  |
+| `DELETE` | `/api/ai/conversations/:id` | Any  | Soft-delete one of the caller's threads.                             |
+
+**Query params on the list route:** `limit` (default 20, max 100), `cursor`
+(opaque keyset token) and `title`.
+
+`title` is a **case-insensitive substring** filter, not a lookup: titles are not
+unique, so it narrows the page rather than resolving one thread. It composes
+with the cursor, so a filtered result pages exactly like an unfiltered one. A
+blank or whitespace-only value is treated as no filter at all. LIKE wildcards in
+the term (`%`, `_`) are escaped and match literally.
+
+```http
+GET /api/ai/conversations?title=estoque&limit=20
+```
+
+#### Titles
+
+Every thread has a non-null `title`. It is **derived from the opening user
+message** - normalized (whitespace collapsed) and cut to 80 characters on a word
+boundary, with `...` appended when it was truncated. Deliberately not generated
+by the model: every model call is metered against the caller's token balance and
+written to the spend ledger, so a title-generating call would both charge the
+user and distort the admin usage report.
+
+`PATCH` replaces it. The body is `{ "title": "Estoque Centro" }`. The value is
+normalized the same way, then rejected with `422` if it is blank or longer than
+80 characters - rejected rather than truncated, because silently shortening what
+someone typed is worse than telling them. Length is counted in code points, so an
+80-emoji title is accepted. A rename does **not** count as activity: `updatedAt`
+is preserved, so renaming never reorders the listing.
 
 Chat threads are stored server-side; pass the `conversationId` returned by
 `POST /api/ai/chat` back on the next call to continue one. Every route here is
@@ -1403,11 +1471,14 @@ read route above is uncapped and still returns every stored turn.
 ```json
 {
   "id": "c9e1...",
+  "title": "Qual o estoque de tapioca na unidade Centro?",
   "isDeleted": false,
   "createdAt": "2026-07-20T21:00:00.000Z",
   "updatedAt": "2026-07-21T09:12:00.000Z"
 }
 ```
+
+This is also the reply shape for `PATCH` (the rename) and `DELETE`.
 
 #### Response - `AiConversationDetailResponseDto` (`GET /api/ai/conversations/:id`)
 
@@ -1416,6 +1487,7 @@ Adds a `messages` array, oldest first:
 ```json
 {
   "id": "c9e1...",
+  "title": "Qual o estoque de tapioca na unidade Centro?",
   "isDeleted": false,
   "createdAt": "2026-07-20T21:00:00.000Z",
   "updatedAt": "2026-07-21T09:12:00.000Z",

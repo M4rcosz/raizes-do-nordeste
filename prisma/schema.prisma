@@ -526,8 +526,23 @@ enum AiMessageRole {
 // without erasing what it cost: the spend lives in AiTokenUsage, which does not
 // depend on the conversation surviving.
 model AiConversation {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
+  id String @id @default(uuid())
+
+  userId String @map("user_id")
+
+  // Derived from the opening message at creation, replaceable by the owner.
+  //
+  // The @default exists ONLY to survive the rolling-deploy overlap: entrypoint.sh
+  // migrates at container boot, so the previous release (which inserts no title) is
+  // still writing when NOT NULL lands. It is scheduled to be dropped in a later
+  // release - see the migration header.
+  //
+  // Tradeoff: a default makes `title` optional in Prisma's generated create input, so
+  // `create({ data: { userId } })` type-checks even though it should not. The domain
+  // guards this instead - AiConversationRepository.create(userId, title) requires it,
+  // and that is the only path that opens a thread.
+  title String @default("New conversation")
+
   deletedAt DateTime? @map("deleted_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -541,6 +556,12 @@ model AiConversation {
   // both the sort key and the keyset column the cursor pages on.
   // Widened with the id tie-break so the (updatedAt desc, id desc) keyset is satisfied
   // from the index alone rather than needing a sort for tied updatedAt values.
+  //
+  // The ?title= filter deliberately gets NO index of its own. It is an ILIKE
+  // '%term%' on a per-user set that is already small and already narrowed by
+  // user_id, so the index above still drives the scan. An unanchored substring
+  // match cannot use a btree anyway - that would need pg_trgm, which is only worth
+  // its write cost once a single user's thread count justifies it.
   @@index([userId, updatedAt, id])
   @@map("ai_conversations")
 }

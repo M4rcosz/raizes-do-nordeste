@@ -9,6 +9,11 @@ export class AiConversation {
   constructor(
     public readonly id: string,
     public readonly userId: string,
+    /**
+     * Always present. Derived from the opening message at creation and replaceable by
+     * the owner, so there is no untitled state for a listing to render around.
+     */
+    public readonly title: string,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     public readonly deletedAt: Date | null = null,
@@ -30,6 +35,23 @@ export class AiConversation {
   }
 
   /**
+   * Retitles the thread. The caller normalizes first (see `conversation-title`); this
+   * only carries the new value. The real write is the repo's conditional update, so
+   * this mirrors it for the domain and for unit tests.
+   */
+  rename(title: string): AiConversation {
+    return new AiConversation(
+      this.id,
+      this.userId,
+      title,
+      this.createdAt,
+      this.updatedAt,
+      this.deletedAt,
+      this.messages,
+    );
+  }
+
+  /**
    * Stamps the thread as deleted. Idempotent: an already-deleted thread keeps its
    * original timestamp, so a repeated delete cannot rewrite when it happened. The
    * real write is the repo's conditional update (deleted_at IS NULL); this mirrors
@@ -39,6 +61,7 @@ export class AiConversation {
     return new AiConversation(
       this.id,
       this.userId,
+      this.title,
       this.createdAt,
       this.updatedAt,
       this.deletedAt ?? at,

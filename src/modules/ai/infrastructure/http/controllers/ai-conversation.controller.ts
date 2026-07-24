@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Query } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiNotFoundResponse,
@@ -14,7 +14,9 @@ import { sanitizeLimit } from '@shared/pagination/pagination';
 import { ListMyConversationsUseCase } from '@modules/ai/application/use-cases/list-my-conversations.use-case';
 import { GetConversationUseCase } from '@modules/ai/application/use-cases/get-conversation.use-case';
 import { DeleteConversationUseCase } from '@modules/ai/application/use-cases/delete-conversation.use-case';
+import { RenameConversationUseCase } from '@modules/ai/application/use-cases/rename-conversation.use-case';
 import { AiConversationParamDto } from '../dto/ai-conversation-param.dto';
+import { RenameConversationDto } from '../dto/rename-conversation.dto';
 import { AiConversationResponseDto } from '../dto/ai-conversation-response.dto';
 import { AiConversationDetailResponseDto } from '../dto/ai-conversation-detail-response.dto';
 import { PaginatedAiConversationResponseDto } from '../dto/paginated-ai-conversation-response.dto';
@@ -31,11 +33,17 @@ export class AiConversationController {
   constructor(
     private readonly listMyConversations: ListMyConversationsUseCase,
     private readonly getConversation: GetConversationUseCase,
+    private readonly renameConversation: RenameConversationUseCase,
     private readonly deleteConversation: DeleteConversationUseCase,
   ) {}
 
+  // Searching by title is a filter on this listing, not a route of its own: titles are
+  // not unique, so "fetch by title" can only honestly return a page.
   @Get()
-  @ApiOperation({ summary: 'List your assistant conversations, newest activity first.' })
+  @ApiOperation({
+    summary:
+      'List your assistant conversations, newest activity first. Optionally filtered by title.',
+  })
   @ApiOkResponse({ type: PaginatedAiConversationResponseDto })
   @ApiUnprocessableEntityResponse({ description: 'Malformed pagination cursor.' })
   async list(
@@ -46,6 +54,7 @@ export class AiConversationController {
       userId: user.sub,
       cursor: query.cursor,
       limit: sanitizeLimit(query.limit),
+      title: query.title,
     });
     return new PaginatedResponseDto(
       result.data.map((conversation) => AiConversationResponseDto.fromEntity(conversation)),
@@ -65,6 +74,24 @@ export class AiConversationController {
   ): Promise<AiConversationDetailResponseDto> {
     const conversation = await this.getConversation.execute({ conversationId, userId: user.sub });
     return AiConversationDetailResponseDto.fromEntity(conversation);
+  }
+
+  @Patch(':conversationId')
+  @ApiOperation({ summary: 'Rename one of your conversations.' })
+  @ApiOkResponse({ type: AiConversationResponseDto })
+  @ApiNotFoundResponse({ description: 'No such live conversation for this user.' })
+  @ApiUnprocessableEntityResponse({ description: 'Blank or over-long title.' })
+  async rename(
+    @Param() { conversationId }: AiConversationParamDto,
+    @Body() body: RenameConversationDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<AiConversationResponseDto> {
+    const conversation = await this.renameConversation.execute({
+      conversationId,
+      userId: user.sub,
+      title: body.title,
+    });
+    return AiConversationResponseDto.fromEntity(conversation);
   }
 
   @Delete(':conversationId')

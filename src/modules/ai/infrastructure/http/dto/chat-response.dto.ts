@@ -8,6 +8,14 @@ export class ChatResponseDto {
   })
   readonly conversationId!: string;
 
+  @ApiProperty({
+    example: 'Qual o estoque de tapioca na unidade Centro?',
+    description:
+      "The thread's title, derived from its opening message. Returned on every " +
+      'exchange so a client never has to fetch it separately.',
+  })
+  readonly conversationTitle!: string;
+
   @ApiProperty({ description: 'The assistant reply.' })
   readonly reply!: string;
 
@@ -20,6 +28,7 @@ export class ChatResponseDto {
   static fromResult(result: SendChatMessageResult): ChatResponseDto {
     return Object.assign(new ChatResponseDto(), {
       conversationId: result.conversationId,
+      conversationTitle: result.conversationTitle,
       reply: result.reply,
       tokensSpent: result.tokensSpent,
       balanceRemaining: result.balanceRemaining,
