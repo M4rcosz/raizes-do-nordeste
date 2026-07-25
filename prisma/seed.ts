@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { hashPassword } from './utils/hash';
+import { seedExpansion } from './seed/index';
 
 if (process.env.NODE_ENV === 'production') {
   throw new Error('Seed must not run in production.');
@@ -284,8 +285,62 @@ async function main(): Promise<void> {
       },
     });
   }
+
+  // =======================================================
+  // EXPANSION
+  // =======================================================
+  // Everything above is the minimum the API tests pin by id and is left alone.
+  // The rest of the dataset (more units, menus, staff, customers, the order book,
+  // loyalty, AI threads, audit) lives in prisma/seed/, keyed by deterministic ids
+  // so re-running the seed updates nothing and duplicates nothing.
+  await seedExpansion(prisma, {
+    unit1Id: unit1.id,
+    unit2Id: unit2.id,
+    adminId: admin.id,
+    passwordHash: devPassword,
+  });
+
+  await printSummary();
+}
+
+async function printSummary(): Promise<void> {
+  const [units, users, categories, products, menuItems, inventories, orders, payments, promotions] =
+    await Promise.all([
+      prisma.businessUnit.count(),
+      prisma.user.count(),
+      prisma.category.count(),
+      prisma.product.count(),
+      prisma.businessUnitMenuItem.count(),
+      prisma.inventory.count(),
+      prisma.order.count(),
+      prisma.payment.count(),
+      prisma.promotion.count(),
+    ]);
+
+  // Written straight to stdout: this is a script's own report, not application
+  // logging, and console.log is off-limits by lint here.
+  process.stdout.write(
+    [
+      'Seed complete:',
+      `  business units .. ${String(units)}`,
+      `  users ........... ${String(users)}`,
+      `  categories ...... ${String(categories)}`,
+      `  products ........ ${String(products)}`,
+      `  menu items ...... ${String(menuItems)}`,
+      `  inventories ..... ${String(inventories)}`,
+      `  orders .......... ${String(orders)}`,
+      `  payments ........ ${String(payments)}`,
+      `  promotions ...... ${String(promotions)}`,
+      '',
+    ].join('\n'),
+  );
 }
 
 main()
-  .catch(console.error)
+  // Exit non-zero on failure: `npm run devs` chains the seed before starting the app,
+  // and a swallowed error there boots the API on a half-populated database.
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
   .finally(() => prisma.$disconnect());
