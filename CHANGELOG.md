@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [5.0.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v4.1.0...v5.0.0) (2026-07-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **products:** Product.imageUrl is now nullable. It is string | null in
+ProductResponseDto and MenuItemPublicResponseDto, and optional on
+POST /api/products. Any client that dereferenced imageUrl without a null
+check now has to handle null and render its own fallback.
+
+### Features
+
+* **ai:** add conversation titles with rename and search ([d041d2e](https://github.com/M4rcosz/raizes-do-nordeste/commit/d041d2e77f9994420fd17af531fb5034f60e7558))
+* **products:** upload product images via signed Supabase Storage URLs ([c51dda4](https://github.com/M4rcosz/raizes-do-nordeste/commit/c51dda4d86dadf6f9a835544109aebb233fefd64))
+
+
+### Documentation
+
+* add frontend guide for the order item product name snapshot ([9440eed](https://github.com/M4rcosz/raizes-do-nordeste/commit/9440eed04b458090b973219c0cff04aa9fb12caa))
+
 ## [4.1.0](https://github.com/M4rcosz/raizes-do-nordeste/compare/v4.0.0...v4.1.0) (2026-07-23)
 
 
