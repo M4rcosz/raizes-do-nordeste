@@ -32,7 +32,8 @@ export interface CreateProductInput {
   description?: string | null;
   price: string;
   categoryId: string;
-  imageUrl: string;
+  /** Optional: a product can be created before its image exists. */
+  imageUrl?: string | null;
 }
 
 export interface ProductRepository {
@@ -59,6 +60,13 @@ export interface ProductRepository {
    * product matches the id so the use case can raise a not-found.
    */
   setActive(id: string, isActive: boolean): Promise<Product | null>;
+  /**
+   * Writes only the image URL (null clears it). Deliberately not update(): that
+   * one rewrites `name` too, so a P2002 on an unrelated duplicate name would
+   * surface as a conflict on an image swap, which makes no sense. Returns null
+   * when no product matches the id so the use case can raise a not-found.
+   */
+  setImageUrl(id: string, imageUrl: string | null): Promise<Product | null>;
 }
 
 export const PRODUCT_REPOSITORY = Symbol('ProductRepository');

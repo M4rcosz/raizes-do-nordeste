@@ -11,9 +11,12 @@ import { PaginatedResponseDto } from '@shared/pagination/paginated-response.dto'
 import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
 import { SetProductActiveUseCase } from '@modules/business-units/application/use-cases/set-product-active.use-case';
 import { UpdateProductUseCase } from '@modules/business-units/application/use-cases/update-product.use-case';
+import { CreateProductImageUploadUrlUseCase } from '@modules/business-units/application/use-cases/create-product-image-upload-url.use-case';
+import { ConfirmProductImageUploadUseCase } from '@modules/business-units/application/use-cases/confirm-product-image-upload.use-case';
 import { ProductNotFoundError } from '../../../application/errors/product-not-found.error';
 import { ProductCreateDto } from '../dto/product-create.dto';
 import { ProductUpdateDto } from '../dto/product-update.dto';
+import { ProductImageUploadUrlResponseDto } from '../dto/product-image-upload-url-response.dto';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
 
 const actor = { sub: 'admin-1' } as JwtPayload;
@@ -26,6 +29,8 @@ describe('ProductsController', () => {
   let createProduct: jest.Mocked<CreateProductUseCase>;
   let setProductActive: jest.Mocked<SetProductActiveUseCase>;
   let updateProduct: jest.Mocked<UpdateProductUseCase>;
+  let createImageUploadUrl: jest.Mocked<CreateProductImageUploadUrlUseCase>;
+  let confirmImageUpload: jest.Mocked<ConfirmProductImageUploadUseCase>;
 
   const buildProduct = (id = 'uuid-1'): Product =>
     new Product(
@@ -49,6 +54,12 @@ describe('ProductsController', () => {
     createProduct = { execute: jest.fn() } as unknown as jest.Mocked<CreateProductUseCase>;
     setProductActive = { execute: jest.fn() } as unknown as jest.Mocked<SetProductActiveUseCase>;
     updateProduct = { execute: jest.fn() } as unknown as jest.Mocked<UpdateProductUseCase>;
+    createImageUploadUrl = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<CreateProductImageUploadUrlUseCase>;
+    confirmImageUpload = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<ConfirmProductImageUploadUseCase>;
 
     const moduleRef = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -59,6 +70,8 @@ describe('ProductsController', () => {
         { provide: CreateProductUseCase, useValue: createProduct },
         { provide: SetProductActiveUseCase, useValue: setProductActive },
         { provide: UpdateProductUseCase, useValue: updateProduct },
+        { provide: CreateProductImageUploadUrlUseCase, useValue: createImageUploadUrl },
+        { provide: ConfirmProductImageUploadUseCase, useValue: confirmImageUpload },
       ],
     }).compile();
 
@@ -247,6 +260,66 @@ describe('ProductsController', () => {
       expect(response).toBeInstanceOf(ProductResponseDto);
       expect(response.id).toBe('uuid-43');
       expect(response.price).toBe('12.50');
+    });
+  });
+
+  describe('createImageUploadUrl', () => {
+    it('forwards the param-derived productId and the requested content type', async () => {
+      createImageUploadUrl.execute.mockResolvedValue({
+        signedUrl: 'https://storage.test/upload/sign/products/uuid-9/token.png?token=abc',
+        token: 'abc',
+        path: 'products/uuid-9/token.png',
+        expiresInSeconds: 7200,
+      });
+
+      const response = await controller.createImageUploadUrl(
+        { productId: 'uuid-9' },
+        { contentType: 'image/png' },
+      );
+
+      expect(createImageUploadUrl.execute).toHaveBeenCalledWith({
+        productId: 'uuid-9',
+        contentType: 'image/png',
+      });
+      expect(response).toBeInstanceOf(ProductImageUploadUrlResponseDto);
+      expect(response.path).toBe('products/uuid-9/token.png');
+      expect(response.expiresInSeconds).toBe(7200);
+    });
+
+    it('propagates ProductNotFoundError raised by the use-case', async () => {
+      createImageUploadUrl.execute.mockRejectedValue(new ProductNotFoundError('Not found.'));
+
+      await expect(
+        controller.createImageUploadUrl({ productId: 'missing' }, { contentType: 'image/png' }),
+      ).rejects.toBeInstanceOf(ProductNotFoundError);
+    });
+  });
+
+  describe('confirmImage', () => {
+    it('forwards the param-derived productId, the echoed path and the actor id', async () => {
+      confirmImageUpload.execute.mockResolvedValue(buildProduct('uuid-9'));
+
+      const response = await controller.confirmImage(
+        actor,
+        { productId: 'uuid-9' },
+        { path: 'products/uuid-9/token.png' },
+      );
+
+      expect(confirmImageUpload.execute).toHaveBeenCalledWith({
+        productId: 'uuid-9',
+        path: 'products/uuid-9/token.png',
+        actorId: 'admin-1',
+      });
+      expect(response).toBeInstanceOf(ProductResponseDto);
+      expect(response.id).toBe('uuid-9');
+    });
+
+    it('propagates ProductNotFoundError raised by the use-case', async () => {
+      confirmImageUpload.execute.mockRejectedValue(new ProductNotFoundError('Not found.'));
+
+      await expect(
+        controller.confirmImage(actor, { productId: 'missing' }, { path: 'products/x/y.png' }),
+      ).rejects.toBeInstanceOf(ProductNotFoundError);
     });
   });
 });

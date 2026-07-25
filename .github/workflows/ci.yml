@@ -28,6 +28,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://adminuser:postgres@localhost:5432/raizes_do_nordeste
       JWT_SECRET_KEY: test-secret-only-for-ci
+      # The storage adapter calls getOrThrow on boot but makes no network call, so
+      # dummies are enough to get the module graph up in e2e.
+      SUPABASE_URL: https://ci.invalid
+      SUPABASE_SECRET_KEY: sb_secret_only_for_ci
+      SUPABASE_PRODUCT_IMAGE_BUCKET: product-images
 
     steps:
       - uses: actions/checkout@v6

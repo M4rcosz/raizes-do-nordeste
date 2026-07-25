@@ -42,6 +42,10 @@ class FakeProductRepository implements ProductRepository {
     return Promise.reject(new Error('not used'));
   }
 
+  setImageUrl(): Promise<Product | null> {
+    return Promise.reject(new Error('not used'));
+  }
+
   setActive(id: string, isActive: boolean): Promise<Product | null> {
     this.setActiveCalls.push({ id, isActive });
     const current = this.store.get(id);

@@ -40,8 +40,13 @@ export class ProductResponseDto {
   @ApiProperty({ example: '2026-05-18T10:30:00.000Z' })
   public readonly updatedAt: Date;
 
-  @ApiProperty({ example: 'https://example.com/images/acaraje.jpg' })
-  public readonly imageUrl: string;
+  @ApiProperty({
+    example: 'https://example.com/images/acaraje.jpg',
+    type: String,
+    nullable: true,
+    description: 'Null until an image has been uploaded and confirmed.',
+  })
+  public readonly imageUrl: string | null;
 
   constructor(
     id: string,
@@ -52,7 +57,7 @@ export class ProductResponseDto {
     categoryId: string,
     createdAt: Date,
     updatedAt: Date,
-    imageUrl: string,
+    imageUrl: string | null,
   ) {
     this.id = id;
     this.name = name;

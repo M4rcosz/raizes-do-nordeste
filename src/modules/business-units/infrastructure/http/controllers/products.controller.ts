@@ -1,11 +1,24 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiServiceUnavailableResponse,
   ApiTags,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { PaginatedProductResponseDto } from '../dto/paginated-product-response.dto';
 import { GetActiveProductsUseCase } from '../../../application/use-cases/get-active-products.use-case';
@@ -23,9 +36,14 @@ import {
 } from '../dto/product-query.dto';
 import { ProductCreateDto } from '../dto/product-create.dto';
 import { ProductUpdateDto } from '../dto/product-update.dto';
+import { ConfirmProductImageDto } from '../dto/confirm-product-image.dto';
+import { ProductImageUploadUrlRequestDto } from '../dto/product-image-upload-url-request.dto';
+import { ProductImageUploadUrlResponseDto } from '../dto/product-image-upload-url-response.dto';
 import { CreateProductUseCase } from '@modules/business-units/application/use-cases/create-product.use-case';
 import { SetProductActiveUseCase } from '@modules/business-units/application/use-cases/set-product-active.use-case';
 import { UpdateProductUseCase } from '@modules/business-units/application/use-cases/update-product.use-case';
+import { CreateProductImageUploadUrlUseCase } from '@modules/business-units/application/use-cases/create-product-image-upload-url.use-case';
+import { ConfirmProductImageUploadUseCase } from '@modules/business-units/application/use-cases/confirm-product-image-upload.use-case';
 import { Roles } from '@shared/auth/roles.decorator';
 import { CurrentUser } from '@shared/auth/current-user.decorator';
 import type { JwtPayload } from '@shared/auth/jwt-payload.type';
@@ -40,6 +58,8 @@ export class ProductsController {
     private readonly createProduct: CreateProductUseCase,
     private readonly setProductActive: SetProductActiveUseCase,
     private readonly updateProduct: UpdateProductUseCase,
+    private readonly createProductImageUploadUrl: CreateProductImageUploadUrlUseCase,
+    private readonly confirmProductImageUpload: ConfirmProductImageUploadUseCase,
   ) {}
 
   @Public()
@@ -158,6 +178,60 @@ export class ProductsController {
     @Param() { productId }: ProductIdParamDto,
   ): Promise<ProductResponseDto> {
     const product = await this.setProductActive.execute(productId, false, actor.sub);
+    return ProductResponseDto.fromEntity(product);
+  }
+
+  // Every mint hands out a credential that can write into the bucket for two
+  // hours, so this is throttled harder than the read routes.
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Roles(['ADMIN', 'MANAGER'])
+  @Post(':productId/image/upload-url')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Mint a signed URL to upload a product image directly to storage',
+    description:
+      'Step 1 of 2. Upload the file to the returned signedUrl, then call the confirm ' +
+      'endpoint with the returned path. Nothing is persisted here.',
+  })
+  @ApiCreatedResponse({ type: ProductImageUploadUrlResponseDto })
+  @ApiNotFoundResponse({ description: 'Product not found' })
+  @ApiServiceUnavailableResponse({ description: 'Image storage is unavailable' })
+  async createImageUploadUrl(
+    @Param() { productId }: ProductIdParamDto,
+    @Body() body: ProductImageUploadUrlRequestDto,
+  ): Promise<ProductImageUploadUrlResponseDto> {
+    const upload = await this.createProductImageUploadUrl.execute({
+      productId,
+      contentType: body.contentType,
+    });
+    return ProductImageUploadUrlResponseDto.fromSignedUpload(upload);
+  }
+
+  @Roles(['ADMIN', 'MANAGER'])
+  @Post(':productId/image/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm an uploaded product image and publish its URL',
+    description:
+      'Step 2 of 2. Verifies the object really exists and passes the size/type policy, ' +
+      'then stores its public URL and deletes the image it replaced.',
+  })
+  @ApiOkResponse({ type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Product not found, or no object was uploaded at that path' })
+  @ApiUnprocessableEntityResponse({
+    description: 'The path does not belong to this product, or the object fails the image policy',
+  })
+  @ApiServiceUnavailableResponse({ description: 'Image storage is unavailable' })
+  async confirmImage(
+    @CurrentUser() actor: JwtPayload,
+    @Param() { productId }: ProductIdParamDto,
+    @Body() body: ConfirmProductImageDto,
+  ): Promise<ProductResponseDto> {
+    const product = await this.confirmProductImageUpload.execute({
+      productId,
+      path: body.path,
+      actorId: actor.sub,
+    });
     return ProductResponseDto.fromEntity(product);
   }
 

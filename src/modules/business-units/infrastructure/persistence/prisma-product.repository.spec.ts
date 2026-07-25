@@ -502,4 +502,79 @@ describe('PrismaProductRepository', () => {
       await expect(repo.setActive('uuid-1', true)).rejects.toBe(genericError);
     });
   });
+
+  describe('setImageUrl', () => {
+    // Narrow on purpose: reusing update() would rewrite `name` too, so an
+    // unrelated duplicate name would surface as a conflict on an image swap.
+    it('writes only the image column and maps the row back', async () => {
+      const url = 'https://cdn.test/object/public/product-images/products/uuid-1/img.png';
+      update.mockResolvedValue({ ...persistedRow, imageUrl: url });
+
+      const product = await repo.setImageUrl('uuid-1', url);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'uuid-1' }, data: { imageUrl: url } });
+      expect(product?.imageUrl).toBe(url);
+    });
+
+    it('clears the image when given null', async () => {
+      update.mockResolvedValue({ ...persistedRow, imageUrl: null });
+
+      const product = await repo.setImageUrl('uuid-1', null);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'uuid-1' }, data: { imageUrl: null } });
+      expect(product?.imageUrl).toBeNull();
+    });
+
+    // Honour the null contract so the use case raises a 404 instead of a 500.
+    it('returns null on P2025 (no product with that id)', async () => {
+      update.mockRejectedValue(knownError('P2025'));
+
+      await expect(repo.setImageUrl('missing', 'https://cdn.test/x.png')).resolves.toBeNull();
+    });
+
+    it('rethrows any other Prisma error unchanged', async () => {
+      const prismaError = knownError('P2002');
+      update.mockRejectedValue(prismaError);
+
+      await expect(repo.setImageUrl('uuid-1', 'https://cdn.test/x.png')).rejects.toBe(prismaError);
+    });
+
+    it('rethrows non-Prisma errors unchanged', async () => {
+      const genericError = new Error('connection lost');
+      update.mockRejectedValue(genericError);
+
+      await expect(repo.setImageUrl('uuid-1', null)).rejects.toBe(genericError);
+    });
+  });
+
+  describe('nullable image column', () => {
+    it('maps a null image_url to a null entity field', async () => {
+      findUnique.mockResolvedValue({ ...persistedRow, imageUrl: null });
+
+      const product = await repo.findById('uuid-1');
+
+      expect(product?.imageUrl).toBeNull();
+    });
+
+    it('creates a product without an image', async () => {
+      create.mockResolvedValue({ ...persistedRow, imageUrl: null });
+
+      const product = await repo.create({
+        name: input.name,
+        price: input.price,
+        categoryId: input.categoryId,
+      });
+
+      expect(create).toHaveBeenCalledWith({
+        data: {
+          name: input.name,
+          description: undefined,
+          basePrice: '12.50',
+          categoryId: input.categoryId,
+          imageUrl: undefined,
+        },
+      });
+      expect(product.imageUrl).toBeNull();
+    });
+  });
 });

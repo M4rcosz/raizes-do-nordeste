@@ -81,6 +81,61 @@ describe('Product', () => {
 
       expect(updated.description).toBeNull();
     });
+
+    // null and undefined are NOT the same patch value here, and the difference is
+    // the whole point of the `!== undefined` convention.
+    it('clears imageUrl when null is explicitly provided', () => {
+      const product = buildProduct(true);
+
+      const updated = product.withUpdatedFields({ imageUrl: null });
+
+      expect(updated.imageUrl).toBeNull();
+    });
+
+    it('leaves imageUrl untouched when the key is absent', () => {
+      const product = buildProduct(true);
+
+      const updated = product.withUpdatedFields({ imageUrl: undefined });
+
+      expect(updated.imageUrl).toBe('https://example.com/acai.jpg');
+    });
+
+    it('carries a null imageUrl through an unrelated patch', () => {
+      const product = new Product(
+        'uuid-1',
+        'Açaí',
+        'Refreshing fruit pulp',
+        Money.fromDecimalString('12.50'),
+        true,
+        'category-uuid-1',
+        new Date('2026-01-01T00:00:00Z'),
+        new Date('2026-01-02T00:00:00Z'),
+        null,
+      );
+
+      const updated = product.withUpdatedFields({ name: 'Vatapá' });
+
+      expect(updated.name).toBe('Vatapá');
+      expect(updated.imageUrl).toBeNull();
+    });
+
+    it('sets an imageUrl on a product that had none', () => {
+      const product = new Product(
+        'uuid-1',
+        'Açaí',
+        null,
+        Money.fromDecimalString('12.50'),
+        true,
+        'category-uuid-1',
+        new Date('2026-01-01T00:00:00Z'),
+        new Date('2026-01-02T00:00:00Z'),
+        null,
+      );
+
+      const updated = product.withUpdatedFields({ imageUrl: 'https://cdn.test/a.png' });
+
+      expect(updated.imageUrl).toBe('https://cdn.test/a.png');
+    });
   });
 
   describe('constructor', () => {

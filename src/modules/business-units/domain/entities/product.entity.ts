@@ -11,7 +11,8 @@ export class Product {
     public readonly categoryId: string,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    public readonly imageUrl: string,
+    /** Null until an image has been uploaded and confirmed. */
+    public readonly imageUrl: string | null,
   ) {}
 
   isAvailable(): boolean {
@@ -22,13 +23,14 @@ export class Product {
   // the receiver is untouched. Identity and lifecycle fields (id, isActive,
   // createdAt, updatedAt) are never patchable here - isActive has its own toggle
   // and timestamps are owned by persistence. A field is considered provided only
-  // when its value is not undefined, so passing description: null clears it.
+  // when its value is not undefined, so passing description: null (or
+  // imageUrl: null) clears it.
   withUpdatedFields(patch: {
     name?: string;
     description?: string | null;
     price?: Money;
     categoryId?: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
   }): Product {
     return new Product(
       this.id,

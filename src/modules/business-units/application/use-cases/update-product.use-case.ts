@@ -21,7 +21,8 @@ export interface UpdateProductInput {
   description?: string;
   price?: string;
   categoryId?: string;
-  imageUrl?: string;
+  /** null clears the image; undefined leaves it untouched. */
+  imageUrl?: string | null;
 }
 
 @Injectable()

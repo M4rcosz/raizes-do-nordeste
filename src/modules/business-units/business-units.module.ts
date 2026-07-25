@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { parseIntEnv } from '@shared/config/env';
 import { AuditModule } from '@modules/audit/audit.module';
 import { PRODUCT_REPOSITORY } from './domain/repositories/product.repository';
 import { PrismaProductRepository } from './infrastructure/persistence/prisma-product.repository';
@@ -35,6 +37,14 @@ import { CreateCategoryUseCase } from './application/use-cases/create-category.u
 import { UpdateCategoryUseCase } from './application/use-cases/update-category.use-case';
 import { CATALOG_FOR_AI } from './application/ports/catalog-for-ai.port';
 import { CatalogForAiService } from './application/services/catalog-for-ai.service';
+import { PRODUCT_IMAGE_STORAGE } from './application/ports/product-image-storage.port';
+import { SupabaseProductImageStorageAdapter } from './infrastructure/storage/supabase-product-image-storage.adapter';
+import { CreateProductImageUploadUrlUseCase } from './application/use-cases/create-product-image-upload-url.use-case';
+import {
+  ConfirmProductImageUploadUseCase,
+  DEFAULT_PRODUCT_IMAGE_MAX_BYTES,
+  PRODUCT_IMAGE_MAX_BYTES,
+} from './application/use-cases/confirm-product-image-upload.use-case';
 
 @Module({
   imports: [AuditModule],
@@ -86,6 +96,25 @@ import { CatalogForAiService } from './application/services/catalog-for-ai.servi
       provide: CATALOG_FOR_AI,
       useClass: CatalogForAiService,
     },
+    {
+      provide: PRODUCT_IMAGE_STORAGE,
+      useClass: SupabaseProductImageStorageAdapter,
+    },
+    {
+      // The size policy is an application rule, so the use case takes a plain
+      // number and the env parsing stays out here in the wiring layer.
+      provide: PRODUCT_IMAGE_MAX_BYTES,
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService): number =>
+        parseIntEnv(
+          'SUPABASE_IMAGE_MAX_BYTES',
+          cfg.get<string>('SUPABASE_IMAGE_MAX_BYTES'),
+          DEFAULT_PRODUCT_IMAGE_MAX_BYTES,
+          { min: 1 },
+        ),
+    },
+    CreateProductImageUploadUrlUseCase,
+    ConfirmProductImageUploadUseCase,
   ],
   exports: [CATALOG_FOR_AI],
 })

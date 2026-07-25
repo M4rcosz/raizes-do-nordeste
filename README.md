@@ -287,6 +287,7 @@ src/
     │   │   └── errors/           ← App-layer errors (extend shared ApplicationError)
     │   └── infrastructure/       ← Adapters
     │       ├── persistence/      ← Prisma repository implementations
+    │       ├── storage/          ← Supabase Storage adapter (product images)
     │       └── http/
     │           ├── controllers/  ← NestJS controllers
     │           └── dto/          ← Request + response DTOs
@@ -374,6 +375,10 @@ PORT=3000
 
 JWT_SECRET_KEY=replace-with-a-strong-random-secret
 PAYMENT_WEBHOOK_SECRET=replace-with-a-strong-random-secret
+
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_replace_me
+SUPABASE_PRODUCT_IMAGE_BUCKET=product-images
 ```
 
 > `DATABASE_URL` uses `localhost` for local development. The full-stack
@@ -392,6 +397,14 @@ PAYMENT_WEBHOOK_SECRET=replace-with-a-strong-random-secret
 > fails closed if it is unset, so `POST /api/payments/webhook` returns `401`
 > until it is configured. Any caller posting a webhook (a test, a Postman
 > collection, or a real gateway adapter) must sign with the same value.
+>
+> `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SUPABASE_PRODUCT_IMAGE_BUCKET` are
+> **required** - the product-image storage adapter calls `getOrThrow` on all
+> three on boot, so **the app does not start** without a real Supabase project
+> and a bucket created inside it. Nothing is fetched at boot, only read from the
+> env, but the bucket must exist before the image routes work. See
+> [Supabase Storage bucket setup](#supabase-storage-bucket-setup) for the
+> settings the bucket itself must carry.
 
 ### 3. Install dependencies and generate the Prisma client
 
@@ -482,6 +495,10 @@ npm run devs
 | `PAYMENT_WEBHOOK_SECRET` | HMAC secret the payment webhook is signed with. If unset, the webhook guard **fails closed** (every callback returns `401`). | `dev-webhook-secret` |
 | `GEMINI_API_KEY`    | API key for the Gemini support assistant (`POST /api/ai/chat`). **Required** - the Gemini adapter calls `getOrThrow('GEMINI_API_KEY')` on boot. Obtain it manually from [Google AI Studio](https://aistudio.google.com/apikey). | `AIza...` |
 | `GEMINI_TIMEOUT_MS` | Hard deadline (ms) for a single Gemini call, so a hung provider request can't pin an HTTP connection. Optional, positive integer. Default `30000`. | `30000` |
+| `SUPABASE_URL`      | Base URL of the Supabase project backing product-image storage, no trailing path. **Required** - the storage adapter calls `getOrThrow('SUPABASE_URL')` on boot. | `https://abcd1234.supabase.co` |
+| `SUPABASE_SECRET_KEY` | Server-side Supabase key used to mint upload URLs and read object metadata. **Required** - the storage adapter calls `getOrThrow('SUPABASE_SECRET_KEY')` on boot. **SERVER-SIDE ONLY**: it bypasses RLS project-wide, so it must never reach a browser, a log line, an error message or a response body. Use the new key system (`sb_secret_...`), not the legacy `service_role` JWT. | `sb_secret_...` |
+| `SUPABASE_PRODUCT_IMAGE_BUCKET` | Name of the public bucket product images live in. **Required** - the storage adapter calls `getOrThrow('SUPABASE_PRODUCT_IMAGE_BUCKET')` on boot. See [Supabase Storage bucket setup](#supabase-storage-bucket-setup). | `product-images` |
+| `SUPABASE_IMAGE_MAX_BYTES` | Maximum accepted image size in bytes, checked against what the bucket actually stored. Optional, positive integer. Default `5000000` (5 MB). Keep it **at or below** the bucket's own `file_size_limit`. | `5000000` |
 | `CORS_ORIGINS`      | Comma-separated browser origin allowlist. Unset reflects any origin (dev). **Required in production** - the app sends credentialed CORS (refresh cookie), so the boot **fails** if unset when `NODE_ENV=production`. | `https://app.vercel.app` |
 | `COOKIE_SECURE`     | `Secure` attribute of the refresh cookie. Default `true`. Set `false` only for local http dev. | `true` |
 | `COOKIE_SAMESITE`   | `SameSite` attribute of the refresh cookie: `strict`/`lax`/`none`. Default `strict`. `none` requires `COOKIE_SECURE=true` (boot fails otherwise) and is for cross-site deploys only. | `strict` |
@@ -759,22 +776,52 @@ The password hash is never serialized.
 | `POST` | `/api/products`                                  | ADMIN / MANAGER | Create a product. `201` on success, `409` if the name exists, `404` if the category does not exist.           |
 | `PATCH` | `/api/products/:productId/activate`             | ADMIN           | Activate a product (`isActive = true`). Returns `200`; idempotent. `404` if missing.                         |
 | `PATCH` | `/api/products/:productId/deactivate`           | ADMIN           | Deactivate a product (`isActive = false`). Returns `200`; idempotent. `404` if missing.                      |
+| `POST` | `/api/products/:productId/image/upload-url`      | ADMIN / MANAGER | Mint a signed URL to upload an image straight to storage. `201`; `404` if missing; `503` if storage is down. |
+| `POST` | `/api/products/:productId/image/confirm`         | ADMIN / MANAGER | Confirm the upload and publish the image URL. `200`; `404` if not uploaded; `422` if the path or file is rejected. |
 
 #### Request body - `ProductCreateDto` (`POST /api/products`)
 
 `price` is a **positive decimal string** (up to 8 integer + 2 fractional
-digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
-`description` is optional.
+digits, matching the `Decimal(10, 2)` column); `description` is optional;
+`imageUrl` is optional and must be a valid URL when present. Leave it out and
+use the image upload flow below instead.
 
 ```json
 {
   "name": "Acarajé",
   "description": "Bolinho de feijão-fradinho frito no azeite de dendê",
   "price": "12.50",
-  "categoryId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-  "imageUrl": "https://example.com/images/acaraje.jpg"
+  "categoryId": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 }
 ```
+
+#### Product images - two-step signed upload
+
+The image bytes never pass through this API. The client uploads them straight to
+Supabase Storage with a short-lived credential, then asks the API to verify and
+publish the result.
+
+1. `POST /api/products/:productId/image/upload-url` with
+   `{ "contentType": "image/jpeg" }` (allowed: `image/png`, `image/jpeg`,
+   `image/webp`). Returns `signedUrl`, `token`, `path` and `expiresInSeconds`
+   (7200 - a provider-fixed 2 hours). Nothing is persisted at this point.
+2. The client uploads the file to `signedUrl` (or
+   `storage.from(bucket).uploadToSignedUrl(path, token, file)`).
+3. `POST /api/products/:productId/image/confirm` with `{ "path": "<the path from step 1>" }`.
+   The server re-parses that path against the product, checks that the object
+   really exists and that its **stored** content type and size pass the policy,
+   writes the public CDN URL to `imageUrl` and deletes the image it replaced.
+
+The object path is always `products/<productId>/<uuid>.<ext>` - no client-supplied
+file name ever enters it. A path belonging to another product is rejected with
+`422`, whether or not the object exists.
+
+Step 1 is throttled tighter than the global default (10/min), because each mint
+hands out a live 2-hour write credential for the bucket, and the bytes it lets
+through land there without ever passing this API.
+
+Client details, including retry-on-expiry, live in
+[`docs/frontend/product-image-upload.md`](docs/frontend/product-image-upload.md).
 
 #### Response - `ProductResponseDto`
 
@@ -791,6 +838,10 @@ digits, matching the `Decimal(10, 2)` column); `imageUrl` must be a valid URL;
   "imageUrl": "https://example.com/images/acai-fitness.jpg"
 }
 ```
+
+`imageUrl` is `string | null`: it is `null` until an image has been uploaded and
+confirmed. The API never substitutes a placeholder - rendering a fallback is the
+client's call. The same applies to `imageUrl` on the public menu-item response.
 
 ### Categories
 
@@ -1761,6 +1812,41 @@ from *Supabase -> Settings -> Database -> SSL Configuration*) into the image, in
 > trust to just the DB connection (PEM contents, not a path); leave it unset in
 > the Docker deploy since the baked-in CA already covers both paths.
 
+### Supabase Storage bucket setup
+
+Product images are uploaded **straight from the browser to Supabase Storage**
+with a short-lived signed URL, so the API never sees the bytes. That makes the
+bucket's own settings the real validation boundary: the API's checks in
+`POST /products/:productId/image` run **after** the object already exists and
+are secondary to what the bucket accepted.
+
+Create the bucket once, in *Supabase -> Storage -> New bucket*:
+
+| Setting              | Value                                       |
+| -------------------- | ------------------------------------------- |
+| Name                 | matches `SUPABASE_PRODUCT_IMAGE_BUCKET`     |
+| Public bucket        | **on** (the API stores a permanent CDN URL) |
+| `allowed_mime_types` | `image/png, image/jpeg, image/webp`         |
+| `file_size_limit`    | same value as `SUPABASE_IMAGE_MAX_BYTES`    |
+
+Two things that are easy to get wrong:
+
+- **Never add `image/svg+xml` to the allowlist.** An SVG served from a public
+  bucket is a stored-XSS payload: it is a document, it can carry `<script>`, and
+  the browser will execute it on the storage origin. The three types above are
+  the exact set the API accepts, so anything else is rejected at confirm time
+  anyway - but it would already be sitting in a public bucket by then.
+- Supabase enforces `allowed_mime_types` against the **client-declared**
+  `Content-Type`, not by sniffing the bytes. A client can still declare
+  `image/png` and send something else. The confirm step re-reads the stored
+  object's metadata rather than trusting the mint request, but neither layer
+  inspects the file contents.
+
+Keep `SUPABASE_IMAGE_MAX_BYTES` at or below `file_size_limit`. A stricter bucket
+limit rejects the client's `PUT` in step 2, before our check ever runs, and the
+confirm call then answers `404 No uploaded image found` instead of the `422` the
+operator expected.
+
 ### Initial admin bootstrap
 
 A fresh instance has no users. On every boot, `scripts/bootstrap-admin.ts`
@@ -1775,7 +1861,8 @@ committed file.
 ### Other Render configuration
 
 Set the same secrets the app validates on boot - `JWT_SECRET_KEY`,
-`PAYMENT_WEBHOOK_SECRET`, `CORS_ORIGINS` (required in production) - plus any TTL /
+`PAYMENT_WEBHOOK_SECRET`, `CORS_ORIGINS` (required in production), `SUPABASE_URL`,
+`SUPABASE_SECRET_KEY`, `SUPABASE_PRODUCT_IMAGE_BUCKET` - plus any TTL /
 cookie / proxy overrides from [Environment Variables](#environment-variables).
 Point Render's health check at the shallow liveness route **`GET /api/health`**
 (`@Public()`, no DB touch).
@@ -1802,6 +1889,10 @@ follow-ups below):
       Management routes (add, update, deactivate, manage-list) are unit-scoped
       via `UnitScopeGuard`: the `:businessUnitId` param is validated against the
       actor's JWT claim. The same guard now covers inventory and promotions routes.
+      Product images are a two-step signed direct upload to Supabase Storage
+      (mint a URL, client `PUT`s the bytes, server confirms and publishes), so the
+      bytes never pass through the API and `imageUrl` stays `null` until the
+      confirm step succeeds.
 - [x] **Audit** - `audit_logs` table, `AuditService` with metadata
       sanitization (password/token/CPF redaction), `AuditLogger` port injected
       into the login, order, payment and inventory flows, and `GET /api/audit-logs`
