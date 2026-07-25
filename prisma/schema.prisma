@@ -158,7 +158,10 @@ model Product {
   name        String   @unique
   description String?
   basePrice   Decimal  @map("base_price") @db.Decimal(10, 2)
-  imageUrl    String   @map("image_url")
+  // Nullable: a product is created before its image exists. The upload flow
+  // (mint signed URL -> client PUT -> confirm) fills this in afterwards, and the
+  // API ships the honest null rather than substituting a placeholder.
+  imageUrl    String?  @map("image_url")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

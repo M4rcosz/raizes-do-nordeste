@@ -37,11 +37,18 @@ export class ProductUpdateDto {
   @IsUUID()
   categoryId?: string;
 
-  @ApiPropertyOptional({ example: 'https://example.com/images/acaraje.jpg', maxLength: 2000 })
+  @ApiPropertyOptional({
+    example: 'https://example.com/images/acaraje.jpg',
+    maxLength: 2000,
+    nullable: true,
+    description: 'Free-text URL. Send null to clear the image without the upload flow.',
+  })
+  // @IsOptional() lets an explicit null through, which is what we want here: the
+  // column is nullable and clearing the image is a real operation.
   @IsOptional()
   @MaxLength(2000)
   @IsUrl()
-  imageUrl?: string;
+  imageUrl?: string | null;
 
   // Carrier for the at-least-one rule. Never sent by clients; whitelist strips
   // unknown input keys, so it stays undefined and the rule reads the siblings.

@@ -28,8 +28,13 @@ export class PublicMenuItemResponseDto {
   })
   public readonly description: string | null;
 
-  @ApiProperty({ example: 'https://example.com/images/moqueca.jpg' })
-  public readonly imageUrl: string;
+  @ApiProperty({
+    example: 'https://example.com/images/moqueca.jpg',
+    type: String,
+    nullable: true,
+    description: 'Null until an image has been uploaded and confirmed.',
+  })
+  public readonly imageUrl: string | null;
 
   @ApiProperty({
     example: '18.50',
@@ -43,7 +48,7 @@ export class PublicMenuItemResponseDto {
     productId: string,
     name: string,
     description: string | null,
-    imageUrl: string,
+    imageUrl: string | null,
     price: string,
   ) {
     this.menuItemId = menuItemId;

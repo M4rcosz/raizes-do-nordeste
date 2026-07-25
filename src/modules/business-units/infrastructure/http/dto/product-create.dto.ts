@@ -30,8 +30,19 @@ export class ProductCreateDto {
   @IsUUID()
   categoryId!: string;
 
-  @ApiProperty({ example: 'https://example.com/images/acaraje.jpg', maxLength: 2000 })
+  @ApiPropertyOptional({
+    example: 'https://example.com/images/acaraje.jpg',
+    maxLength: 2000,
+    nullable: true,
+    description:
+      'Optional. Leave it out and use the image upload flow ' +
+      '(POST /products/:productId/image/upload-url) instead.',
+  })
+  // Omitted and explicit null both mean "no image yet", which the column now
+  // allows. No @ValidateIf guard here: unlike business-unit-update, where null
+  // would blank a NOT NULL field, null is a legitimate value for this one.
+  @IsOptional()
   @MaxLength(2000)
   @IsUrl()
-  imageUrl!: string;
+  imageUrl?: string | null;
 }

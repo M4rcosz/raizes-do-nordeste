@@ -46,6 +46,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
+    "@supabase/storage-js": "^2.110.8",
     "argon2": "^0.44.0",
     "big.js": "^7.0.1",
     "class-transformer": "^0.5.1",

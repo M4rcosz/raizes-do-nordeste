@@ -54,7 +54,7 @@ describe('CreateProductUseCase', () => {
         input.categoryId,
         new Date(),
         new Date(),
-        input.imageUrl,
+        input.imageUrl ?? null,
       );
       create.mockResolvedValue(created);
 

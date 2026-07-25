@@ -53,5 +53,27 @@ describe('ProductResponseDto', () => {
 
       expect(dto.description).toBeNull();
     });
+
+    // The honest null, not a placeholder URL: clients must be able to tell
+    // "no image yet" from "here is an image".
+    it('ships imageUrl as null when the product has no image, keeping the key present', () => {
+      const product = new Product(
+        'uuid-1',
+        'Açaí',
+        null,
+        Money.fromDecimalString('10'),
+        true,
+        'category-uuid-1',
+        new Date(),
+        new Date(),
+        null,
+      );
+
+      const dto = ProductResponseDto.fromEntity(product);
+
+      expect(dto.imageUrl).toBeNull();
+      expect(Object.keys(dto)).toContain('imageUrl');
+      expect(JSON.parse(JSON.stringify(dto))).toHaveProperty('imageUrl', null);
+    });
   });
 });

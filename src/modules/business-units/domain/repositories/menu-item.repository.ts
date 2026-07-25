@@ -12,7 +12,7 @@ export interface MenuItemWithProduct {
     id: string;
     name: string;
     description: string | null;
-    imageUrl: string;
+    imageUrl: string | null;
   };
 }
 

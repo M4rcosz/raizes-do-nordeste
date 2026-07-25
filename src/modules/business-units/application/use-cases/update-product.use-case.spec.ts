@@ -51,6 +51,10 @@ class FakeProductRepository implements ProductRepository {
   setActive(): Promise<Product | null> {
     return Promise.reject(new Error('not used'));
   }
+
+  setImageUrl(): Promise<Product | null> {
+    return Promise.reject(new Error('not used'));
+  }
 }
 
 class FakeAuditLogger implements AuditLogger {
