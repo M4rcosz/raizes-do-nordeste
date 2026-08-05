@@ -9,7 +9,7 @@ export class BusinessUnitResponseDto {
   })
   public readonly id: string;
 
-  @ApiProperty({ example: 'Raízes Pelourinho' })
+  @ApiProperty({ example: 'Nexio Pelourinho' })
   public readonly name: string;
 
   @ApiProperty({ example: '12345678000190' })

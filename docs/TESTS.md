@@ -1,12 +1,12 @@
-# Plano de testes - Raízes do Nordeste
+# Plano de testes - Nexio
 
 Cenários de smoke test da API que cobrem o fluxo crítico (login, pedido, pagamento,
 estoque, fidelidade) e os principais erros de borda. Cada cenário tem um request
-correspondente na coleção Postman `Raizes do Nordeste - Smoke Tests` (pastas `Positivos`
+correspondente na coleção Postman `Nexio - Smoke Tests` (pastas `Positivos`
 e `Negativos`). A pasta `Rota A` roteiriza o fluxo crítico ponta a ponta e a pasta `Setup`
 faz o login de staff.
 
-A coleção versionada está em `postman/raizes-nordeste.postman_collection.json`. Importe esse
+A coleção versionada está em `postman/nexio-core.postman_collection.json`. Importe esse
 arquivo no Postman (Import) para ter os requests com os scripts de teste já embutidos; ela é
 autossuficiente (usa collection variables, sem environment externo).
 

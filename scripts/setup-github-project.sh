@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Setup GitHub Issues + Labels para o projeto Raízes do Nordeste
+# Setup GitHub Issues + Labels para o projeto Nexio
 # ==============================================================================
 # Pré-requisitos:
 #   1. GitHub CLI instalado: https://cli.github.com/
@@ -8,8 +8,8 @@
 #      - macOS:   brew install gh
 #      - Windows: winget install GitHub.cli
 #   2. Autenticado: gh auth login
-#   3. Estar dentro do diretório do repo (cd raizes-do-nordeste) OU
-#      passar --repo M4rcosz/raizes-do-nordeste em cada comando
+#   3. Estar dentro do diretório do repo (cd nexio-core) OU
+#      passar --repo M4rcosz/nexio-core em cada comando
 #
 # Uso:
 #   chmod +x setup_github_project.sh
@@ -20,7 +20,7 @@
 
 set -e  # para no primeiro erro
 
-REPO="M4rcosz/raizes-do-nordeste"
+REPO="M4rcosz/nexio-core"
 
 echo "🏷️  Criando labels..."
 
@@ -658,7 +658,7 @@ create_issue \
 create_issue \
   "[RN-35] Coleção Postman com env vars + scripts de teste" \
   "## Tarefa
-- Coleção \`raizes-do-nordeste.postman_collection.json\` no repo
+- Coleção \`nexio-core.postman_collection.json\` no repo
 - Environment com \`baseUrl\`, \`token\`
 - Script de teste em cada request (\`pm.test('status 200', ...)\`)
 - Login salva token automaticamente em env
@@ -849,7 +849,7 @@ git push origin v1.0.0
 \`\`\`
 
 ## DoD
-- [ ] Tag visível em github.com/M4rcosz/raizes-do-nordeste/releases
+- [ ] Tag visível em github.com/M4rcosz/nexio-core/releases
 
 **Story points:** 1" \
   "chore" "sprint-8" "must-have"

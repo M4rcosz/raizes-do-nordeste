@@ -5,7 +5,7 @@ describe('BusinessUnit', () => {
   const buildBusinessUnit = (isActive: boolean): BusinessUnit =>
     new BusinessUnit(
       'uuid-1',
-      'Raízes Pelourinho',
+      'Nexio Pelourinho',
       '12345678000190',
       'Largo do Pelourinho, 10',
       'Salvador',
@@ -30,11 +30,11 @@ describe('BusinessUnit', () => {
       const unit = buildBusinessUnit(true);
 
       const updated = unit.withUpdatedFields({
-        name: 'Raízes Rio Vermelho',
+        name: 'Nexio Rio Vermelho',
         phone: '7133334455',
       });
 
-      expect(updated.name).toBe('Raízes Rio Vermelho');
+      expect(updated.name).toBe('Nexio Rio Vermelho');
       expect(updated.phone).toBe('7133334455');
       // Untouched fields carry over.
       expect(updated.address).toBe(unit.address);
@@ -44,7 +44,7 @@ describe('BusinessUnit', () => {
     it('preserves identity and lifecycle fields', () => {
       const unit = buildBusinessUnit(false);
 
-      const updated = unit.withUpdatedFields({ name: 'Raízes Rio Vermelho' });
+      const updated = unit.withUpdatedFields({ name: 'Nexio Rio Vermelho' });
 
       expect(updated.id).toBe(unit.id);
       expect(updated.cnpj).toBe(unit.cnpj);
@@ -56,9 +56,9 @@ describe('BusinessUnit', () => {
     it('does not mutate the receiver', () => {
       const unit = buildBusinessUnit(true);
 
-      unit.withUpdatedFields({ name: 'Raízes Rio Vermelho' });
+      unit.withUpdatedFields({ name: 'Nexio Rio Vermelho' });
 
-      expect(unit.name).toBe('Raízes Pelourinho');
+      expect(unit.name).toBe('Nexio Pelourinho');
     });
 
     it('leaves everything unchanged when the patch is empty', () => {
@@ -79,7 +79,7 @@ describe('BusinessUnit', () => {
       const updatedAt = new Date('2026-01-02T00:00:00Z');
       const unit = new BusinessUnit(
         'uuid-1',
-        'Raízes Pelourinho',
+        'Nexio Pelourinho',
         '12345678000190',
         'Largo do Pelourinho, 10',
         'Salvador',
@@ -90,7 +90,7 @@ describe('BusinessUnit', () => {
       );
 
       expect(unit.id).toBe('uuid-1');
-      expect(unit.name).toBe('Raízes Pelourinho');
+      expect(unit.name).toBe('Nexio Pelourinho');
       expect(unit.cnpj).toBe('12345678000190');
       expect(unit.address).toBe('Largo do Pelourinho, 10');
       expect(unit.city).toBe('Salvador');

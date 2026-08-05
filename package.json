@@ -1,7 +1,7 @@
 {
-  "name": "raizes-do-nordeste",
+  "name": "nexio-core",
   "version": "5.0.0",
-  "description": "Multi-unit restaurant management API for Raízes do Nordeste",
+  "description": "Multi-unit restaurant management API for Nexio",
   "author": "Marcos Paulo Freire Almeida",
   "private": true,
   "license": "UNLICENSED",
@@ -19,7 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prepare": "husky || true",
-    "db": "docker exec -it raizes-do-nordeste-db-1 psql -U adminuser -d raizes_do_nordeste",
+    "db": "docker exec -it nexio-core-db-1 psql -U adminuser -d nexio_core",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down -v",
     "db:generate": "prisma generate",

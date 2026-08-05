@@ -6,7 +6,7 @@
 set -e
 
 OWNER="M4rcosz"
-REPO="raizes-do-nordeste"
+REPO="nexio-core"
 PROJECT_NUMBER=2
 
 # ==============================================================================

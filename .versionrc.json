@@ -11,6 +11,6 @@
     { "type": "chore", "hidden": true },
     { "type": "style", "hidden": true }
   ],
-  "commitUrlFormat": "https://github.com/M4rcosz/raizes-do-nordeste/commit/{{hash}}",
-  "compareUrlFormat": "https://github.com/M4rcosz/raizes-do-nordeste/compare/{{previousTag}}...{{currentTag}}"
+  "commitUrlFormat": "https://github.com/M4rcosz/nexio-core/commit/{{hash}}",
+  "compareUrlFormat": "https://github.com/M4rcosz/nexio-core/compare/{{previousTag}}...{{currentTag}}"
 }

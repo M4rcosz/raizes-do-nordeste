@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
 
 export class BusinessUnitCreateDto {
-  @ApiProperty({ example: 'Raízes Pelourinho', maxLength: 120 })
+  @ApiProperty({ example: 'Nexio Pelourinho', maxLength: 120 })
   @MaxLength(120)
   @IsNotEmpty()
   @IsString()

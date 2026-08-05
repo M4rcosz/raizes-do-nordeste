@@ -3,6 +3,11 @@ import { createHash } from 'node:crypto';
 // Every seeded row gets its id derived from a stable slug instead of a random uuid.
 // Re-running the seed then upserts the same rows rather than inserting a second copy,
 // and an id stays quotable in docs/Postman across a full db:down + db:seed cycle.
+// Deliberately keeps the pre-rename name: this string is a hash salt, not a brand.
+// Changing it regenerates every seed id, which would strand every id quoted in the
+// docs and Postman collection and make db:seed insert a second copy of every row
+// instead of upserting. Only ever change it together with a bumped .vN suffix and a
+// full reseed.
 const NAMESPACE = 'raizes-do-nordeste.seed.v2';
 
 /** Deterministic UUIDv5-shaped id for a seed slug (e.g. "order:app-ana-delivered"). */

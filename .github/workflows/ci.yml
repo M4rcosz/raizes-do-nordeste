@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, development]
   pull_request:
-    branches: [main]
+    branches: [main, development]
 
 jobs:
   lint-and-build:
@@ -16,23 +16,27 @@ jobs:
         env:
           POSTGRES_USER: adminuser
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: raizes_do_nordeste
+          POSTGRES_DB: nexio_core
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U adminuser -d raizes_do_nordeste"
+          --health-cmd "pg_isready -U adminuser -d nexio_core"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://adminuser:postgres@localhost:5432/raizes_do_nordeste
+      DATABASE_URL: postgresql://adminuser:postgres@localhost:5432/nexio_core
       JWT_SECRET_KEY: test-secret-only-for-ci
       # The storage adapter calls getOrThrow on boot but makes no network call, so
       # dummies are enough to get the module graph up in e2e.
       SUPABASE_URL: https://ci.invalid
       SUPABASE_SECRET_KEY: sb_secret_only_for_ci
       SUPABASE_PRODUCT_IMAGE_BUCKET: product-images
+      # Same reason: ai.module.spec compiles the real AiModule, whose Gemini adapter
+      # calls getOrThrow in its constructor. No network call is made under test.
+      # Without this the spec only passes locally, where ConfigModule reads .env.
+      GEMINI_API_KEY: gemini-key-only-for-ci
 
     steps:
       - uses: actions/checkout@v6

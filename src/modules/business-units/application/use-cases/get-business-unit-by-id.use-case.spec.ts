@@ -16,7 +16,7 @@ describe('GetBusinessUnitByIdUseCase', () => {
   const buildBusinessUnit = (isActive: boolean): BusinessUnit =>
     new BusinessUnit(
       'uuid-1',
-      'Raízes Pelourinho',
+      'Nexio Pelourinho',
       '12345678000190',
       'Largo do Pelourinho, 10',
       'Salvador',
