@@ -14,7 +14,7 @@ describe('CreateBusinessUnitUseCase', () => {
   let create: jest.MockedFunction<BusinessUnitRepository['create']>;
 
   const input: CreateBusinessUnitInput = {
-    name: 'Raízes Pelourinho',
+    name: 'Nexio Pelourinho',
     cnpj: '12345678000190',
     address: 'Largo do Pelourinho, 10',
     city: 'Salvador',

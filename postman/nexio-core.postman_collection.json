@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "13db659f-adbb-4881-a8f6-eb895cd9c993",
-    "name": "Raizes do Nordeste - Smoke Tests",
+    "name": "Nexio - Smoke Tests",
     "description": "Smoke tests autossuficientes (collection variables, sem environment externo).\n\nPastas: Setup, Positivos (9 cenarios), Negativos (12 cenarios) e Rota A (fluxo critico scriptado, ja validado).\n\nAntes de rodar: db migrado+seed, PAYMENT_WEBHOOK_SECRET=dev-webhook-secret no .env do servidor, servidor de pe.\n\nRodar na ordem (de cima pra baixo): Setup e P1 populam os tokens que o resto usa.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

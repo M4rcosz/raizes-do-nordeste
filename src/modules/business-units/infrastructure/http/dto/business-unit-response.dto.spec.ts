@@ -9,7 +9,7 @@ describe('BusinessUnit response DTOs', () => {
   const buildBusinessUnit = (): BusinessUnit =>
     new BusinessUnit(
       'uuid-1',
-      'Raízes Pelourinho',
+      'Nexio Pelourinho',
       '12345678000190',
       'Largo do Pelourinho, 10',
       'Salvador',
@@ -26,7 +26,7 @@ describe('BusinessUnit response DTOs', () => {
       expect(dto).toBeInstanceOf(BusinessUnitResponseDto);
       expect(dto).toEqual({
         id: 'uuid-1',
-        name: 'Raízes Pelourinho',
+        name: 'Nexio Pelourinho',
         cnpj: '12345678000190',
         address: 'Largo do Pelourinho, 10',
         city: 'Salvador',
@@ -45,7 +45,7 @@ describe('BusinessUnit response DTOs', () => {
       expect(dto).toBeInstanceOf(PublicBusinessUnitResponseDto);
       expect(dto).toEqual({
         id: 'uuid-1',
-        name: 'Raízes Pelourinho',
+        name: 'Nexio Pelourinho',
         address: 'Largo do Pelourinho, 10',
         city: 'Salvador',
         phone: '7132223344',

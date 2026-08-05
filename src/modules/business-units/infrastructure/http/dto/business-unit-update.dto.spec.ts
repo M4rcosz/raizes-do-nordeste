@@ -12,7 +12,7 @@ const validate = (payload: Record<string, unknown>): string[] => {
 
 describe('BusinessUnitUpdateDto', () => {
   it('accepts a body with a single editable field', () => {
-    expect(validate({ name: 'Raízes Pelourinho' })).toEqual([]);
+    expect(validate({ name: 'Nexio Pelourinho' })).toEqual([]);
   });
 
   it('accepts a subset of several fields', () => {

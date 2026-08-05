@@ -25,7 +25,7 @@ describe('PrismaBusinessUnitRepository', () => {
   let repo: PrismaBusinessUnitRepository;
 
   const input: CreateBusinessUnitInput = {
-    name: 'Raízes Pelourinho',
+    name: 'Nexio Pelourinho',
     cnpj: '12345678000190',
     address: 'Largo do Pelourinho, 10',
     city: 'Salvador',
@@ -34,7 +34,7 @@ describe('PrismaBusinessUnitRepository', () => {
 
   const persistedRow: PrismaBusinessUnit = {
     id: 'uuid-1',
-    name: 'Raízes Pelourinho',
+    name: 'Nexio Pelourinho',
     cnpj: '12345678000190',
     address: 'Largo do Pelourinho, 10',
     city: 'Salvador',
@@ -119,7 +119,7 @@ describe('PrismaBusinessUnitRepository', () => {
   describe('update', () => {
     const domainUnit = new BusinessUnit(
       'uuid-1',
-      'Raízes Rio Vermelho',
+      'Nexio Rio Vermelho',
       '12345678000190',
       'Rua da Paciência, 20',
       'Salvador',
@@ -132,7 +132,7 @@ describe('PrismaBusinessUnitRepository', () => {
     it('persists only the editable fields and maps the row back to a domain BusinessUnit', async () => {
       update.mockResolvedValue({
         ...persistedRow,
-        name: 'Raízes Rio Vermelho',
+        name: 'Nexio Rio Vermelho',
         address: 'Rua da Paciência, 20',
         phone: '7133334455',
       });
@@ -142,14 +142,14 @@ describe('PrismaBusinessUnitRepository', () => {
       expect(update).toHaveBeenCalledWith({
         where: { id: 'uuid-1' },
         data: {
-          name: 'Raízes Rio Vermelho',
+          name: 'Nexio Rio Vermelho',
           address: 'Rua da Paciência, 20',
           city: 'Salvador',
           phone: '7133334455',
         },
       });
       expect(result).toBeInstanceOf(BusinessUnit);
-      expect(result?.name).toBe('Raízes Rio Vermelho');
+      expect(result?.name).toBe('Nexio Rio Vermelho');
       expect(result?.phone).toBe('7133334455');
     });
 

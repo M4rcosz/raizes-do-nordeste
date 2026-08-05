@@ -76,7 +76,7 @@ class FakeAuditLogger implements AuditLogger {
 const buildBusinessUnit = (): BusinessUnit =>
   new BusinessUnit(
     'unit-1',
-    'Raízes Pelourinho',
+    'Nexio Pelourinho',
     '12345678000190',
     'Largo do Pelourinho, 10',
     'Salvador',
@@ -102,11 +102,11 @@ describe('UpdateBusinessUnitUseCase', () => {
 
     const result = await useCase.execute(
       'unit-1',
-      { name: 'Raízes Rio Vermelho', phone: '7133334455' },
+      { name: 'Nexio Rio Vermelho', phone: '7133334455' },
       'admin-1',
     );
 
-    expect(result.name).toBe('Raízes Rio Vermelho');
+    expect(result.name).toBe('Nexio Rio Vermelho');
     expect(result.phone).toBe('7133334455');
     // Untouched fields carry over from the loaded unit.
     expect(result.address).toBe('Largo do Pelourinho, 10');
@@ -117,7 +117,7 @@ describe('UpdateBusinessUnitUseCase', () => {
   it('never patches cnpj or isActive', async () => {
     repo.seed(buildBusinessUnit());
 
-    const result = await useCase.execute('unit-1', { name: 'Raízes Rio Vermelho' }, 'admin-1');
+    const result = await useCase.execute('unit-1', { name: 'Nexio Rio Vermelho' }, 'admin-1');
 
     expect(result.cnpj).toBe('12345678000190');
     expect(result.isActive).toBe(true);
@@ -125,7 +125,7 @@ describe('UpdateBusinessUnitUseCase', () => {
 
   it('throws BusinessUnitNotFoundError when the unit does not exist', async () => {
     await expect(
-      useCase.execute('ghost', { name: 'Raízes Rio Vermelho' }, 'admin-1'),
+      useCase.execute('ghost', { name: 'Nexio Rio Vermelho' }, 'admin-1'),
     ).rejects.toBeInstanceOf(BusinessUnitNotFoundError);
   });
 
@@ -134,7 +134,7 @@ describe('UpdateBusinessUnitUseCase', () => {
     repo.updateReturnsNull = true;
 
     await expect(
-      useCase.execute('unit-1', { name: 'Raízes Rio Vermelho' }, 'admin-1'),
+      useCase.execute('unit-1', { name: 'Nexio Rio Vermelho' }, 'admin-1'),
     ).rejects.toBeInstanceOf(BusinessUnitNotFoundError);
   });
 
@@ -152,11 +152,7 @@ describe('UpdateBusinessUnitUseCase', () => {
   it('audits the update with only the changed field names', async () => {
     repo.seed(buildBusinessUnit());
 
-    await useCase.execute(
-      'unit-1',
-      { name: 'Raízes Rio Vermelho', phone: '7133334455' },
-      'admin-1',
-    );
+    await useCase.execute('unit-1', { name: 'Nexio Rio Vermelho', phone: '7133334455' }, 'admin-1');
 
     expect(audit.entries[0]).toMatchObject({
       userId: 'admin-1',
@@ -173,7 +169,7 @@ describe('UpdateBusinessUnitUseCase', () => {
     // Simulates the DTO's validation-only carrier (_atLeastOneField) surviving
     // into the input object; it must never leak into the audit trail.
     const inputWithCarrier: UpdateBusinessUnitInput & Record<string, unknown> = {
-      name: 'Raízes Rio Vermelho',
+      name: 'Nexio Rio Vermelho',
     };
     inputWithCarrier._atLeastOneField = 'boom';
 
@@ -186,8 +182,8 @@ describe('UpdateBusinessUnitUseCase', () => {
     repo.seed(buildBusinessUnit());
     audit.shouldThrow = true;
 
-    const result = await useCase.execute('unit-1', { name: 'Raízes Rio Vermelho' }, 'admin-1');
+    const result = await useCase.execute('unit-1', { name: 'Nexio Rio Vermelho' }, 'admin-1');
 
-    expect(result.name).toBe('Raízes Rio Vermelho');
+    expect(result.name).toBe('Nexio Rio Vermelho');
   });
 });

@@ -57,8 +57,8 @@ async function bootstrap(): Promise<void> {
   // Swagger is intentionally exposed in every environment, production included,
   // so the API stays self-documenting for this portfolio project.
   const config = new DocumentBuilder()
-    .setTitle('Raízes do Nordeste')
-    .setDescription('Multi-unit restaurant management API for Raízes do Nordeste')
+    .setTitle('Nexio')
+    .setDescription('Multi-unit restaurant management API for Nexio')
     .setVersion(readAppVersion())
     .addBearerAuth()
     .build();

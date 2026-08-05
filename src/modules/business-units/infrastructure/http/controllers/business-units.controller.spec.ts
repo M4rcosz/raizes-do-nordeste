@@ -27,7 +27,7 @@ describe('BusinessUnitsController', () => {
   const buildBusinessUnit = (id = 'uuid-1'): BusinessUnit =>
     new BusinessUnit(
       id,
-      'Raízes Pelourinho',
+      'Nexio Pelourinho',
       '12345678000190',
       'Largo do Pelourinho, 10',
       'Salvador',
@@ -77,7 +77,7 @@ describe('BusinessUnitsController', () => {
       createBusinessUnit.execute.mockResolvedValue(buildBusinessUnit('uuid-43'));
 
       const body: BusinessUnitCreateDto = {
-        name: 'Raízes Pelourinho',
+        name: 'Nexio Pelourinho',
         cnpj: '12345678000190',
         address: 'Largo do Pelourinho, 10',
         city: 'Salvador',
@@ -97,7 +97,7 @@ describe('BusinessUnitsController', () => {
     it('should forward the patch with the actor and map the result to the full DTO', async () => {
       updateBusinessUnit.execute.mockResolvedValue(buildBusinessUnit('uuid-7'));
 
-      const body = { name: 'Raízes Rio Vermelho', phone: '7133334455' };
+      const body = { name: 'Nexio Rio Vermelho', phone: '7133334455' };
 
       const response = await controller.update(actor, { id: 'uuid-7' }, body);
 
@@ -112,7 +112,7 @@ describe('BusinessUnitsController', () => {
       );
 
       await expect(
-        controller.update(actor, { id: 'missing' }, { name: 'Raízes Rio Vermelho' }),
+        controller.update(actor, { id: 'missing' }, { name: 'Nexio Rio Vermelho' }),
       ).rejects.toBeInstanceOf(BusinessUnitNotFoundError);
     });
   });

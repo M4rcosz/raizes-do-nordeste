@@ -184,7 +184,7 @@ Body — **partial**, every field optional, but **at least one must be present**
 
 ```json
 {
-  "name": "Raízes Pelourinho",
+  "name": "Nexio Pelourinho",
   "address": "Largo do Pelourinho, 10",
   "city": "Salvador",
   "phone": "7132223344"
@@ -246,7 +246,7 @@ Response item:
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Raízes Pelourinho",
+  "name": "Nexio Pelourinho",
   "cnpj": "12345678000190",
   "address": "Largo do Pelourinho, 10",
   "city": "Salvador",

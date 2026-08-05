@@ -1,14 +1,9 @@
-# Raízes do Nordeste - Backend API
+# Nexio - Backend API
 
-[![CI](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml/badge.svg)](https://github.com/M4rcosz/raizes-do-nordeste/actions/workflows/ci.yml)
-[![version](https://img.shields.io/github/package-json/v/M4rcosz/raizes-do-nordeste/development?color=blue)](https://github.com/M4rcosz/raizes-do-nordeste/releases)
+[![CI](https://github.com/M4rcosz/nexio-core/actions/workflows/ci.yml/badge.svg)](https://github.com/M4rcosz/nexio-core/actions/workflows/ci.yml)
+[![version](https://img.shields.io/github/package-json/v/M4rcosz/nexio-core/development?color=blue)](https://github.com/M4rcosz/nexio-core/releases)
 
-Repository: <https://github.com/M4rcosz/raizes-do-nordeste>
-
-> **Upcoming rename:** this project will be renamed from **Raízes do Nordeste**
-> to **nexio-core** in a future release. When it lands, the repository URL, the
-> package name and the version badge above change with it; every current
-> reference to "Raízes do Nordeste" in this document predates that switch.
+Repository: <https://github.com/M4rcosz/nexio-core>
 
 REST API for a multi-unit restaurant ordering system. The platform powers menu
 browsing, order management, payment processing, inventory control and a
@@ -352,8 +347,8 @@ test/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/M4rcosz/raizes-do-nordeste.git
-cd raizes-do-nordeste
+git clone https://github.com/M4rcosz/nexio-core.git
+cd nexio-core
 ```
 
 ### 2. Configure environment variables
@@ -367,8 +362,8 @@ Edit `.env`:
 ```env
 POSTGRES_USER=adminuser
 POSTGRES_PASSWORD=your_password
-POSTGRES_DB=raizes_do_nordeste
-DATABASE_URL="postgresql://adminuser:your_password@localhost:5432/raizes_do_nordeste?schema=public"
+POSTGRES_DB=nexio_core
+DATABASE_URL="postgresql://adminuser:your_password@localhost:5432/nexio_core?schema=public"
 
 NODE_ENV=development
 PORT=3000
@@ -485,7 +480,7 @@ npm run devs
 | ------------------- | ----------------------------------------- | ---------------------------- |
 | `POSTGRES_USER`     | PostgreSQL username                       | `adminuser`                  |
 | `POSTGRES_PASSWORD` | PostgreSQL password                       | `secret123`                  |
-| `POSTGRES_DB`       | Database name                             | `raizes_do_nordeste`         |
+| `POSTGRES_DB`       | Database name                             | `nexio_core`         |
 | `DATABASE_URL`      | Full connection string consumed by Prisma | `postgresql://...`           |
 | `NODE_ENV`          | Runtime environment                       | `development` / `production` |
 | `PORT`              | HTTP server port                          | `3000`                       |
@@ -505,7 +500,7 @@ npm run devs
 | `DATABASE_CA_CERT`  | Optional. PEM **contents** (not a path) of the DB's CA, used by the runtime `pg` pool to verify TLS scoped to the DB connection. Leave unset in the Docker deploy - the image bakes Supabase's CA into both trust stores (see [Deployment](#deployment-production)). | `-----BEGIN CERTIFICATE-----...` |
 | `INITIAL_ADMIN_USERNAME` | Username of the bootstrap `ADMIN` created on first container boot. Required until the admin exists. | `admin` |
 | `INITIAL_ADMIN_NAME`     | Display name of the bootstrap admin. | `Site Admin` |
-| `INITIAL_ADMIN_EMAIL`    | Email of the bootstrap admin. | `admin@raizes.com` |
+| `INITIAL_ADMIN_EMAIL`    | Email of the bootstrap admin. | `admin@nexio.com` |
 | `INITIAL_ADMIN_PASSWORD` | Initial password (argon2-hashed on first boot). Set via the host's secret store; removable once the admin exists. | `a-strong-password` |
 
 ---
@@ -884,7 +879,7 @@ client's call. The same applies to `imageUrl` on the public menu-item response.
 
 ```json
 {
-  "name": "Raízes Pelourinho",
+  "name": "Nexio Pelourinho",
   "cnpj": "12345678000190",
   "address": "Largo do Pelourinho, 10",
   "city": "Salvador",
@@ -900,7 +895,7 @@ activate/deactivate routes.
 
 ```json
 {
-  "name": "Raízes Pelourinho",
+  "name": "Nexio Pelourinho",
   "address": "Largo do Pelourinho, 10",
   "city": "Salvador",
   "phone": "7132223344"
@@ -912,7 +907,7 @@ activate/deactivate routes.
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Raízes Pelourinho",
+  "name": "Nexio Pelourinho",
   "cnpj": "12345678000190",
   "address": "Largo do Pelourinho, 10",
   "city": "Salvador",
@@ -930,7 +925,7 @@ Omits `cnpj`, `isActive` and timestamps.
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Raízes Pelourinho",
+  "name": "Nexio Pelourinho",
   "address": "Largo do Pelourinho, 10",
   "city": "Salvador",
   "phone": "7132223344"

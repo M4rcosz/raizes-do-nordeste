@@ -46,7 +46,7 @@ class FakeBusinessUnitRepository implements BusinessUnitRepository {
   private build(id: string, isActive: boolean): BusinessUnit {
     return new BusinessUnit(
       id,
-      'Raízes Pelourinho',
+      'Nexio Pelourinho',
       '12345678000190',
       'Largo do Pelourinho, 10',
       'Salvador',

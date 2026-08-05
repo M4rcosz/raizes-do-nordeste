@@ -9,7 +9,7 @@ import { AtLeastOneOf } from '@shared/validation/at-least-one-of';
 // runs the validators (@IsOptional skips both undefined and null). This keeps a
 // { "field": null } body a 400 at the border instead of a 500 from Prisma.
 export class BusinessUnitUpdateDto {
-  @ApiPropertyOptional({ example: 'Raízes Pelourinho', maxLength: 120 })
+  @ApiPropertyOptional({ example: 'Nexio Pelourinho', maxLength: 120 })
   @ValidateIf((obj: BusinessUnitUpdateDto) => obj.name !== undefined)
   @MaxLength(120)
   @IsNotEmpty()

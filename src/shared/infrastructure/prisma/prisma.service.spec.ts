@@ -22,11 +22,11 @@ describe('buildPoolConfig', () => {
 
   it('keeps other query params while removing only sslmode', () => {
     const cfg = buildPoolConfig(
-      'postgresql://u:p@host:5432/db?sslmode=require&application_name=raizes',
+      'postgresql://u:p@host:5432/db?sslmode=require&application_name=nexio',
       'CA',
     );
 
-    expect(cfg.connectionString).toContain('application_name=raizes');
+    expect(cfg.connectionString).toContain('application_name=nexio');
     expect(cfg.connectionString).not.toContain('sslmode');
   });
 
